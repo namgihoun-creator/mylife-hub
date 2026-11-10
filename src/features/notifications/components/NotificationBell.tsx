@@ -8,6 +8,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
+  Repeat,
   UserPlus,
   type LucideIcon,
 } from "lucide-react";
@@ -17,7 +18,7 @@ import { cn } from "@/shared/lib/utils";
 import { useNotificationPolling } from "../hooks/useNotificationPolling";
 import type { AppNotification, NotificationType } from "../schemas/notification.schema";
 import { getRecentNotifications, markAllAsRead, markAsRead } from "../server/notification.actions";
-import { NOTIFICATION_HREF } from "../utils/notification-links";
+import { notificationHref } from "../utils/notification-links";
 import { PushToggle } from "./PushToggle";
 
 // Complete class strings (Tailwind JIT) — tones per docs/DESIGN_SYSTEM.md §I.
@@ -29,6 +30,10 @@ const VISUAL: Record<NotificationType, { icon: LucideIcon; tone: string }> = {
   INVITE_ACCEPTED: {
     icon: UserPlus,
     tone: "bg-sky-50 text-sky-500 ring-1 ring-inset ring-sky-100 dark:bg-sky-950/40 dark:text-sky-400 dark:ring-sky-900/50",
+  },
+  RENTAL_EXPIRING: {
+    icon: Repeat,
+    tone: "bg-violet-50 text-violet-500 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:ring-violet-900/50",
   },
   DUE_SOON: {
     icon: CalendarClock,
@@ -73,7 +78,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
         if (!r.ok) void refresh();
       });
     }
-    router.push(NOTIFICATION_HREF[n.type]);
+    router.push(notificationHref(n.type, n.asset_id));
   }
 
   async function onMarkAll() {

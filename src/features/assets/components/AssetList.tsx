@@ -1,12 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { PackageOpen } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Info, PackageOpen, X } from "lucide-react";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { cn } from "@/shared/lib/utils";
 import { SPACES, type Asset } from "../schemas/asset.schema";
 import { nextTaskOf } from "../utils/asset-summary";
+import { summarizeRentals } from "../utils/rental";
 import { AssetCard } from "./AssetCard";
+import { RentalSummaryBanner } from "./RentalSummaryBanner";
+
+/** /assets?openAssetId=<id>&tab=compare|info — set by notifications (see notification-links.ts). */
+export type AssetDeepLink = { assetId: string; tab: "info" | "compare" };
 
 type Dimension = "space" | "category";
 
@@ -39,14 +45,32 @@ export function AssetList({
   today,
   emptyAction,
   canEdit = false,
+  deepLink = null,
 }: {
   assets: Asset[];
   today: string;
   emptyAction?: React.ReactNode;
   canEdit?: boolean;
+  deepLink?: AssetDeepLink | null;
 }) {
+  const router = useRouter();
   const [dim, setDim] = useState<Dimension>("space");
   const [selected, setSelected] = useState<string>("전체");
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Deep link: reveal the card (reset any filter that would hide it), explain when the asset is not available,
+  // then drop the query from the URL so the same notification can open the dialog again later.
+  useEffect(() => {
+    if (!deepLink) return;
+    setSelected("전체");
+    if (!assets.some((a) => a.id === deepLink.assetId)) {
+      setNotice("알림에서 연결된 자산을 찾을 수 없어요. 삭제됐거나 볼 수 있는 권한이 없을 수 있어요.");
+    }
+    router.replace("/assets", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLink?.assetId, deepLink?.tab]);
+
+  const rentals = useMemo(() => summarizeRentals(assets), [assets]);
 
   const sections = useMemo(() => {
     const groups = new Map<string, Asset[]>();
@@ -70,6 +94,18 @@ export function AssetList({
 
   return (
     <div className="space-y-5">
+      {notice && (
+        <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">{notice}</span>
+          <button type="button" aria-label="안내 닫기" onClick={() => setNotice(null)} className="shrink-0 rounded-full p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {rentals.count > 0 && <RentalSummaryBanner summary={rentals} />}
+
       <div className="flex items-center justify-between gap-3">
         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="필터">
           <button
@@ -122,7 +158,7 @@ export function AssetList({
           </h2>
           <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {items.map((a) => (
-              <AssetCard key={a.id} asset={a} today={today} canEdit={canEdit} />
+              <AssetCard key={a.id} asset={a} today={today} canEdit={canEdit} deepLinkTab={deepLink?.assetId === a.id ? deepLink.tab : undefined} />
             ))}
           </ul>
         </section>

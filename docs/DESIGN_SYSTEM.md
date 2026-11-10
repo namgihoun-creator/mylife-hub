@@ -151,6 +151,11 @@
 - 상세 모달 설명 줄 우측 `수정` 알약 버튼(관리자에게만). 클릭하면 상세를 닫고 수정 모달(`max-w-lg rounded-2xl`)을 연다.
 - 폼: 이름(필수) · 위치(select) · 카테고리 · 메모(textarea) · **소유 형태 토글 + 렌탈 패널**(§J 컴포넌트 재사용, 기존 값으로 채움). 렌탈 → 직접 구매로 바꾸면 렌탈 정보가 삭제된다는 안내(`text-[11px]` 보조)를 토글 아래에 표시. 하단 `취소`(보조) / `저장`(Primary, 처리 중 스피너). 오류는 버튼 위 `role="alert"`.
 
+### J-4. 렌탈 요약 배너 · 알림 딥링크
+- **렌탈 요약 배너:** 자산 목록 최상단(필터 알약 위)에 슬림 배너 — `rounded-2xl border border-violet-200/70 bg-violet-50/40 px-4 py-3`(다크 `border-violet-900/50 bg-violet-950/20`), 좌측 아이콘 박스(violet 톤) + 라벨 `우리 집 월 렌탈 지출`(`text-xs` 보조) + 값 `N개 품목, 월 XX,XXX원`(`text-base font-extrabold tabular-nums`). **렌탈 자산이 1개 이상일 때만** 표시. 월 렌탈료를 입력하지 않은 품목은 합계에서 빼고 `(요금 미입력 M개 제외)` 보조 문구.
+- **알림 유형 `RENTAL_EXPIRING`:** 벨 목록 아이콘 `Repeat`(렌탈 환승), 톤 violet(§J 아이콘 박스 톤). 클릭/푸시 경로 `/assets?openAssetId=<자산ID>&tab=compare`.
+- **딥링크 동작(`/assets?openAssetId=…&tab=compare|info`):** 해당 자산의 상세 모달을 자동으로 열고 `tab=compare`(렌탈 자산일 때)면 `환승 & 비용 비교` 탭을 바로 보여 준다. 처리 후 주소의 쿼리는 즉시 제거(같은 알림을 다시 눌러도 다시 열리도록). 현재 필터 때문에 카드가 숨겨져 있으면 필터를 `전체`로 되돌린다. 자산을 찾을 수 없으면(삭제·권한 없음) 목록 상단에 `role="status"` 안내 박스(`rounded-xl border-amber-200 bg-amber-50 text-xs`)를 닫기 버튼과 함께 표시하고 모달은 열지 않는다. `openAssetId`가 UUID가 아니면 무시.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

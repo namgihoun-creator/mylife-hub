@@ -26,7 +26,7 @@ export async function getRecentNotifications(limit = 20): Promise<AppNotificatio
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notifications")
-    .select("id, type, title, body, task_id, read_at, created_at")
+    .select("id, type, title, body, task_id, asset_id, read_at, created_at")
     .order("created_at", { ascending: false })
     .limit(parsed.success ? parsed.data : 20);
   return error ? [] : ((data ?? []) as AppNotification[]);

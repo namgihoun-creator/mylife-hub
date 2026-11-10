@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, Pencil } from "lucide-react";
 import { DDayBadge } from "@/shared/components/ui/dday-badge";
 import {
@@ -108,12 +108,31 @@ function RentalInfo({ asset, today }: { asset: Asset; today: string }) {
 }
 
 /** Asset detail: basics, rental info card + 환승/비용 비교 tab for rentals, and the management rules. */
-export function AssetDetailDialog({ asset, today, canEdit = false }: { asset: Asset; today: string; canEdit?: boolean }) {
+export function AssetDetailDialog({
+  asset,
+  today,
+  canEdit = false,
+  deepLinkTab,
+}: {
+  asset: Asset;
+  today: string;
+  canEdit?: boolean;
+  /** Set while a notification deep link targets this asset: open now, on this tab (compare only exists for rentals). */
+  deepLinkTab?: "info" | "compare";
+}) {
   const { icon: Icon, tone } = getApplianceVisual(asset.preset_key);
   const rental = isRentalAsset(asset);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState<"info" | "compare">("info");
+
+  useEffect(() => {
+    if (!deepLinkTab) return;
+    setOpen(true);
+    setEditOpen(false);
+    setTab(deepLinkTab === "compare" && rental ? "compare" : "info");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkTab]);
 
   // Closing the detail while editing avoids stacking two modals; saved values re-render this card from the server.
   const startEdit = () => {

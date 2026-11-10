@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { z } from "zod";
 import { getSessionProfile } from "@/features/auth/server/session";
 import { getAssets, getPresets } from "@/features/assets/server/asset.queries";
 import { AssetList } from "@/features/assets/components/AssetList";
@@ -10,10 +11,15 @@ import { toSeoulDate } from "@/shared/lib/recurrence";
 
 export const metadata: Metadata = { title: "자산 관리" };
 
-export default async function AssetsPage() {
+export default async function AssetsPage({ searchParams }: { searchParams: Promise<{ openAssetId?: string; tab?: string }> }) {
   const [{ profile }, assets, presets] = await Promise.all([getSessionProfile(), getAssets(), getPresets()]);
   const today = toSeoulDate(new Date().toISOString());
   const isAdmin = profile?.role === "ADMIN";
+
+  // Notification deep link: ?openAssetId=<uuid>&tab=compare|info (anything malformed is ignored).
+  const query = await searchParams;
+  const assetId = z.uuid().safeParse(query.openAssetId);
+  const deepLink = assetId.success ? { assetId: assetId.data, tab: query.tab === "compare" ? ("compare" as const) : ("info" as const) } : null;
 
   return (
     <div className="space-y-6">
@@ -29,7 +35,7 @@ export default async function AssetsPage() {
       </div>
 
       {assets.length > 0 && <AssetSummaryBanner summary={summarizeAssets(assets, today)} />}
-      <AssetList assets={assets} today={today} canEdit={isAdmin} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
+      <AssetList assets={assets} today={today} canEdit={isAdmin} deepLink={deepLink} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
     </div>
   );
 }

@@ -238,6 +238,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close();
 }
 
+// The signed-in E2E user and household (used by the rental, magic-link and notification sections below).
+const { data: me } = await sb.auth.getUser();
+const { data: myProfile } = await sb.from("profiles").select("household_id").eq("id", me.user.id).single();
+
 // ---------------------------------------------------------------- Phase 3-1: rental / subscription assets
 // Everything created here (assets, their rules and first tasks) is removed again in `finally`.
 {
@@ -258,6 +262,7 @@ for (const vp of VIEWPORTS) {
     const rentalRadio = dialog.getByRole("radio", { name: "렌탈·구독" });
     await ownedRadio.waitFor();
 
+    record("rental-summary", vp.name, "no rentals yet: the summary banner is not rendered", (await page.getByTestId("rental-summary").count()) === 0);
     // -- toggle + conditional, animated panel
     const providerInput = dialog.getByLabel(/렌탈사명/);
     // Playwright treats clipped / opacity-0 content as visible, so the collapsed state is checked the way a user experiences it:
@@ -459,6 +464,111 @@ for (const vp of VIEWPORTS) {
     record("compare", vp.name, "‘기본값으로’ restores the default assumptions", (await totalOf("switch")) === won(exp.switch) && (await totalOf("buy")) === won(exp.buy));
     await page.keyboard.press("Escape");
 
+    // ================================================================ Phase 3-3: notification deep link (/assets?openAssetId=…&tab=…)
+    {
+      const rid = rentalRow.id;
+      const dlUrl = (id, tab) => `${BASE}/assets?openAssetId=${id}${tab ? `&tab=${tab}` : ""}`;
+      const settle = async () => {
+        await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+        await page.waitForFunction(() => !location.search.includes("openAssetId"), null, { timeout: 10_000 }).catch(() => {});
+      };
+      const ddlg = page.getByRole("dialog");
+
+      await page.goto(dlUrl(rid, "compare"), { waitUntil: "networkidle" });
+      await ddlg.getByTestId("rental-compare").waitFor({ timeout: 15_000 }).catch(() => {});
+      await settle();
+      record("deeplink", vp.name, "?openAssetId=<id>&tab=compare opens that asset's detail on ‘환승 & 비용 비교’, then strips the query", (await ddlg.getByRole("tab", { name: "환승 & 비용 비교" }).getAttribute("aria-selected")) === "true" && (await ddlg.getByTestId("rental-compare").count()) === 1 && !page.url().includes("openAssetId"), page.url().replace(BASE, ""));
+      await page.keyboard.press("Escape");
+
+      await page.goto(dlUrl(rid, "info"), { waitUntil: "networkidle" });
+      await ddlg.getByLabel("렌탈 정보").waitFor({ timeout: 15_000 }).catch(() => {});
+      await settle();
+      record("deeplink", vp.name, "?tab=info opens the detail on the ‘정보’ tab", (await ddlg.getByRole("tab", { name: "정보" }).getAttribute("aria-selected")) === "true" && (await ddlg.getByTestId("rental-compare").count()) === 0);
+      await page.keyboard.press("Escape");
+
+      await page.goto(dlUrl("00000000-0000-4000-8000-000000000000", "compare"), { waitUntil: "networkidle" });
+      await page.getByRole("status").filter({ hasText: "찾을 수 없어요" }).waitFor({ timeout: 10_000 }).catch(() => {});
+      await settle();
+      record("deeplink", vp.name, "unknown asset id: an inline notice (no dialog), query stripped", (await page.getByRole("status").filter({ hasText: "찾을 수 없어요" }).count()) === 1 && (await ddlg.count()) === 0 && !page.url().includes("openAssetId"));
+
+      await page.goto(`${BASE}/assets?openAssetId=not-a-uuid&tab=compare`, { waitUntil: "networkidle" });
+      await page.waitForTimeout(500);
+      record("deeplink", vp.name, "malformed id is ignored (no dialog, no notice)", (await ddlg.count()) === 0 && (await page.getByRole("status").filter({ hasText: "찾을 수 없어요" }).count()) === 0);
+
+      // ---- bell click on a RENTAL_EXPIRING notification (needs a notification row -> service role)
+      if (svc) {
+        const { data: nrow, error: nerr } = await svc
+          .from("notifications")
+          .insert({ household_id: myProfile.household_id, user_id: me.user.id, type: "RENTAL_EXPIRING", asset_id: rid, title: "[정수기] 렌탈 의무 약정 D-60", body: "위약금 없는 환승 타이밍! 현재 유지 vs 신규 환승 비용을 비교해 보세요.", dedupe_key: `e2e-bell-${Date.now()}` })
+          .select("id")
+          .single();
+        if (nerr) record("deeplink", vp.name, "bell flow: a RENTAL_EXPIRING notification can be created (needs migration 0010)", false, nerr.message);
+        if (nrow) {
+        const bell = () => page.getByRole("button", { name: /^알림( \d+건)?$/ });
+        const panelEl = () => page.locator('[aria-label="알림 목록"]');
+        const clickItem = async () => {
+          await bell().click();
+          await panelEl().waitFor();
+          await panelEl().locator("li button", { hasText: "렌탈 의무 약정 D-60" }).first().click();
+        };
+
+        // (a) from another page (/timeline) -> routed to /assets with the dialog open
+        await page.goto(`${BASE}/timeline`, { waitUntil: "networkidle" });
+        await clickItem();
+        await page.waitForURL(/\/assets/, { timeout: 15_000 });
+        await ddlg.getByTestId("rental-compare").waitFor({ timeout: 15_000 }).catch(() => {});
+        await settle();
+        record("deeplink", vp.name, "bell: clicking the RENTAL_EXPIRING notification on /timeline routes to /assets and opens the comparison tab", /\/assets/.test(page.url()) && (await ddlg.getByTestId("rental-compare").count()) === 1);
+        await page.keyboard.press("Escape");
+
+        // (b) already on /assets with a filter that hides the card: the filter is reset, and a second click opens it again
+        await page.getByRole("group", { name: "필터" }).getByRole("button", { name: /^세탁실/ }).click();
+        const hiddenByFilter = (await page.locator("main li").filter({ has: page.getByTestId("rental-badge") }).count()) === 0;
+        await clickItem();
+        await ddlg.getByTestId("rental-compare").waitFor({ timeout: 15_000 }).catch(() => {});
+        await settle();
+        await page.keyboard.press("Escape");
+        const allActive = await page.getByRole("group", { name: "필터" }).getByRole("button", { name: /^전체/ }).evaluate((el) => el.className.includes("bg-slate-900"));
+        const visibleAgain = (await page.locator("main li").filter({ has: page.getByTestId("rental-badge") }).count()) === 1;
+        record("deeplink", vp.name, "bell on /assets: a hiding filter is reset to ‘전체’ and the card's comparison tab opens", hiddenByFilter && allActive && visibleAgain, `hidden=${hiddenByFilter} all=${allActive} visible=${visibleAgain}`);
+        await clickItem();
+        await ddlg.getByTestId("rental-compare").waitFor({ timeout: 15_000 }).catch(() => {});
+        record("deeplink", vp.name, "the same notification opens the dialog again (query was cleaned up after the first use)", (await ddlg.getByTestId("rental-compare").count()) === 1);
+        await settle();
+        await page.keyboard.press("Escape");
+        await svc.from("notifications").delete().eq("id", nrow.id);
+        }
+      }
+    }
+
+    // ================================================================ Phase 3-3: household rental summary banner
+    {
+      const bannerText = async () => (((await page.getByTestId("rental-summary-text").first().textContent({ timeout: 8000 }).catch(() => "")) ?? "").replace(/\s+/g, " ").trim());
+      await page.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+      await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      const t1 = await bannerText();
+      record("rental-summary", vp.name, "banner above the list: “1개 품목, 월 32,900원” for the one rental", t1 === "1개 품목, 월 32,900원", t1);
+      const bannerBox = await page.getByTestId("rental-summary").boundingBox();
+      const pillsBox = await page.getByRole("group", { name: "필터" }).boundingBox();
+      record("rental-summary", vp.name, "banner sits at the very top of the list (above the filter pills)", !!bannerBox && !!pillsBox && bannerBox.y + bannerBox.height <= pillsBox.y);
+      await page.getByTestId("rental-summary").screenshot({ path: `${OUT}/assets-rental-summary-desktop.png` });
+
+      // a second rental without a fee: counted, not summed, and the note explains it
+      const { data: extra, error: extraErr } = await sb
+        .from("assets")
+        .insert({ household_id: myProfile.household_id, owner_id: me.user.id, name: "E2E 렌탈 요금없음", ownership_type: "RENTAL", rental_provider: "E2E렌탈B" })
+        .select("id")
+        .single();
+      if (extraErr) throw new Error(`summary fixture failed: ${extraErr.message}`);
+      await page.reload({ waitUntil: "networkidle" });
+      const t2 = await bannerText();
+      const noteShown = (await page.getByTestId("rental-summary").getByText("(요금 미입력 1개 제외)").count()) === 1;
+      record("rental-summary", vp.name, "a rental without a fee is counted but not summed (“2개 품목, 월 32,900원 (요금 미입력 1개 제외)”)", t2 === "2개 품목, 월 32,900원" && noteShown, t2);
+      await sb.from("assets").delete().eq("id", extra.id);
+      await page.reload({ waitUntil: "networkidle" });
+      await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    }
+
     // ================================================================ Phase 3-2: asset edit modal
     await rentalCard.first().getByRole("button", { name: /상세 보기/ }).click();
     await dlg.getByLabel("렌탈 정보").waitFor();
@@ -525,6 +635,7 @@ for (const vp of VIEWPORTS) {
     await dlg.getByLabel("렌탈 정보").waitFor();
     const feeNow = ((await dlg.getByTestId("rental-fee").textContent()) ?? "").trim();
     record("edit", vp.name, "card + detail show the edited values (name, ‘29,900원’, ‘매월 20일’, memo)", feeNow === "29,900원" && (await dlg.getByText("매월 20일 결제").count()) === 1 && (await dlg.getByText("E2E 메모").count()) >= 1 && (await dlg.getByText("자가 관리").count()) >= 1, feeNow);
+    record("rental-summary", vp.name, "banner follows the edit (월 29,900원)", /월 29,900원/.test(((await page.getByTestId("rental-summary-text").first().textContent()) ?? "")), ((await page.getByTestId("rental-summary-text").first().textContent()) ?? "").trim());
     await dlg.getByRole("tab", { name: "환승 & 비용 비교" }).click();
     await page.waitForTimeout(300);
     record("edit", vp.name, "the comparison recalculates from the edited fee (29,900 × months to transfer)", (await totalOf("keep")) === won(29_900 * Math.min(36, monthsTo(shift(400)))), await totalOf("keep"));
@@ -545,6 +656,8 @@ for (const vp of VIEWPORTS) {
       if (!owned) await page.waitForTimeout(500);
     }
     record("edit", vp.name, "rental → 직접 구매 warns first, then clears every rental column (care back to NONE)", warn && !!owned && owned.rental_provider === null && owned.monthly_fee === null && owned.billing_day === null && owned.obligation_end_date === null && owned.payment_card_note === null && owned.care_type === "NONE");
+    const bannerGone = await page.getByTestId("rental-summary").waitFor({ state: "detached", timeout: 15_000 }).then(() => true).catch(() => false);
+    record("rental-summary", vp.name, "after rental → 직접 구매 the banner disappears (no rentals left)", bannerGone);
     await page.locator("main li").filter({ hasText: "정수기 (거실)" }).first().waitFor();
     await page.locator("main li").filter({ hasText: "정수기 (거실)" }).first().getByRole("button", { name: /상세 보기/ }).click();
     await dlg.getByText("관리 규칙").waitFor();
@@ -569,8 +682,6 @@ for (const vp of VIEWPORTS) {
 // Sandbox: the flow runs on a throw-away one-off task created through the test user's session, so the
 // real demo tasks are never consumed. Leftovers of a crashed earlier run are cleaned up first.
 const SANDBOX_PREFIX = "E2E 임시 과업";
-const { data: me } = await sb.auth.getUser();
-const { data: myProfile } = await sb.from("profiles").select("household_id").eq("id", me.user.id).single();
 await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
 const countRealOpen = async () =>
   (
@@ -1066,7 +1177,7 @@ if (inviteUrl && svc) {
           of("soon").every((x) => x.dedupe_key === `due-soon:${tid.soon}:${shift(3)}`) && of("today").every((x) => x.dedupe_key === `due-today:${tid.today}:${shift(0)}`) && of("over").every((x) => x.dedupe_key === `overdue:${tid.over}:${shift(-2)}`),
           of("over")[0]?.dedupe_key ?? "none",
         );
-        record("due", V, "RPC summary: date (Seoul), per-type counts add up to total", !gen1.error && gen1.data?.date === today && gen1.data.total === gen1.data.due_soon + gen1.data.due_today + gen1.data.overdue && gen1.data.due_soon >= 4 && gen1.data.due_today >= 3 && gen1.data.overdue >= 2, JSON.stringify(gen1.data));
+        record("due", V, "RPC summary: date (Seoul), per-type counts add up to total", !gen1.error && gen1.data?.date === today && gen1.data.total === gen1.data.due_soon + gen1.data.due_today + gen1.data.overdue + (gen1.data.rental_expiring ?? 0) && typeof gen1.data.rental_expiring === "number" && gen1.data.due_soon >= 4 && gen1.data.due_today >= 3 && gen1.data.overdue >= 2, JSON.stringify(gen1.data));
 
         // Idempotent: nothing new on a second run
         const gen2 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
@@ -1081,9 +1192,53 @@ if (inviteUrl && svc) {
 
         const userCall = await msb.rpc("generate_due_notifications", {});
         record("due", V, "generate_due_notifications is service_role only (members get 42501)", userCall.error?.code === "42501", `${userCall.error?.code}`);
+
+        // ---- Phase 3-3: rental obligation expiry (D-60 / D-30), recipients, dedupe
+        const rmk = (label, end, extra = {}) => ({ household_id: myProfile.household_id, owner_id: me.user.id, name: `${SANDBOX_PREFIX} 렌탈 ${label}`, ownership_type: "RENTAL", rental_provider: "E2E렌탈R", obligation_end_date: end, ...extra });
+        const rSpecs = {
+          r60: rmk("D60", shift(60)),
+          r30: rmk("D30", shift(30)),
+          r45: rmk("D45", shift(45)), // not 60/30 -> nothing
+          owned60: rmk("소유60", shift(60), { ownership_type: "OWNED", rental_provider: null }), // only RENTAL assets
+          priv30: rmk("개인D30", shift(30), { visibility: "PRIVATE" }), // owner only
+        };
+        const rid = {};
+        for (const [key, row] of Object.entries(rSpecs)) {
+          const { data, error } = await sb.from("assets").insert(row).select("id").single();
+          if (error) throw new Error(`rental generator fixture ${key} failed: ${error.message}`);
+          rid[key] = data.id;
+        }
+        const genR = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+        const { data: rrows } = await svc.from("notifications").select("user_id, type, dedupe_key, task_id, asset_id, title, body").in("asset_id", Object.values(rid)).eq("type", "RENTAL_EXPIRING");
+        const rof = (k) => (rrows ?? []).filter((r) => r.asset_id === rid[k]);
+        const rusers = (k) => rof(k).map((r) => r.user_id).sort().join(",");
+        const BODY = "위약금 없는 환승 타이밍! 현재 유지 vs 신규 환승 비용을 비교해 보세요.";
+
+        record("rental-due", V, "D-60 rental → RENTAL_EXPIRING for every household member: title “[가전명] 렌탈 의무 약정 D-60”, fixed body, asset_id set, no task", rof("r60").length === 2 && rusers("r60") === both && rof("r60").every((r) => r.title === `[${rSpecs.r60.name}] 렌탈 의무 약정 D-60` && r.body === BODY && r.task_id === null), rof("r60")[0]?.title ?? "none");
+        record("rental-due", V, "D-30 rental → “… D-30”; a PRIVATE rental notifies its owner only", rof("r30").length === 2 && rof("r30").every((r) => r.title.endsWith("D-30")) && rof("priv30").length === 1 && rof("priv30")[0].user_id === me.user.id, `r30=${rof("r30").length} priv30=${rof("priv30").length}`);
+        record("rental-due", V, "D-45, owned assets (even with a date) and other days create nothing (while D-60/D-30 do)", !genR.error && typeof genR.data?.rental_expiring === "number" && rof("r60").length > 0 && rof("r45").length === 0 && rof("owned60").length === 0);
+        record(
+          "rental-due",
+          V,
+          "dedupe_key = rental-expiring:<asset_id>:<obligation_end_date>:<remaining_days>",
+          rof("r60").length > 0 && rof("r30").length > 0 && rof("r60").every((r) => r.dedupe_key === `rental-expiring:${rid.r60}:${shift(60)}:60`) && rof("r30").every((r) => r.dedupe_key === `rental-expiring:${rid.r30}:${shift(30)}:30`),
+          rof("r60")[0]?.dedupe_key ?? "none",
+        );
+        record("rental-due", V, "RPC summary has rental_expiring (5 = 2 + 2 + 1) and total includes it", !genR.error && genR.data?.rental_expiring === 5 && genR.data.total === genR.data.due_soon + genR.data.due_today + genR.data.overdue + genR.data.rental_expiring, JSON.stringify(genR.data));
+
+        const genR2 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+        const { count: rCount2 } = await svc.from("notifications").select("id", { count: "exact", head: true }).in("asset_id", Object.values(rid)).eq("type", "RENTAL_EXPIRING");
+        record("rental-due", V, "re-running creates no new rental alerts (dedupe)", genR2.data?.rental_expiring === 0 && rCount2 === 5, `new=${genR2.data?.rental_expiring} rows=${rCount2}`);
+
+        // the end date is part of the key: a changed obligation date alerts again (D-30 now) and the old alerts stay
+        await sb.from("assets").update({ obligation_end_date: shift(30) }).eq("id", rid.r60);
+        const genR3 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+        const { data: r60rows } = await svc.from("notifications").select("dedupe_key, title").eq("asset_id", rid.r60);
+        record("rental-due", V, "changing obligation_end_date → a new D-30 alert (new key), the old D-60 alert is kept", genR3.data?.rental_expiring === 2 && r60rows?.length === 4 && r60rows.some((r) => r.dedupe_key === `rental-expiring:${rid.r60}:${shift(30)}:30` && r.title.endsWith("D-30")), `new=${genR3.data?.rental_expiring} rows=${r60rows?.length}`);
       } finally {
         // notifications first (deleting a task would null their task_id), then the sandbox tasks
-        await svc.from("notifications").delete().eq("household_id", myProfile.household_id).or("dedupe_key.like.due-%,dedupe_key.like.overdue:%");
+        await svc.from("notifications").delete().eq("household_id", myProfile.household_id).or("dedupe_key.like.due-%,dedupe_key.like.overdue:%,dedupe_key.like.rental-expiring:%");
+        await sb.from("assets").delete().like("name", `${SANDBOX_PREFIX}%`);
         await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
       }
     } finally {
@@ -1437,6 +1592,23 @@ const CRON_SECRET = process.env.CRON_SECRET;
     record("push", "-", "cron GET runs generate → send → cleanup by default (1 new DUE_TODAY, pushed)", cronRes.status === 200 && cronJson?.generated?.due_today === 1 && cronJson?.pushesSent >= 1 && typeof cronJson?.cleanedUp === "number" && pn2?.length === 1 && !!pn2[0].push_sent_at, JSON.stringify(cronJson));
     await svc.from("notifications").delete().eq("user_id", uid).like("title", "E2E 보관%");
     await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
+
+    // 8) Phase 3-3: a D-30 rental flows through generate -> send, and the claim carries asset_id (push deep-link data)
+    const { data: rAsset, error: rAssetErr } = await sb
+      .from("assets")
+      .insert({ household_id: myProfile.household_id, owner_id: uid, name: `${SANDBOX_PREFIX} 렌탈 파이프라인`, ownership_type: "RENTAL", rental_provider: "E2E렌탈R", obligation_end_date: shift(30) })
+      .select("id")
+      .single();
+    if (rAssetErr) throw new Error(`rental pipeline fixture failed: ${rAssetErr.message}`);
+    const r9 = await dispatch({ generate: true, household_id: myProfile.household_id });
+    const { data: rn } = await svc.from("notifications").select("type, push_sent_at, title").eq("asset_id", rAsset.id);
+    record("push", "-", "pipeline: a D-30 rental becomes RENTAL_EXPIRING and is pushed in the same run", r9.status === 200 && r9.json?.generated?.rental_expiring >= 1 && rn?.length === 1 && rn[0].type === "RENTAL_EXPIRING" && /D-30/.test(rn[0].title) && !!rn[0].push_sent_at, JSON.stringify(r9.json?.generated));
+    const { data: dlRow } = await svc.from("notifications").insert({ household_id: myProfile.household_id, user_id: uid, type: "RENTAL_EXPIRING", asset_id: rAsset.id, title: "E2E deeplink", body: "x", dedupe_key: `e2e-dl-${Date.now()}` }).select("id").single();
+    const claim = await svc.rpc("claim_unsent_notifications", { p_limit: 10, p_user_ids: [uid] });
+    const claimedRow = (claim.data ?? []).find((r) => r.id === dlRow?.id);
+    record("push", "-", "claim_unsent_notifications returns asset_id (the dispatcher builds /assets?openAssetId=…&tab=compare from it)", claimedRow?.asset_id === rAsset.id && claimedRow?.type === "RENTAL_EXPIRING", JSON.stringify(claimedRow ?? null));
+    await svc.from("notifications").delete().eq("asset_id", rAsset.id);
+    await sb.from("assets").delete().eq("id", rAsset.id);
 
     // Cleanup (dedicated E2E account)
     await svc.from("push_subscriptions").delete().eq("user_id", uid);

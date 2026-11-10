@@ -33,3 +33,19 @@ export function contractProgress(start: string | null, end: string | null, today
 }
 
 export const isRentalAsset = (a: Pick<Asset, "ownership_type">) => a.ownership_type === "RENTAL";
+
+export type RentalSummary = { count: number; monthlyTotal: number; missingFee: number };
+
+/** Monthly rental spend over the assets the user can see; rentals without a fee are counted but not summed. */
+export function summarizeRentals(assets: Pick<Asset, "ownership_type" | "monthly_fee">[]): RentalSummary {
+  let count = 0;
+  let monthlyTotal = 0;
+  let missingFee = 0;
+  for (const a of assets) {
+    if (a.ownership_type !== "RENTAL") continue;
+    count++;
+    if (a.monthly_fee === null || a.monthly_fee === undefined) missingFee++;
+    else monthlyTotal += a.monthly_fee;
+  }
+  return { count, monthlyTotal, missingFee };
+}
