@@ -661,7 +661,7 @@ const { data: myProfile } = await sb.from("profiles").select("household_id").eq(
     await page.locator("main li").filter({ hasText: "정수기 (거실)" }).first().waitFor();
     await page.locator("main li").filter({ hasText: "정수기 (거실)" }).first().getByRole("button", { name: /상세 보기/ }).click();
     await dlg.getByText("관리 규칙").waitFor();
-    record("edit", vp.name, "after the switch the detail has no rental badge/tabs/rental section", (await dlg.getByRole("tablist").count()) === 0 && (await dlg.getByTestId("rental-badge").count()) === 0 && (await dlg.getByLabel("렌탈 정보").count()) === 0);
+    record("edit", vp.name, "after the switch the detail has no rental badge/compare tab/rental section", (await dlg.getByRole("tab", { name: "환승 & 비용 비교" }).count()) === 0 && (await dlg.getByTestId("rental-badge").count()) === 0 && (await dlg.getByLabel("렌탈 정보").count()) === 0);
     await page.keyboard.press("Escape");
     record("rental", vp.name, "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
   } finally {
@@ -1615,6 +1615,217 @@ const CRON_SECRET = process.env.CRON_SECRET;
     await svc.from("notifications").delete().eq("user_id", uid);
   }
 }
+// ---------------------------------------------------------------- Track B: asset documents (receipts / warranties / manuals)
+{
+  const DOC_BUCKET = "asset-documents";
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"); // 1x1
+  const PDF = Buffer.from("%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+  const probeTable = svc ? await svc.from("asset_documents").select("id").limit(1) : { error: { message: "no service key" } };
+  const probeBucket = svc ? await svc.storage.getBucket(DOC_BUCKET) : { error: { message: "no service key" } };
+  const probe = { error: probeTable.error ?? probeBucket.error };
+
+  if (probe.error) {
+    record("documents", "-", "migration 20261110000011_asset_documents.sql is applied (table asset_documents reachable)", false, probe.error.message);
+  } else {
+    const { data: who } = await sb.auth.getUser();
+    const uid = who.user.id;
+    const { data: prof } = await sb.from("profiles").select("household_id").eq("id", uid).single();
+    const hh = prof.household_id;
+    const { data: owned, error: ownedErr } = await sb
+      .from("assets")
+      .insert({ household_id: hh, owner_id: uid, name: "E2E 문서 냉장고", ownership_type: "OWNED" })
+      .select("id")
+      .single();
+    if (ownedErr) throw new Error(`documents fixture failed: ${ownedErr.message}`);
+    const { data: rentalFx } = await sb
+      .from("assets")
+      .insert({ household_id: hh, owner_id: uid, name: "E2E 문서 렌탈", ownership_type: "RENTAL", rental_provider: "E2E렌탈", monthly_fee: 1000 })
+      .select("id")
+      .single();
+    const assetId = owned.id;
+    const docRows = async () => (await svc.from("asset_documents").select("*").eq("asset_id", assetId).order("created_at")).data ?? [];
+    const objectNames = async () => (await svc.storage.from(DOC_BUCKET).list(`${hh}/${assetId}`)).data?.map((o) => o.name) ?? [];
+    const rand = Math.random().toString(36).slice(2, 10);
+    let strangerId = null;
+
+    const openDocs = async (page, id = assetId) => {
+      await page.goto(`${BASE}/assets?openAssetId=${id}&tab=info`, { waitUntil: "networkidle" });
+      await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      const dlg = page.getByRole("dialog");
+      await dlg.getByRole("tab", { name: "문서 & 보증서" }).click();
+      await dlg.getByTestId("documents-panel").waitFor();
+      return dlg;
+    };
+
+    try {
+      // ---- UI: desktop
+      const ctx = await newContext(VIEWPORTS[0], storageState);
+      const page = await ctx.newPage();
+      page.__errors = [];
+      page.on("pageerror", (e) => page.__errors.push(`pageerror: ${e.message}`));
+      page.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && page.__errors.push(`console: ${m.text()}`));
+
+      let dlg = await openDocs(page);
+      const names = await dlg.getByRole("tab").allInnerTexts();
+      record("documents", "desktop", "owned asset detail has tabs ‘정보’ + ‘문서 & 보증서’ (no compare tab)", names.join("|") === "정보|문서 & 보증서", names.join("|"));
+      await page.goto(`${BASE}/assets?openAssetId=${rentalFx.id}&tab=info`, { waitUntil: "networkidle" });
+      const rnames = await page.getByRole("dialog").getByRole("tab").allInnerTexts();
+      record("documents", "desktop", "rental asset detail has all three tabs: 정보 · 환승 & 비용 비교 · 문서 & 보증서", rnames.join("|") === "정보|환승 & 비용 비교|문서 & 보증서", rnames.join("|"));
+
+      dlg = await openDocs(page);
+      await dlg.getByTestId("documents-empty").waitFor();
+      record("documents", "desktop", "empty state + dropzone + 4 document-type radios (영수증 selected by default)", (await dlg.getByTestId("documents-empty").count()) === 1 && (await dlg.getByTestId("document-dropzone").count()) === 1 && (await dlg.getByRole("radio").count()) === 4 && (await dlg.getByRole("radio", { name: "영수증" }).getAttribute("aria-checked")) === "true");
+      await page.screenshot({ path: `${OUT}/documents-empty-desktop.png` });
+
+      // client-side rejections (no network round trip, nothing stored)
+      const fileInput = dlg.getByLabel("문서 파일 선택");
+      await fileInput.setInputFiles({ name: "memo.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+      await dlg.getByTestId("document-message").filter({ hasText: "만 올릴 수 있어요" }).waitFor();
+      const typeMsg = await dlg.getByTestId("document-message").innerText();
+      await fileInput.setInputFiles({ name: "huge.png", mimeType: "image/png", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
+      await dlg.getByTestId("document-message").filter({ hasText: "10.0MB 이하" }).waitFor();
+      const sizeMsg = await dlg.getByTestId("document-message").innerText();
+      record("documents", "desktop", "wrong type (.txt) and 10MB+1 file are rejected with clear messages", /memo\.txt/.test(typeMsg) && /huge\.png/.test(sizeMsg), `${typeMsg} / ${sizeMsg}`);
+      record("documents", "desktop", "rejected files leave no DB row and no Storage object", (await docRows()).length === 0 && (await objectNames()).length === 0);
+
+      // upload: 보증서 PNG via the picker
+      await dlg.getByRole("radio", { name: "보증서" }).click();
+      await fileInput.setInputFiles({ name: "보증서-냉장고.png", mimeType: "image/png", buffer: PNG });
+      await dlg.getByTestId("asset-document").first().waitFor();
+      let rows = await docRows();
+      let objs = await objectNames();
+      record("documents", "desktop", "PNG upload syncs metadata: row (name, size, mime, type, household, path) + Storage object", rows.length === 1 && rows[0].file_name === "보증서-냉장고.png" && rows[0].file_size === PNG.length && rows[0].mime_type === "image/png" && rows[0].document_type === "WARRANTY" && rows[0].household_id === hh && rows[0].owner_id === uid && rows[0].storage_path.startsWith(`${hh}/${assetId}/`) && objs.length === 1 && rows[0].storage_path.endsWith(objs[0]), JSON.stringify(rows[0] ?? null));
+      const card = dlg.getByTestId("asset-document").first();
+      await card.locator("img").waitFor();
+      await page.waitForFunction(() => { const i = document.querySelector('[data-testid="asset-document"] img'); return i && i.complete && i.naturalWidth > 0; });
+      record("documents", "desktop", "card shows a real image thumbnail (signed URL loads), name, 보증서 tag, size", (await card.getByText("보증서", { exact: true }).count()) === 1 && /B/.test(await card.innerText()) && (await card.locator("img").count()) === 1);
+
+      // upload: PDF with default... switch type to 설명서
+      await dlg.getByRole("radio", { name: "설명서" }).click();
+      await fileInput.setInputFiles({ name: "설명서.pdf", mimeType: "application/pdf", buffer: PDF });
+      await dlg.getByTestId("asset-document").nth(1).waitFor();
+      rows = await docRows();
+      record("documents", "desktop", "PDF upload: PDF icon (no thumbnail), type 설명서, DB + Storage in sync", rows.length === 2 && rows[1].mime_type === "application/pdf" && rows[1].document_type === "MANUAL" && (await dlg.getByTestId("asset-document").first().locator("img").count()) + (await dlg.getByTestId("asset-document").nth(1).locator("img").count()) === 1 && (await dlg.locator('[aria-label="PDF"]').count()) === 1 && (await objectNames()).length === 2);
+
+      // drag & drop
+      await dlg.getByRole("radio", { name: "영수증" }).click();
+      await page.evaluate(
+        ({ b64 }) => {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const dt = new DataTransfer();
+          dt.items.add(new File([bytes], "영수증-드롭.png", { type: "image/png" }));
+          const z = document.querySelector('[data-testid="document-dropzone"]');
+          z.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
+          z.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        },
+        { b64: PNG.toString("base64") },
+      );
+      await dlg.getByTestId("asset-document").nth(2).waitFor();
+      rows = await docRows();
+      record("documents", "desktop", "drag & drop upload works (영수증 type)", rows.length === 3 && rows.some((r) => r.file_name === "영수증-드롭.png" && r.document_type === "RECEIPT"));
+      record("documents", "desktop", "list header count follows the rows", (await dlg.getByRole("heading", { name: /업로드된 문서/ }).innerText()).includes("3"));
+      await page.screenshot({ path: `${OUT}/documents-list-desktop.png` });
+
+      // persistence: reopen from scratch
+      dlg = await openDocs(page);
+      await dlg.getByTestId("asset-document").nth(2).waitFor();
+      record("documents", "desktop", "after a full reload the documents are listed again (3)", (await dlg.getByTestId("asset-document").count()) === 3);
+
+      // download through a signed URL
+      const target = dlg.getByTestId("asset-document").filter({ hasText: "설명서.pdf" });
+      const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 15000 }), target.getByRole("button", { name: /다운로드/ }).click()]);
+      record("documents", "desktop", "download gives the original file name via a signed URL", dl.suggestedFilename() === "설명서.pdf", dl.suggestedFilename());
+
+      // delete via UI (two-step)
+      const victim = dlg.getByTestId("asset-document").filter({ hasText: "영수증-드롭.png" });
+      await victim.getByRole("button", { name: /삭제/ }).click();
+      record("documents", "desktop", "delete asks for confirmation first (row still exists)", (await docRows()).length === 3 && (await victim.getByRole("button", { name: "삭제 확인" }).count()) === 1);
+      await victim.getByRole("button", { name: "삭제 확인" }).click();
+      await victim.waitFor({ state: "detached" });
+      rows = await docRows();
+      objs = await objectNames();
+      record("documents", "desktop", "delete removes the card, the DB row and the Storage object", rows.length === 2 && objs.length === 2 && !rows.some((r) => r.file_name === "영수증-드롭.png"));
+      record("documents", "desktop", "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
+      await ctx.close();
+
+      // ---- DB / Storage hardening, through the user's own API session (RLS applies)
+      const upPath = (n) => `${hh}/${assetId}/${n}`;
+      const badMime = await sb.storage.from(DOC_BUCKET).upload(upPath(`${rand}-x.txt`), Buffer.from("x"), { contentType: "text/plain" });
+      record("documents", "-", "Storage rejects a disallowed MIME type at the bucket level", !!badMime.error, badMime.error?.message ?? "uploaded!");
+      const bigUp = await sb.storage.from(DOC_BUCKET).upload(upPath(`${rand}-big.pdf`), Buffer.alloc(10 * 1024 * 1024 + 1), { contentType: "application/pdf" });
+      record("documents", "-", "Storage rejects an object over 10MB at the bucket level", !!bigUp.error, bigUp.error?.message ?? "uploaded!");
+      const forged = await sb.from("asset_documents").insert({ household_id: hh, asset_id: assetId, file_name: "forged.png", storage_path: `00000000-0000-0000-0000-000000000000/${assetId}/f.png`, file_size: 10, mime_type: "image/png" });
+      record("documents", "-", "metadata row pointing outside <household>/<asset>/ is rejected (CHECK)", !!forged.error, forged.error?.message ?? "inserted!");
+      const fat = await sb.from("asset_documents").insert({ household_id: hh, asset_id: assetId, file_name: "fat.png", storage_path: upPath("fat.png"), file_size: 10 * 1024 * 1024 + 1, mime_type: "image/png" });
+      const badType = await sb.from("asset_documents").insert({ household_id: hh, asset_id: assetId, file_name: "t.png", storage_path: upPath("t.png"), file_size: 10, mime_type: "image/png", document_type: "SECRET" });
+      const badMimeRow = await sb.from("asset_documents").insert({ household_id: hh, asset_id: assetId, file_name: "t.exe", storage_path: upPath("t.exe"), file_size: 10, mime_type: "application/x-msdownload" });
+      record("documents", "-", "CHECK constraints reject size > 10MB, unknown document_type, disallowed mime_type", !!fat.error && !!badType.error && !!badMimeRow.error, [fat.error?.code, badType.error?.code, badMimeRow.error?.code].join(","));
+      const upd = await sb.from("asset_documents").update({ file_name: "renamed" }).eq("asset_id", assetId).select("id");
+      record("documents", "-", "metadata is immutable for clients (UPDATE denied)", !!upd.error || (upd.data ?? []).length === 0, upd.error?.message ?? `rows=${upd.data?.length}`);
+
+      // ---- isolation: a stranger in ANOTHER household and an anonymous client
+      const strangerEmail = `mylife.e2e.stranger+${rand}@example.com`;
+      const strangerPw = `Pw-${rand}-${Date.now()}`;
+      const { data: su, error: suErr } = await svc.auth.admin.createUser({ email: strangerEmail, password: strangerPw, email_confirm: true, user_metadata: { display_name: "E2E 타가구" } });
+      if (suErr) throw new Error(`stranger createUser failed: ${suErr.message}`);
+      strangerId = su.user.id;
+      const stranger = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      await stranger.auth.signInWithPassword({ email: strangerEmail, password: strangerPw });
+      const mk = await stranger.rpc("create_household", { p_name: "E2E 타가구", p_display_name: "E2E 타가구" });
+      const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      const target0 = (await docRows())[0];
+      const realPath = target0.storage_path;
+
+      for (const [who, c] of [["other household", stranger], ["anonymous", anon]]) {
+        const sel = await c.from("asset_documents").select("id").eq("asset_id", assetId);
+        const lst = await c.storage.from(DOC_BUCKET).list(`${hh}/${assetId}`);
+        const dlw = await c.storage.from(DOC_BUCKET).download(realPath);
+        const sgn = await c.storage.from(DOC_BUCKET).createSignedUrl(realPath, 60);
+        record("documents", "-", `isolation (${who}): cannot SELECT metadata, list, download or sign URLs for my documents`, (sel.data ?? []).length === 0 && (lst.data ?? []).length === 0 && !!dlw.error && !!sgn.error, `meta=${sel.data?.length ?? sel.error?.code} list=${lst.data?.length ?? lst.error?.message} dl=${dlw.error?.message ?? "OK!"} sign=${sgn.error?.message ?? "OK!"}`);
+        const ins = await c.from("asset_documents").insert({ household_id: hh, asset_id: assetId, file_name: "evil.png", storage_path: `${hh}/${assetId}/evil.png`, file_size: 10, mime_type: "image/png" });
+        const upl = await c.storage.from(DOC_BUCKET).upload(`${hh}/${assetId}/evil-${rand}.png`, PNG, { contentType: "image/png" });
+        const del = await c.from("asset_documents").delete().eq("id", target0.id).select("id");
+        const rm = await c.storage.from(DOC_BUCKET).remove([realPath]);
+        const stillThere = (await docRows()).some((r) => r.id === target0.id) && (await objectNames()).includes(realPath.split("/").pop());
+        record("documents", "-", `isolation (${who}): cannot INSERT metadata, upload, DELETE rows or remove objects`, !!ins.error && !!upl.error && (del.data ?? []).length === 0 && (rm.data ?? []).length === 0 && stillThere, `ins=${ins.error?.code} upl=${upl.error?.message} del=${del.data?.length ?? del.error?.code} rm=${rm.data?.length ?? rm.error?.message} intact=${stillThere}`);
+      }
+      // the stranger's OWN household can use the feature for its own assets only (positive control)
+      const { data: sp } = await stranger.from("profiles").select("household_id").eq("id", strangerId).maybeSingle();
+      record("documents", "-", "positive control: the other household exists and is a different one", !mk.error && !!sp?.household_id && sp.household_id !== hh, mk.error?.message ?? "");
+
+      // ---- visuals: light/dark × desktop/mobile
+      for (const scheme of ["light", "dark"]) {
+        for (const vp of VIEWPORTS) {
+          const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1, storageState, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+          const p = await c.newPage();
+          const d = await openDocs(p);
+          await d.getByTestId("asset-document").nth(1).waitFor();
+          await p.waitForFunction(() => { const i = document.querySelector('[data-testid="asset-document"] img'); return !i || (i.complete && i.naturalWidth > 0); });
+          await p.waitForTimeout(500);
+          await p.screenshot({ path: `${OUT}/documents-${scheme}-${vp.name}.png` });
+          const ov = await p.evaluate(() => { const dd = document.querySelector('[role="dialog"]'); return { page: document.documentElement.scrollWidth <= window.innerWidth, dlg: dd.scrollWidth <= dd.clientWidth + 1 }; });
+          record("documents", vp.name, `${scheme}: documents tab fits the ${vp.name} viewport (no horizontal overflow)`, ov.page && ov.dlg, JSON.stringify(ov));
+          await c.close();
+        }
+      }
+
+      // ---- cascade: deleting the asset removes its metadata rows
+      await sb.from("assets").delete().eq("id", assetId);
+      record("documents", "-", "deleting the asset cascades to asset_documents rows", (await docRows()).length === 0);
+    } finally {
+      // Remove everything this block created (Storage objects are not removed by the DB cascade).
+      const left = await svc.storage.from(DOC_BUCKET).list(`${hh}/${assetId}`);
+      if (left.data?.length) await svc.storage.from(DOC_BUCKET).remove(left.data.map((o) => `${hh}/${assetId}/${o.name}`));
+      await svc.from("asset_documents").delete().eq("asset_id", assetId);
+      await sb.from("assets").delete().in("id", [assetId, rentalFx?.id].filter(Boolean));
+      if (strangerId) {
+        await svc.from("households").delete().eq("id", (await svc.from("profiles").select("household_id").eq("id", strangerId).maybeSingle()).data?.household_id ?? "00000000-0000-0000-0000-000000000000");
+        await svc.auth.admin.deleteUser(strangerId);
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------- v3 redesign: theme system + light/dark captures
 {
   const themeCtx = (vp, scheme, state) =>

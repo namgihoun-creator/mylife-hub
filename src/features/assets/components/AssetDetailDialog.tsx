@@ -16,6 +16,7 @@ import { formatRecurrence } from "@/shared/lib/recurrence";
 import { cn } from "@/shared/lib/utils";
 import { CARE_LABEL, type Asset } from "../schemas/asset.schema";
 import { contractProgress, formatDotDate, formatWon, isRentalAsset, obligationInfo } from "../utils/rental";
+import { AssetDocumentsPanel } from "./AssetDocumentsPanel";
 import { AssetEditModal } from "./AssetEditModal";
 import { RentalBadge } from "./RentalBadge";
 import { RentalCompare } from "./RentalCompare";
@@ -124,7 +125,7 @@ export function AssetDetailDialog({
   const rental = isRentalAsset(asset);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [tab, setTab] = useState<"info" | "compare">("info");
+  const [tab, setTab] = useState<"info" | "compare" | "documents">("info");
 
   useEffect(() => {
     if (!deepLinkTab) return;
@@ -160,7 +161,7 @@ export function AssetDetailDialog({
           </button>
         </DialogTrigger>
 
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           <DialogHeader className="text-left">
             <div className="flex items-center gap-3">
               <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-lg", tone)}>
@@ -189,44 +190,49 @@ export function AssetDetailDialog({
             {asset.note && <p className="pt-1 text-xs font-normal text-slate-500 dark:text-zinc-400">{asset.note}</p>}
           </DialogHeader>
 
-          {rental && (
-            <div role="tablist" aria-label="상세 보기" className="flex gap-2">
-              {(
-                [
-                  ["info", "정보"],
-                  ["compare", "환승 & 비용 비교"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  id={`asset-tab-${key}`}
-                  aria-selected={tab === key}
-                  aria-controls={`asset-panel-${key}`}
-                  onClick={() => setTab(key)}
-                  className={cn(
-                    "rounded-full px-4 py-1.5 text-xs font-medium transition-colors",
-                    tab === key
-                      ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div role="tablist" aria-label="상세 보기" className="flex flex-wrap gap-2">
+            {(
+              [
+                ["info", "정보"],
+                ...(rental ? ([["compare", "환승 & 비용 비교"]] as const) : []),
+                ["documents", "문서 & 보증서"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`asset-tab-${key}`}
+                aria-selected={tab === key}
+                aria-controls={`asset-panel-${key}`}
+                onClick={() => setTab(key)}
+                className={cn(
+                  "rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors",
+                  tab === key
+                    ? "bg-black text-white dark:bg-white dark:text-black"
+                    : "border border-zinc-200 bg-transparent text-zinc-600 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-          {rental && tab === "compare" ? (
+          {tab === "documents" ? (
+            <div role="tabpanel" id="asset-panel-documents" aria-labelledby="asset-tab-documents">
+              <AssetDocumentsPanel assetId={asset.id} />
+            </div>
+          ) : null}
+
+          {tab === "documents" ? null : rental && tab === "compare" ? (
             <div role="tabpanel" id="asset-panel-compare" aria-labelledby="asset-tab-compare">
               <RentalCompare asset={asset} today={today} canEdit={canEdit} onEdit={startEdit} />
             </div>
           ) : (
             <div
-              role={rental ? "tabpanel" : undefined}
-              id={rental ? "asset-panel-info" : undefined}
-              aria-labelledby={rental ? "asset-tab-info" : undefined}
+              role="tabpanel"
+              id="asset-panel-info"
+              aria-labelledby="asset-tab-info"
               className="space-y-4"
             >
               {rental && <RentalInfo asset={asset} today={today} />}

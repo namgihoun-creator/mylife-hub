@@ -39,6 +39,13 @@
 ### 메트릭 카드 (요약 배너 · 렌탈 요약 · 3-Way 비교)
 - 군더더기 없는 평평한 타일: `rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950`, 라벨(`text-xs` 보조) → 큰 숫자(`text-2xl font-semibold tracking-tight tabular-nums`) → 보조 한 줄. 아이콘은 `h-4 w-4` 모노톤(액센트는 점·뱃지로). 그라데이션 금지.
 
+### 문서 & 보증서 탭 (Track B)
+- 자산 상세 모달의 탭: `정보` · `환승 & 비용 비교`(렌탈 전용) · `문서 & 보증서`. 탭 알약은 `rounded-lg`, 활성은 Primary(`bg-black text-white dark:bg-white dark:text-black`), 비활성은 Outline.
+- **문서 유형 선택**: 소유 형태 카드와 같은 라디오 인디케이터 칩(`rounded-lg border`, 선택 시 `border-zinc-900 ring-1`) — 영수증 · 보증서 · 설명서 · 기타.
+- **파일 업로더(드롭존)**: `rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700`, 드래그 중 `border-zinc-900 bg-zinc-50`(다크 `border-zinc-100`). 중앙에 `h-10 w-10 rounded-lg` 아이콘 박스 → 제목(`text-sm font-medium`) → 제한 안내(`text-xs` 보조) → Outline "파일 선택" 버튼. 업로드 중에는 아이콘이 스피너로 바뀌고 버튼이 비활성화된다.
+- **문서 카드**: `rounded-xl border` 1px 평평한 행. 좌측 `h-12 w-12 rounded-lg` 썸네일(이미지) 또는 PDF 아이콘(rose), 가운데 파일명(`truncate`) + 유형 태그(영수증 emerald · 보증서 violet · 설명서 sky · 기타 zinc) + `용량 · 날짜`, 우측 다운로드 / 삭제 아이콘 버튼(`h-8 w-8 rounded-lg`). 삭제는 2단계(`삭제 확인` rose 버튼 + `취소`).
+- 상태 메시지: `text-xs font-medium`, 오류 rose / 성공 emerald (`role="status"`).
+
 ## 1. 디자인 철학
 - **따뜻하고 정돈된 생활 OS:** 딱딱한 관리자 도구가 아닌, 매일 열어보고 싶은 가족 친화적 SaaS 대시보드.
 - **상태 중심 시각화:** 텍스트 나열을 지양하고 D-Day 뱃지, 카테고리 아이콘, 게이지, 요약 위젯으로 현황을 1초 만에 파악.
