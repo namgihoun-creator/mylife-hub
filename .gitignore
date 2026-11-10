@@ -17,3 +17,6 @@ npm-debug.log*
 
 # Playwright screenshots
 .screenshots/
+
+# Shell crash dumps
+*.stackdump

@@ -651,6 +651,64 @@ if (inviteUrl && svc) {
       const relRpc = await msb.rpc("release_notification_push", { p_ids: [] });
       record("push", V, "dispatcher RPCs (delete_expired_subscription / claim / release) are not callable by users", !!delRpc.error && !!claimRpc.error && !!relRpc.error, `${delRpc.error?.code} ${claimRpc.error?.code} ${relRpc.error?.code}`);
       await svc.from("push_subscriptions").delete().in("endpoint", [epA, epM]);
+
+      // ---- Phase 2-4: due-date notification generator (D-3 / D-Day / overdue, recipients, dedupe)
+      const mkTask = (label, due, extra = {}) => ({ household_id: myProfile.household_id, owner_id: me.user.id, title: `${SANDBOX_PREFIX} 기한 ${label}`, due_date: due, ...extra });
+      const specs = {
+        soon: mkTask("D-3", shift(3)),
+        near: mkTask("D-2", shift(2)), // not D-3 -> nothing
+        far: mkTask("D-4", shift(4)), // nothing
+        today: mkTask("오늘", shift(0)),
+        over: mkTask("초과", shift(-2)),
+        priv: mkTask("개인 오늘", shift(0), { visibility: "PRIVATE" }), // admin only
+        snoozed: mkTask("연기됨 D-3", shift(3), { status: "SNOOZED", snoozed_until: shift(3) }),
+        done: mkTask("완료됨", shift(0), { status: "COMPLETED", completed_at: new Date().toISOString() }), // nothing
+      };
+      const tid = {};
+      try {
+        for (const [key, row] of Object.entries(specs)) {
+          const { data, error } = await sb.from("tasks").insert(row).select("id").single();
+          if (error) throw new Error(`generator fixture ${key} failed: ${error.message}`);
+          tid[key] = data.id;
+        }
+        const allIds = Object.values(tid);
+        const gen1 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+        const { data: rows1 } = await svc.from("notifications").select("user_id, type, dedupe_key, task_id, title, body").in("task_id", allIds);
+        const of = (key) => (rows1 ?? []).filter((r) => r.task_id === tid[key]);
+        const users = (key) => of(key).map((r) => r.user_id).sort().join(",");
+        const both = [me.user.id, memberId].sort().join(",");
+
+        record("due", V, "D-3 (PENDING and SNOOZED) → DUE_SOON for every household member (FAMILY)", [of("soon"), of("snoozed")].every((r) => r.length === 2 && r.every((x) => x.type === "DUE_SOON")) && users("soon") === both && users("snoozed") === both, `soon=${of("soon").length} snoozed=${of("snoozed").length}`);
+        record("due", V, "D-Day → DUE_TODAY: FAMILY task to all members, PRIVATE task to its owner only", of("today").length === 2 && of("today").every((x) => x.type === "DUE_TODAY") && users("today") === both && of("priv").length === 1 && of("priv")[0].user_id === me.user.id && of("priv")[0].type === "DUE_TODAY", `today=${of("today").length} private=${of("priv").length}`);
+        record("due", V, "overdue → OVERDUE with the days-late text", of("over").length === 2 && of("over").every((x) => x.type === "OVERDUE" && /2일 지났어요/.test(x.body)), of("over")[0]?.body ?? "none");
+        record("due", V, "D-2, D-4 and COMPLETED tasks create nothing", of("near").length === 0 && of("far").length === 0 && of("done").length === 0, `near=${of("near").length} far=${of("far").length} done=${of("done").length}`);
+        record(
+          "due",
+          V,
+          "dedupe_key format: due-soon|due-today|overdue : <task_id> : <due_date>",
+          of("soon").every((x) => x.dedupe_key === `due-soon:${tid.soon}:${shift(3)}`) && of("today").every((x) => x.dedupe_key === `due-today:${tid.today}:${shift(0)}`) && of("over").every((x) => x.dedupe_key === `overdue:${tid.over}:${shift(-2)}`),
+          of("over")[0]?.dedupe_key ?? "none",
+        );
+        record("due", V, "RPC summary: date (Seoul), per-type counts add up to total", !gen1.error && gen1.data?.date === today && gen1.data.total === gen1.data.due_soon + gen1.data.due_today + gen1.data.overdue && gen1.data.due_soon >= 4 && gen1.data.due_today >= 3 && gen1.data.overdue >= 2, JSON.stringify(gen1.data));
+
+        // Idempotent: nothing new on a second run
+        const gen2 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+        const { count: rowsAfter2 } = await svc.from("notifications").select("id", { count: "exact", head: true }).in("task_id", allIds);
+        record("due", V, "re-running creates nothing (dedupe): total 0, same row count", gen2.data?.total === 0 && rowsAfter2 === rows1.length, `total=${gen2.data?.total} rows ${rows1.length}→${rowsAfter2}`);
+
+        // The due date is part of the key: a re-scheduled overdue task alerts again for its new date
+        await sb.from("tasks").update({ due_date: shift(-3) }).eq("id", tid.over);
+        const gen3 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+        const { data: overRows } = await svc.from("notifications").select("dedupe_key").eq("task_id", tid.over);
+        record("due", V, "new due date → new alert (overdue key changes), old alert kept", gen3.data?.overdue === 2 && overRows?.length === 4 && overRows.some((r) => r.dedupe_key === `overdue:${tid.over}:${shift(-3)}`), `overdue=${gen3.data?.overdue} rows=${overRows?.length}`);
+
+        const userCall = await msb.rpc("generate_due_notifications", {});
+        record("due", V, "generate_due_notifications is service_role only (members get 42501)", userCall.error?.code === "42501", `${userCall.error?.code}`);
+      } finally {
+        // notifications first (deleting a task would null their task_id), then the sandbox tasks
+        await svc.from("notifications").delete().eq("household_id", myProfile.household_id).or("dedupe_key.like.due-%,dedupe_key.like.overdue:%");
+        await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
+      }
     } finally {
       await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
     }
@@ -969,6 +1027,39 @@ const CRON_SECRET = process.env.CRON_SECRET;
     const j7 = await r7.json();
     const { data: otherRow } = await svc.from("notifications").select("push_sent_at").eq("id", other).single();
     record("push", "-", "dispatch scoped to other users leaves this user's pending notification unclaimed", j7.claimed === 0 && otherRow.push_sent_at === null, JSON.stringify(j7));
+
+    // 7) Phase 2-4 pipeline: generate -> send -> cleanup (POST with stages enabled)
+    await svc.from("push_subscriptions").delete().eq("user_id", uid);
+    await svc.from("push_subscriptions").insert(sub("ok"));
+    const ago = (days) => new Date(Date.now() - days * 86_400_000).toISOString();
+    const retention = async (label, extra) =>
+      (await svc.from("notifications").insert({ household_id: myProfile.household_id, user_id: uid, type: "OVERDUE", title: `E2E 보관 ${label}`, body: "retention", dedupe_key: `e2e-ret-${label}-${Date.now()}`, push_sent_at: ago(0), ...extra }).select("id").single()).data.id;
+    const oldRead = await retention("읽음40일", { created_at: ago(40), read_at: ago(31) }); // read > 30d ago -> deleted
+    const oldUnread = await retention("생성91일", { created_at: ago(91) }); // created > 90d ago -> deleted
+    const freshRead = await retention("최근읽음", { created_at: ago(2), read_at: ago(1) }); // kept
+    const pTitle1 = `${SANDBOX_PREFIX} 파이프라인 A ${Date.now()}`;
+    const { data: pt1 } = await sb.from("tasks").insert({ household_id: myProfile.household_id, owner_id: uid, title: pTitle1, due_date: shift(0) }).select("id").single();
+
+    const plain = await dispatch({});
+    record("push", "-", "plain POST dispatch does not run the generator or cleanup (generated/cleanedUp are null)", plain.json?.generated === null && plain.json?.cleanedUp === null, JSON.stringify({ g: plain.json?.generated, c: plain.json?.cleanedUp }));
+    const badOpt = await call({ ...bearer, "Content-Type": "application/json" }, { body: JSON.stringify({ generate: "yes" }) });
+    record("push", "-", "dispatch rejects invalid stage options with 400", badOpt.status === 400, `status=${badOpt.status}`);
+
+    const r8 = await dispatch({ generate: true, cleanup: true, household_id: myProfile.household_id });
+    const { data: pn1 } = await svc.from("notifications").select("type, push_sent_at").eq("task_id", pt1.id);
+    const { data: kept } = await svc.from("notifications").select("id").in("id", [oldRead, oldUnread, freshRead]);
+    record("push", "-", "pipeline: generator ran → due notification created for the new task, claimed and pushed in the same run", r8.status === 200 && r8.json?.generated?.due_today >= 1 && r8.json?.claimed >= 1 && r8.json?.pushesSent >= 1 && pn1?.length === 1 && pn1[0].type === "DUE_TODAY" && !!pn1[0].push_sent_at, JSON.stringify(r8.json));
+    record("push", "-", "pipeline: cleanup deleted read>30d and created>90d notifications, kept the recent one", r8.json?.cleanedUp >= 2 && kept?.length === 1 && kept[0].id === freshRead, `cleanedUp=${r8.json?.cleanedUp} kept=${kept?.length}`);
+
+    // Cron path = GET (all stages on by default), scoped here with the query string
+    const pTitle2 = `${SANDBOX_PREFIX} 파이프라인 B ${Date.now()}`;
+    const { data: pt2 } = await sb.from("tasks").insert({ household_id: myProfile.household_id, owner_id: uid, title: pTitle2, due_date: shift(0) }).select("id").single();
+    const cronRes = await fetch(`${BASE}/api/push/dispatch?household_id=${myProfile.household_id}&user_ids=${uid}`, { headers: bearer });
+    const cronJson = await cronRes.json().catch(() => null);
+    const { data: pn2 } = await svc.from("notifications").select("push_sent_at").eq("task_id", pt2.id);
+    record("push", "-", "cron GET runs generate → send → cleanup by default (1 new DUE_TODAY, pushed)", cronRes.status === 200 && cronJson?.generated?.due_today === 1 && cronJson?.pushesSent >= 1 && typeof cronJson?.cleanedUp === "number" && pn2?.length === 1 && !!pn2[0].push_sent_at, JSON.stringify(cronJson));
+    await svc.from("notifications").delete().eq("user_id", uid).like("title", "E2E 보관%");
+    await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
 
     // Cleanup (dedicated E2E account)
     await svc.from("push_subscriptions").delete().eq("user_id", uid);
