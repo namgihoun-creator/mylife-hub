@@ -572,7 +572,7 @@ const { data: myProfile } = await sb.from("profiles").select("household_id").eq(
     // ================================================================ Phase 3-2: asset edit modal
     await rentalCard.first().getByRole("button", { name: /상세 보기/ }).click();
     await dlg.getByLabel("렌탈 정보").waitFor();
-    await dlg.getByRole("button", { name: "수정" }).click();
+    await dlg.getByRole("button", { name: "수정", exact: true }).click();
     const edit = page.getByRole("dialog", { name: "자산 정보 수정" });
     await edit.waitFor();
     await page.waitForTimeout(500);
@@ -643,7 +643,7 @@ const { data: myProfile } = await sb.from("profiles").select("household_id").eq(
 
     // rental -> owned clears the rental data
     await renamedCard.first().getByRole("button", { name: /상세 보기/ }).click();
-    await dlg.getByRole("button", { name: "수정" }).click();
+    await dlg.getByRole("button", { name: "수정", exact: true }).click();
     await edit.waitFor();
     await edit.getByRole("radio", { name: "직접 구매" }).click();
     const warn = (await edit.getByRole("note").count()) === 1;
@@ -1015,7 +1015,7 @@ if (inviteUrl && svc) {
       await mp.getByRole("button", { name: /상세 보기/ }).first().click();
       const memberDetail = mp.getByRole("dialog");
       await memberDetail.waitFor();
-      record("edit", V, "member role: asset detail has no ‘수정’ button (ADMIN-only)", (await memberDetail.getByRole("button", { name: "수정" }).count()) === 0);
+      record("edit", V, "member role: asset detail has no ‘수정’ button (ADMIN-only)", (await memberDetail.getByRole("button", { name: "수정", exact: true }).count()) === 0);
       await mp.keyboard.press("Escape");
     }
     {
@@ -1820,6 +1820,226 @@ const CRON_SECRET = process.env.CRON_SECRET;
       await sb.from("assets").delete().in("id", [assetId, rentalFx?.id].filter(Boolean));
       if (strangerId) {
         await svc.from("households").delete().eq("id", (await svc.from("profiles").select("household_id").eq("id", strangerId).maybeSingle()).data?.household_id ?? "00000000-0000-0000-0000-000000000000");
+        await svc.auth.admin.deleteUser(strangerId);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- Track C: consumables (purchase links, copy, rule modal)
+{
+  // ---- pure link builder (no DB): imported straight from the TypeScript source
+  const pl = await import("../src/features/tasks/utils/purchase-link.ts");
+  const nq = (u) => new URL(u).searchParams;
+  const c1 = pl.getPurchaseLinks({ custom_purchase_url: "https://shop.example.com/p/CFX-G100D?ref=a&b=1", consumable_name: "필터", consumable_model: "X", assetModelName: "WP" });
+  record("consumables", "-", "custom_purchase_url wins: returned verbatim, kind=custom, no search alternatives", c1?.kind === "custom" && c1.primary === "https://shop.example.com/p/CFX-G100D?ref=a&b=1" && c1.alternatives.length === 0, JSON.stringify(c1));
+  const bad = ["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "ftp://files.example.com/x", "//evil.example.com", "/relative/path", "https://a b.example.com", "https://"];
+  const badRes = bad.map((u) => pl.getPurchaseLinks({ custom_purchase_url: u, consumable_name: "필터" }));
+  record("consumables", "-", "non-http(s) / malformed custom URLs are ignored → falls back to a search link (never the bad URL)", badRes.every((r, i) => r?.kind === "search" && r.primary !== bad[i] && r.primary.startsWith("https://search.shopping.naver.com/")), JSON.stringify(badRes.map((r) => r?.kind)));
+  const s1 = pl.getPurchaseLinks({ consumable_name: "복합 일체형 필터", consumable_model: "CFX-G100D", assetModelName: "WP-3000" });
+  const q1 = "WP-3000 복합 일체형 필터 CFX-G100D";
+  record("consumables", "-", "auto search: Naver Shopping + 다나와 URLs built from asset model + consumable name + model, encodeURIComponent'ed", s1?.kind === "search" && s1.query === q1 && s1.primary === `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(q1)}` && s1.alternatives[0]?.label === "다나와" && s1.alternatives[0].url === `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(q1)}`, JSON.stringify(s1));
+  const evil = 'x&query=hack#frag "><script>alert(1)</script> 한글/?=%';
+  const s2 = pl.getPurchaseLinks({ consumable_name: evil });
+  const keys2 = [...nq(s2.primary).keys()];
+  record("consumables", "-", "injection-safe: special characters stay inside ONE query parameter (no extra params, no fragment, no raw < > \")", keys2.length === 1 && keys2[0] === "query" && nq(s2.primary).get("query") === evil.trim() && new URL(s2.primary).hash === "" && !/[<>" ]/.test(s2.primary) && new URL(s2.alternatives[0].url).searchParams.get("query") === evil.trim(), s2.primary.slice(0, 120));
+  const s3 = pl.getPurchaseLinks({ assetModelName: "WP-3000", consumable_name: "wp-3000", consumable_model: " CFX  " });
+  record("consumables", "-", "query de-duplicates repeated terms (case-insensitive) and collapses whitespace", s3?.query === "WP-3000 CFX", s3?.query);
+  const s4 = pl.getPurchaseLinks({ consumable_name: "가".repeat(300) });
+  record("consumables", "-", "query is capped at 100 characters", s4?.query.length === 100);
+  record("consumables", "-", "no consumable name/model → no link (asset model alone is not enough); copyableSpec prefers the model", pl.getPurchaseLinks({ assetModelName: "WP-3000" }) === null && pl.getPurchaseLinks({}) === null && pl.copyableSpec({ consumable_name: "필터", consumable_model: "CFX" }) === "CFX" && pl.copyableSpec({ consumable_name: "필터" }) === "필터");
+
+  const probe = svc ? await svc.from("tasks").select("id, consumable_name").limit(1) : { error: { message: "no service key" } };
+  const probe2 = svc ? await svc.rpc("set_rule_consumable", { p_rule_id: "00000000-0000-0000-0000-000000000000", p_name: "", p_model: "", p_url: "" }) : { error: null };
+  const missingRpc = probe2.error && /Could not find the function|schema cache/i.test(probe2.error.message);
+  if (probe.error || missingRpc) {
+    record("consumables", "-", "migration 20261110000012_consumables_support.sql is applied (columns + set_rule_consumable)", false, (probe.error ?? probe2.error)?.message);
+  } else {
+    const { data: who } = await sb.auth.getUser();
+    const uid = who.user.id;
+    const { data: prof } = await sb.from("profiles").select("household_id").eq("id", uid).single();
+    const hh = prof.household_id;
+    const rand = Math.random().toString(36).slice(2, 10);
+    const { data: fx, error: fxErr } = await sb
+      .from("assets")
+      .insert({ household_id: hh, owner_id: uid, name: "E2E 소모품 정수기", ownership_type: "OWNED", model_name: "WP-3000", space: "주방" })
+      .select("id")
+      .single();
+    if (fxErr) throw new Error(`consumables fixture failed: ${fxErr.message}`);
+    const assetId = fx.id;
+    const rules = async () => (await svc.from("task_rules").select("*").eq("asset_id", assetId).order("created_at")).data ?? [];
+    const tasks = async () => (await svc.from("tasks").select("*").eq("asset_id", assetId).order("iteration_no")).data ?? [];
+    const NAMETXT = "복합 일체형 필터";
+    const MODEL = "CFX-G100D";
+    let strangerId = null;
+
+    try {
+      // ---- DB constraints
+      const { data: baseRule } = await sb.from("task_rules").insert({ household_id: hh, owner_id: uid, asset_id: assetId, title: "E2E 제약 확인", recurring_type: "MONTHLY", interval_n: 1 }).select("id").single();
+      const tryUrl = async (url) => (await sb.from("task_rules").update({ custom_purchase_url: url }).eq("id", baseRule.id)).error;
+      const errs = await Promise.all(["javascript:alert(1)", "ftp://x.example.com", "https://a b.example.com", "data:text/html,x", "https://" + "a".repeat(2050)].map(tryUrl));
+      const okErr = await tryUrl("https://ok.example.com/x?y=1");
+      const longName = await sb.from("task_rules").update({ consumable_name: "n".repeat(101) }).eq("id", baseRule.id);
+      record("consumables", "-", "DB CHECKs reject javascript:/ftp:/spaced/data:/over-long URLs and over-long names; a valid https URL is accepted", errs.every(Boolean) && !okErr && !!longName.error, errs.map((e) => e?.code ?? "OK").join(",") + ` valid=${okErr?.code ?? "OK"} name=${longName.error?.code}`);
+      await sb.from("task_rules").delete().eq("id", baseRule.id);
+
+      // ---- UI: create a rule with consumable info from the asset detail
+      const ctx = await newContext(VIEWPORTS[0], storageState);
+      await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
+      const page = await ctx.newPage();
+      page.__errors = [];
+      page.on("pageerror", (e) => page.__errors.push(`pageerror: ${e.message}`));
+      page.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && page.__errors.push(`console: ${m.text()}`));
+      const openDetail = async () => {
+        await page.goto(`${BASE}/assets?openAssetId=${assetId}&tab=info`, { waitUntil: "networkidle" });
+        await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+        const d = page.getByRole("dialog");
+        await d.getByRole("heading", { name: "관리 규칙" }).waitFor();
+        return d;
+      };
+      let dlg = await openDetail();
+      record("consumables", "desktop", "asset detail shows the model name (WP-3000) and a ‘규칙 추가’ button for admins", (await dlg.getByTestId("asset-model").innerText()).includes("WP-3000") && (await dlg.getByRole("button", { name: "규칙 추가" }).count()) === 1);
+
+      await dlg.getByRole("button", { name: "규칙 추가" }).click();
+      const rm = page.getByRole("dialog").filter({ hasText: "관리 규칙 추가" });
+      await rm.waitFor();
+      await rm.getByLabel("규칙 이름").fill("복합 필터 교체");
+      await rm.getByLabel("소모품 이름").fill(NAMETXT);
+      await rm.getByLabel("모델명 · 규격").fill(MODEL);
+      await rm.getByLabel("구매 링크").fill("javascript:alert(1)");
+      await rm.getByRole("button", { name: "규칙 추가" }).click();
+      await rm.getByRole("alert").waitFor();
+      record("consumables", "desktop", "rule modal rejects a javascript: purchase link with a clear message; nothing is created", /http/.test(await rm.getByRole("alert").innerText()) && (await rules()).length === 0, await rm.getByRole("alert").innerText());
+      await rm.getByLabel("구매 링크").fill("");
+      await rm.getByRole("button", { name: "규칙 추가" }).click();
+      await rm.waitFor({ state: "detached" });
+      let r = await rules();
+      let t = await tasks();
+      record("consumables", "desktop", "rule created with consumable info: rule row + first task row both carry name/model (URL empty)", r.length === 1 && r[0].consumable_name === NAMETXT && r[0].consumable_model === MODEL && r[0].custom_purchase_url === null && t.length === 1 && t[0].iteration_no === 1 && t[0].consumable_name === NAMETXT && t[0].consumable_model === MODEL && t[0].rule_id === r[0].id, JSON.stringify({ r: r[0], t: t[0] }));
+
+      dlg = page.getByRole("dialog").first();
+      const ruleItem = dlg.getByTestId("asset-rule").first();
+      await ruleItem.getByTestId("consumable-strip").waitFor();
+      const link = ruleItem.getByTestId("purchase-link");
+      const wantQ = `WP-3000 ${NAMETXT} ${MODEL}`;
+      const href = await link.getAttribute("href");
+      record("consumables", "desktop", "rule row: strip (name · model) + [소모품 구매] → Naver Shopping search with asset model + consumable, opens in a new tab with noopener", (await ruleItem.getByTestId("consumable-strip").innerText()).includes(MODEL) && href === `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(wantQ)}` && (await link.getAttribute("target")) === "_blank" && /noopener/.test((await link.getAttribute("rel")) ?? "") && (await ruleItem.getByTestId("purchase-link-alt").getAttribute("href")) === `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(wantQ)}`, href);
+      await page.screenshot({ path: `${OUT}/consumables-asset-rules-desktop.png` });
+
+      // ---- UI: edit → custom URL, open tasks follow (atomic RPC)
+      await ruleItem.getByRole("button", { name: /소모품 정보 수정/ }).click();
+      const em = page.getByRole("dialog").filter({ hasText: "소모품 정보 수정" });
+      await em.waitFor();
+      record("consumables", "desktop", "edit modal is pre-filled with the saved consumable info", (await em.getByLabel("소모품 이름").inputValue()) === NAMETXT && (await em.getByLabel("모델명 · 규격").inputValue()) === MODEL);
+      const CUSTOM = "https://shop.example.com/filters/CFX-G100D?src=mylife&a=1";
+      await em.getByLabel("구매 링크").fill(CUSTOM);
+      await em.getByRole("button", { name: "저장" }).click();
+      await em.waitFor({ state: "detached" });
+      r = await rules();
+      t = await tasks();
+      record("consumables", "desktop", "edit saved atomically: rule AND its open task now carry the custom purchase URL", r[0].custom_purchase_url === CUSTOM && t[0].custom_purchase_url === CUSTOM, `${r[0].custom_purchase_url} / ${t[0].custom_purchase_url}`);
+      await page.waitForFunction(() => document.querySelector('[data-testid="asset-rule"] [data-testid="purchase-link"]')?.getAttribute("data-kind") === "custom");
+      const link2 = page.getByRole("dialog").first().getByTestId("asset-rule").first().getByTestId("purchase-link");
+      record("consumables", "desktop", "with a custom URL the button opens exactly that URL and the 다나와 alternative disappears", (await link2.getAttribute("href")) === CUSTOM && (await page.getByRole("dialog").first().getByTestId("purchase-link-alt").count()) === 0);
+      await page.keyboard.press("Escape");
+
+      // ---- timeline card
+      await page.goto(`${BASE}/timeline`, { waitUntil: "networkidle" });
+      await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      const card = page.locator("main li").filter({ hasText: "복합 필터 교체" }).first();
+      await card.waitFor();
+      record("consumables", "desktop", "timeline card shows the consumable strip (name · model) and [소모품 구매 ↗] pointing to the custom URL", (await card.getByTestId("consumable-strip").innerText()).includes(MODEL) && (await card.getByTestId("purchase-link").getAttribute("href")) === CUSTOM && (await card.getByTestId("purchase-link").getAttribute("target")) === "_blank");
+      const others = await page.locator("main li").filter({ hasNotText: "복합 필터 교체" }).count();
+      const stripsElsewhere = await page.locator("main li").filter({ hasNotText: "복합 필터 교체" }).getByTestId("consumable-strip").count();
+      record("consumables", "desktop", "cards without consumable info render no strip / purchase button", others > 0 && stripsElsewhere === 0, `others=${others}`);
+      await card.getByRole("button", { name: /복사/ }).click();
+      await card.getByText("복사됨").waitFor();
+      const clip = await page.evaluate(() => navigator.clipboard.readText());
+      record("consumables", "desktop", "one-click copy puts the model number on the clipboard and confirms with ‘복사됨’", clip === MODEL, clip);
+      await card.scrollIntoViewIfNeeded();
+      await card.screenshot({ path: `${OUT}/consumables-task-card-desktop.png` });
+
+      // ---- completion copies the rule's CURRENT consumable info into the next occurrence
+      await card.getByRole("button", { name: /완료$/ }).click();
+      let nextTask = null;
+      for (let i = 0; i < 40 && !nextTask; i++) {
+        nextTask = (await tasks()).find((x) => x.iteration_no === 2) ?? null;
+        if (!nextTask) await page.waitForTimeout(250);
+      }
+      record("consumables", "desktop", "completing the task generates the next occurrence WITH the rule's consumable info (name, model, custom URL)", !!nextTask && nextTask.consumable_name === NAMETXT && nextTask.consumable_model === MODEL && nextTask.custom_purchase_url === CUSTOM && nextTask.rule_id === r[0].id, JSON.stringify(nextTask));
+      const done = (await tasks()).find((x) => x.iteration_no === 1);
+      record("consumables", "desktop", "the completed task keeps its own consumable copy (history is not rewritten)", done?.status === "COMPLETED" && done.consumable_model === MODEL);
+
+      // rule edit later propagates to the next (still open) task and to future occurrences
+      const upd = await sb.rpc("set_rule_consumable", { p_rule_id: r[0].id, p_name: NAMETXT, p_model: "CFX-NEW9", p_url: "" });
+      const after = await tasks();
+      record("consumables", "-", "set_rule_consumable returns the number of open tasks updated; completed history stays untouched", upd.data === 1 && after.find((x) => x.iteration_no === 2).consumable_model === "CFX-NEW9" && after.find((x) => x.iteration_no === 2).custom_purchase_url === null && after.find((x) => x.iteration_no === 1).consumable_model === MODEL, JSON.stringify({ n: upd.data, err: upd.error?.message }));
+      record("consumables", "desktop", "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
+      await ctx.close();
+
+      // ---- backup restore keeps the new columns
+      const rid = crypto.randomUUID(), tid = crypto.randomUUID(), aid = crypto.randomUUID();
+      const payload = {
+        version: 1,
+        assets: [{ id: aid, visibility: "FAMILY", name: "E2E 복구 자산", space: "주방", category: "가전", preset_key: null, note: null, model_name: "RESTORE-1" }],
+        task_rules: [{ id: rid, visibility: "FAMILY", asset_id: aid, title: "E2E 복구 규칙", recurring_type: "MONTHLY", interval_n: 1, anchor: "DUE_DATE", day_of_month: null, timezone: "Asia/Seoul", next_iteration_no: 2, active: true, consumable_name: "복구 필터", consumable_model: "R-100", custom_purchase_url: "https://restore.example.com/x" }],
+        tasks: [{ id: tid, visibility: "FAMILY", asset_id: aid, rule_id: rid, iteration_no: 1, title: "E2E 복구 과업", due_date: shift(5), status: "PENDING", completed_at: null, snoozed_until: null, consumable_name: "복구 필터", consumable_model: "R-100", custom_purchase_url: "https://restore.example.com/x" }],
+        event_logs: [],
+      };
+      const rest = await sb.rpc("restore_household_backup", { p_payload: payload });
+      const ra = (await svc.from("assets").select("model_name").eq("id", aid).maybeSingle()).data;
+      const rr = (await svc.from("task_rules").select("consumable_name, consumable_model, custom_purchase_url").eq("id", rid).maybeSingle()).data;
+      const rt = (await svc.from("tasks").select("consumable_name, consumable_model, custom_purchase_url").eq("id", tid).maybeSingle()).data;
+      record("consumables", "-", "backup restore round-trips assets.model_name and the consumable columns on rules and tasks", !rest.error && ra?.model_name === "RESTORE-1" && rr?.consumable_model === "R-100" && rr?.custom_purchase_url === "https://restore.example.com/x" && rt?.consumable_name === "복구 필터" && rt?.custom_purchase_url === "https://restore.example.com/x", rest.error?.message ?? JSON.stringify({ ra, rr, rt }));
+      await svc.from("tasks").delete().eq("id", tid);
+      await svc.from("assets").delete().eq("id", aid);
+
+      // ---- permissions: anonymous and another household cannot use the RPC / touch the rule
+      const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      const anonRpc = await anon.rpc("set_rule_consumable", { p_rule_id: r[0].id, p_name: "hack", p_model: "hack", p_url: "https://evil.example.com" });
+      const strangerEmail = `mylife.e2e.cons+${rand}@example.com`;
+      const strangerPw = `Pw-${rand}-${Date.now()}`;
+      const { data: su, error: suErr } = await svc.auth.admin.createUser({ email: strangerEmail, password: strangerPw, email_confirm: true, user_metadata: { display_name: "E2E 타가구" } });
+      if (suErr) throw new Error(`stranger createUser failed: ${suErr.message}`);
+      strangerId = su.user.id;
+      const stranger = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      await stranger.auth.signInWithPassword({ email: strangerEmail, password: strangerPw });
+      await stranger.rpc("create_household", { p_name: "E2E 타가구", p_display_name: "E2E 타가구" });
+      const strangerRpc = await stranger.rpc("set_rule_consumable", { p_rule_id: r[0].id, p_name: "hack", p_model: "hack", p_url: "https://evil.example.com" });
+      const intact = (await rules())[0];
+      record("consumables", "-", "isolation: anonymous and other-household users cannot change a rule's consumable info (RPC denied, data intact)", !!anonRpc.error && !!strangerRpc.error && /RULE_NOT_FOUND_OR_FORBIDDEN/.test(strangerRpc.error.message) && intact.consumable_model === "CFX-NEW9", `anon=${anonRpc.error?.message} stranger=${strangerRpc.error?.message}`);
+
+      // ---- visuals: timeline + asset rules in light/dark × desktop/mobile
+      for (const scheme of ["light", "dark"]) {
+        for (const vp of VIEWPORTS) {
+          const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1, storageState, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+          const p = await c.newPage();
+          await p.goto(`${BASE}/timeline`, { waitUntil: "networkidle" });
+          await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+          const cc = p.locator("main li").filter({ hasText: "복합 필터 교체" }).first();
+          await cc.waitFor();
+          await p.waitForTimeout(600);
+          await cc.scrollIntoViewIfNeeded();
+          await cc.screenshot({ path: `${OUT}/consumables-card-${scheme}-${vp.name}.png` });
+          const ov = await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+          const clipped = await cc.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+          record("consumables", vp.name, `${scheme}: timeline card with consumables fits the ${vp.name} viewport (no overflow)`, ov && clipped, `page=${ov} card=${clipped}`);
+          await p.goto(`${BASE}/assets?openAssetId=${assetId}&tab=info`, { waitUntil: "networkidle" });
+          await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+          await p.getByRole("dialog").getByTestId("asset-rule").first().waitFor();
+          await p.waitForTimeout(500);
+          await p.screenshot({ path: `${OUT}/consumables-asset-${scheme}-${vp.name}.png` });
+          const dov = await p.evaluate(() => { const d = document.querySelector('[role="dialog"]'); return d.scrollWidth <= d.clientWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth; });
+          record("consumables", vp.name, `${scheme}: asset detail with consumable rows fits the ${vp.name} viewport`, dov);
+          await c.close();
+        }
+      }
+    } finally {
+      await svc.from("tasks").delete().eq("asset_id", assetId);
+      await sb.from("assets").delete().eq("id", assetId);
+      if (strangerId) {
+        const hid = (await svc.from("profiles").select("household_id").eq("id", strangerId).maybeSingle()).data?.household_id;
+        if (hid) await svc.from("households").delete().eq("id", hid);
         await svc.auth.admin.deleteUser(strangerId);
       }
     }

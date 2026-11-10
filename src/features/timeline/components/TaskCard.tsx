@@ -12,6 +12,7 @@ import {
 import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 import { formatRecurrence, toSeoulDate } from "@/shared/lib/recurrence";
 import { cn } from "@/shared/lib/utils";
+import { ConsumableStrip, PurchaseButtons } from "@/features/tasks/components/ConsumableActions";
 import type { TimelineTask } from "../schemas/timeline.schema";
 
 const TAG =
@@ -60,6 +61,7 @@ export function TaskCard({
   const optimisticDone = task.pending === "done";
   const optimisticSkipped = task.pending === "skipped";
   const settled = optimisticDone || optimisticSkipped;
+  const consumable = { consumable_name: task.consumable_name, consumable_model: task.consumable_model, custom_purchase_url: task.custom_purchase_url, assetModelName: task.asset?.model_name };
   const cycle = task.rule ? formatRecurrence(task.rule.recurring_type, task.rule.interval_n) : "1회성";
 
   return (
@@ -122,11 +124,15 @@ export function TaskCard({
         </div>
       </div>
 
+      {!isHistory && (task.consumable_name || task.consumable_model) && <ConsumableStrip info={consumable} className="mt-3" />}
+
       {!isHistory && (
-        <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-zinc-800">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-zinc-800">
           <span className="text-[11px] font-normal tabular-nums text-slate-500 dark:text-zinc-400">
             {shortDate(task.due_date)} 예정
           </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+          <PurchaseButtons info={consumable} />
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={busy || settled}
@@ -159,6 +165,7 @@ export function TaskCard({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       )}
     </li>

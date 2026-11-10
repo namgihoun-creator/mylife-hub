@@ -150,7 +150,7 @@ export async function updateAsset(input: unknown): Promise<UpdateAssetResult> {
     const first = parsed.error.issues[0]?.message;
     return { ok: false, error: first && /[가-힣]/.test(first) ? first : "잘못된 요청입니다." };
   }
-  const { assetId, name, space, category, note, ownershipType, rental } = parsed.data;
+  const { assetId, name, space, category, note, modelName, ownershipType, rental } = parsed.data;
 
   const { user, profile } = await getSessionProfile();
   if (!user) return { ok: false, error: "로그인이 필요합니다." };
@@ -189,6 +189,7 @@ export async function updateAsset(input: unknown): Promise<UpdateAssetResult> {
       space: clean(space),
       category: clean(category),
       note: clean(note),
+      model_name: clean(modelName),
       ownership_type: ownershipType,
       ...rentalColumns,
     })

@@ -65,6 +65,7 @@ export const updateAssetInputSchema = z
     space: z.string().trim().max(30, "위치는 30자 이하예요.").nullish(),
     category: z.string().trim().max(50, "카테고리는 50자 이하예요.").nullish(),
     note: z.string().trim().max(500, "메모는 500자 이하예요.").nullish(),
+    modelName: z.string().trim().max(100, "모델명은 100자 이하예요.").nullish(),
     ownershipType: z.enum(OWNERSHIP_TYPES),
     rental: rentalInputSchema.optional(),
   })
@@ -90,6 +91,9 @@ export type AssetRule = {
   title: string;
   recurring_type: "NONE" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
   interval_n: number;
+  consumable_name: string | null;
+  consumable_model: string | null;
+  custom_purchase_url: string | null;
 };
 
 export type AssetTask = {
@@ -120,6 +124,7 @@ export type Asset = RentalColumns & {
   category: string | null;
   preset_key: string | null;
   note: string | null;
+  model_name: string | null;
   visibility: "FAMILY" | "PRIVATE";
   created_at: string;
   task_rules: AssetRule[];

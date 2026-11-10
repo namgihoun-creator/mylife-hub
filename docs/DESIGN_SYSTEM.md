@@ -46,6 +46,12 @@
 - **문서 카드**: `rounded-xl border` 1px 평평한 행. 좌측 `h-12 w-12 rounded-lg` 썸네일(이미지) 또는 PDF 아이콘(rose), 가운데 파일명(`truncate`) + 유형 태그(영수증 emerald · 보증서 violet · 설명서 sky · 기타 zinc) + `용량 · 날짜`, 우측 다운로드 / 삭제 아이콘 버튼(`h-8 w-8 rounded-lg`). 삭제는 2단계(`삭제 확인` rose 버튼 + `취소`).
 - 상태 메시지: `text-xs font-medium`, 오류 rose / 성공 emerald (`role="status"`).
 
+### 소모품 구매 (Track C)
+- **소모품 스트립**: `rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50` 한 줄. 좌측 `Package` 아이콘(모노톤), 이름 · 모델명(모델명은 `font-mono text-[11px]` 보조색), 우측 "복사" 고스트 버튼(복사 후 1.6초간 emerald `Check` + "복사됨"). 모델명이 있으면 모델명, 없으면 이름을 복사한다.
+- **[소모품 구매 ↗] 버튼**: Outline 버튼(`h-8 rounded-lg border border-zinc-200 dark:border-zinc-800`, `text-xs font-medium`) + `ArrowUpRight` 아이콘. 사용자 지정 링크가 있으면 그 링크 하나, 없으면 네이버 쇼핑 검색 + 보조(회색 텍스트) "다나와 ↗". 항상 `target="_blank" rel="noopener noreferrer"`.
+- 타임라인 카드: 소모품이 있으면 태그 아래 스트립, 하단 줄 우측에 구매 버튼(+ 더보기). 모바일에서는 줄바꿈(`flex-wrap`)한다. 완료 내역 카드에는 표시하지 않는다.
+- 자산 상세 "관리 규칙": 규칙 행마다 스트립 + 구매 버튼 + (관리자) "소모품 등록/수정", 섹션 제목 옆 "규칙 추가"(Outline `h-7`). 규칙 모달은 소유 형태·문서 폼과 같은 입력 규격이며 소모품 정보는 `rounded-xl border` 묶음 안에 둔다.
+
 ## 1. 디자인 철학
 - **따뜻하고 정돈된 생활 OS:** 딱딱한 관리자 도구가 아닌, 매일 열어보고 싶은 가족 친화적 SaaS 대시보드.
 - **상태 중심 시각화:** 텍스트 나열을 지양하고 D-Day 뱃지, 카테고리 아이콘, 게이지, 요약 위젯으로 현황을 1초 만에 파악.

@@ -7,7 +7,7 @@ export async function getAssets(): Promise<Asset[]> {
   const { data, error } = await supabase
     .from("assets")
     .select(
-      "id, name, space, category, preset_key, note, visibility, created_at, ownership_type, rental_provider, monthly_fee, billing_day, contract_start_date, obligation_end_date, ownership_transfer_date, care_type, payment_card_note, task_rules(id, title, recurring_type, interval_n), tasks(id, title, due_date, status, rule_id)",
+      "id, name, space, category, preset_key, note, model_name, visibility, created_at, ownership_type, rental_provider, monthly_fee, billing_day, contract_start_date, obligation_end_date, ownership_transfer_date, care_type, payment_card_note, task_rules(id, title, recurring_type, interval_n, consumable_name, consumable_model, custom_purchase_url), tasks(id, title, due_date, status, rule_id)",
     )
     .in("tasks.status", ["PENDING", "SNOOZED"]) // embedded filter: only open tasks per asset
     .order("created_at", { ascending: true });

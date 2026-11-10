@@ -13,7 +13,10 @@ export type TimelineTask = {
   completed_at: string | null;
   rule_id: string | null; // null = one-off task (cannot be skipped)
   iteration_no: number | null;
-  asset: { name: string; preset_key: string | null; space: string | null; category: string | null } | null;
+  asset: { name: string; preset_key: string | null; space: string | null; category: string | null; model_name?: string | null } | null;
+  consumable_name?: string | null;
+  consumable_model?: string | null;
+  custom_purchase_url?: string | null;
   rule: { recurring_type: RecurringType; interval_n: number } | null;
   /** Client-only optimistic marker (never sent by the server). */
   pending?: "done" | "skipped";

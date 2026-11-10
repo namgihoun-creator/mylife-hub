@@ -2,7 +2,7 @@ import { createClient } from "@/shared/lib/supabase/server";
 import type { TimelineTask } from "../schemas/timeline.schema";
 
 const SELECT =
-  "id, title, due_date, status, completed_at, rule_id, iteration_no, assets(name, preset_key, space, category), task_rules(recurring_type, interval_n)";
+  "id, title, due_date, status, completed_at, rule_id, iteration_no, consumable_name, consumable_model, custom_purchase_url, assets(name, preset_key, space, category, model_name), task_rules(recurring_type, interval_n)";
 
 // PostgREST returns to-one embeds as an object (typed loosely as array/object here).
 const one = <T>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
@@ -16,6 +16,9 @@ function normalize(row: Record<string, unknown>): TimelineTask {
     completed_at: (row.completed_at as string | null) ?? null,
     rule_id: (row.rule_id as string | null) ?? null,
     iteration_no: (row.iteration_no as number | null) ?? null,
+    consumable_name: (row.consumable_name as string | null) ?? null,
+    consumable_model: (row.consumable_model as string | null) ?? null,
+    custom_purchase_url: (row.custom_purchase_url as string | null) ?? null,
     asset: one(row.assets as TimelineTask["asset"] | TimelineTask["asset"][]),
     rule: one(row.task_rules as TimelineTask["rule"] | TimelineTask["rule"][]),
   };

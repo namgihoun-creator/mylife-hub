@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, Pencil } from "lucide-react";
+import { ChevronRight, Pencil, Plus } from "lucide-react";
+import { ConsumableStrip, PurchaseButtons } from "@/features/tasks/components/ConsumableActions";
 import { DDayBadge } from "@/shared/components/ui/dday-badge";
 import {
   Dialog,
@@ -20,6 +21,7 @@ import { AssetDocumentsPanel } from "./AssetDocumentsPanel";
 import { AssetEditModal } from "./AssetEditModal";
 import { RentalBadge } from "./RentalBadge";
 import { RentalCompare } from "./RentalCompare";
+import { RuleModal, type RuleModalTarget } from "./RuleModal";
 
 const LABEL = "text-xs font-normal text-slate-500 dark:text-zinc-400";
 const VALUE = "text-sm font-medium text-slate-900 dark:text-zinc-50";
@@ -125,6 +127,7 @@ export function AssetDetailDialog({
   const rental = isRentalAsset(asset);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [ruleTarget, setRuleTarget] = useState<RuleModalTarget | null>(null);
   const [tab, setTab] = useState<"info" | "compare" | "documents">("info");
 
   useEffect(() => {
@@ -187,6 +190,11 @@ export function AssetDetailDialog({
                 </button>
               )}
             </div>
+            {asset.model_name && (
+              <p data-testid="asset-model" className="pt-1 text-xs font-normal text-slate-500 dark:text-zinc-400">
+                모델명 <span className="font-mono text-slate-700 dark:text-zinc-300">{asset.model_name}</span>
+              </p>
+            )}
             {asset.note && <p className="pt-1 text-xs font-normal text-slate-500 dark:text-zinc-400">{asset.note}</p>}
           </DialogHeader>
 
@@ -238,17 +246,46 @@ export function AssetDetailDialog({
               {rental && <RentalInfo asset={asset} today={today} />}
 
               <section aria-label="관리 규칙" className="space-y-2">
-                <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">관리 규칙</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">관리 규칙</h3>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setRuleTarget({ mode: "create" })}
+                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                    >
+                      <Plus className="h-3 w-3" />
+                      규칙 추가
+                    </button>
+                  )}
+                </div>
                 {asset.task_rules.length === 0 ? (
                   <p className={LABEL}>등록된 관리 규칙이 없어요.</p>
                 ) : (
                   <ul className="space-y-1.5">
                     {asset.task_rules.map((r) => (
-                      <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
-                        <span className="truncate text-xs font-medium text-slate-800 dark:text-zinc-200">{r.title}</span>
-                        <span className="shrink-0 text-[11px] font-normal text-slate-500 dark:text-zinc-400">
-                          {formatRecurrence(r.recurring_type, r.interval_n)}
-                        </span>
+                      <li key={r.id} data-testid="asset-rule" className="space-y-2 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate text-xs font-medium text-slate-800 dark:text-zinc-200">{r.title}</span>
+                          <span className="shrink-0 text-[11px] font-normal text-slate-500 dark:text-zinc-400">
+                            {formatRecurrence(r.recurring_type, r.interval_n)}
+                          </span>
+                        </div>
+                        <ConsumableStrip info={r} />
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <PurchaseButtons info={{ ...r, assetModelName: asset.model_name }} />
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => setRuleTarget({ mode: "edit", rule: r })}
+                              aria-label={`${r.title} 소모품 정보 수정`}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              {r.consumable_name || r.consumable_model || r.custom_purchase_url ? "소모품 수정" : "소모품 등록"}
+                            </button>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -256,6 +293,7 @@ export function AssetDetailDialog({
               </section>
             </div>
           )}
+          <RuleModal asset={asset} target={ruleTarget} onClose={() => setRuleTarget(null)} />
         </DialogContent>
       </Dialog>
 

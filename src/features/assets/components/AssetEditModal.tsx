@@ -34,6 +34,7 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
   const [space, setSpace] = useState(asset.space ?? "");
   const [category, setCategory] = useState(asset.category ?? "");
   const [note, setNote] = useState(asset.note ?? "");
+  const [modelName, setModelName] = useState(asset.model_name ?? "");
   const [ownership, setOwnership] = useState<OwnershipType>(asset.ownership_type === "RENTAL" ? "RENTAL" : "OWNED");
   const [rental, setRental] = useState<RentalFormState>(asset.ownership_type === "RENTAL" ? rentalStateFrom(asset) : emptyRentalForm);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,7 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
         space: space || null,
         category: category || null,
         note: note || null,
+        modelName: modelName || null,
         ownershipType: ownership,
         rental: rentalInput,
       });
@@ -98,6 +100,13 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
           </label>
           <Input id="edit-category" value={category} onChange={(e) => setCategory(e.target.value)} maxLength={50} className="h-10 rounded-lg" />
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <label htmlFor="edit-model" className={LABEL}>
+          모델명 <span className="font-normal text-slate-500 dark:text-zinc-400">(소모품 검색에 사용돼요)</span>
+        </label>
+        <Input id="edit-model" value={modelName} onChange={(e) => setModelName(e.target.value)} maxLength={100} placeholder="예: WP-3000" className="h-10 rounded-lg" />
       </div>
 
       <div className="space-y-1">
