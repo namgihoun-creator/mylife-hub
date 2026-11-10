@@ -57,7 +57,7 @@ export function toRentalInput(f: RentalFormState): { ok: true; value: RentalInpu
   };
 }
 
-const FIELD_INPUT = "h-9 rounded-xl text-sm";
+const FIELD_INPUT = "h-9 rounded-lg text-sm";
 const LABEL = "text-xs font-medium text-slate-700 dark:text-zinc-300";
 
 function Field({ label, htmlFor, required, className, children }: { label: string; htmlFor: string; required?: boolean; className?: string; children: React.ReactNode }) {
@@ -73,13 +73,15 @@ function Field({ label, htmlFor, required, className, children }: { label: strin
 }
 
 /** [직접 구매] / [렌탈·구독] switch shown at the top of the add-asset modal (docs/DESIGN_SYSTEM.md §J). */
+const OWNERSHIP_HINT: Record<OwnershipType, string> = {
+  OWNED: "구매해서 소유하고 있어요",
+  RENTAL: "월 요금·약정이 있어요",
+};
+
+/** Vercel-style segmented selection cards (radio semantics kept: role=radiogroup / radio + aria-checked). */
 export function OwnershipToggle({ value, onChange }: { value: OwnershipType; onChange: (v: OwnershipType) => void }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label="소유 형태"
-      className="grid grid-cols-2 gap-1 rounded-full border border-slate-200/80 bg-slate-100/60 p-1 dark:border-zinc-800 dark:bg-zinc-800/40"
-    >
+    <div role="radiogroup" aria-label="소유 형태" className="grid grid-cols-2 gap-2">
       {OWNERSHIP_TYPES.map((t) => {
         const active = value === t;
         return (
@@ -88,15 +90,38 @@ export function OwnershipToggle({ value, onChange }: { value: OwnershipType; onC
             type="button"
             role="radio"
             aria-checked={active}
+            aria-label={OWNERSHIP_LABEL[t]}
             onClick={() => onChange(t)}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              "flex items-start gap-2.5 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-1",
               active
-                ? cn("bg-white shadow-sm dark:bg-zinc-800", t === "RENTAL" ? "text-violet-600 dark:text-violet-400" : "text-slate-900 dark:text-zinc-50")
-                : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-50",
+                ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900 focus-visible:ring-zinc-900 dark:border-zinc-100 dark:bg-zinc-900/60 dark:ring-zinc-100 dark:focus-visible:ring-zinc-100"
+                : "border-zinc-200 bg-white hover:border-zinc-300 focus-visible:ring-zinc-900 dark:border-zinc-800 dark:bg-black dark:hover:border-zinc-700 dark:focus-visible:ring-zinc-100",
             )}
           >
-            {OWNERSHIP_LABEL[t]}
+            <span
+              aria-hidden
+              className={cn(
+                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                active
+                  ? t === "RENTAL"
+                    ? "border-violet-500 dark:border-violet-400"
+                    : "border-zinc-900 dark:border-zinc-100"
+                  : "border-zinc-300 dark:border-zinc-700",
+              )}
+            >
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full transition-transform",
+                  active ? "scale-100" : "scale-0",
+                  t === "RENTAL" ? "bg-violet-500 dark:bg-violet-400" : "bg-zinc-900 dark:bg-zinc-100",
+                )}
+              />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-zinc-900 dark:text-zinc-50">{OWNERSHIP_LABEL[t]}</span>
+              <span className="block text-xs font-normal text-zinc-500 dark:text-zinc-400">{OWNERSHIP_HINT[t]}</span>
+            </span>
           </button>
         );
       })}
@@ -109,7 +134,7 @@ export function RentalForm({ value, onChange }: { value: RentalFormState; onChan
   const set = (k: keyof RentalFormState) => (e: React.ChangeEvent<HTMLInputElement>) => onChange({ [k]: e.target.value });
 
   return (
-    <fieldset className="mt-3 grid grid-cols-1 gap-3 rounded-2xl border border-violet-200/70 bg-violet-50/40 p-4 sm:grid-cols-2 dark:border-violet-900/50 dark:bg-violet-950/20">
+    <fieldset className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-violet-200/70 bg-violet-50/40 p-4 sm:grid-cols-2 dark:border-violet-900/50 dark:bg-violet-950/20">
       <legend className="sr-only">렌탈 정보</legend>
 
       <Field label="렌탈사명" htmlFor="rental-provider" required className="sm:col-span-2">
@@ -151,7 +176,7 @@ export function RentalForm({ value, onChange }: { value: RentalFormState; onChan
                 className={cn(
                   "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
                   active
-                    ? "bg-slate-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
+                    ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
                 )}
               >

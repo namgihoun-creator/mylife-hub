@@ -21,12 +21,15 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#ffffff",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko" className={notoSansKr.variable}>
+    <html lang="ko" className={notoSansKr.variable} suppressHydrationWarning>
       <body className="min-h-screen font-sans">
         <Providers>{children}</Providers>
       </body>

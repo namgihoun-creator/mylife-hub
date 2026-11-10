@@ -20,7 +20,7 @@ export function PushToggle() {
   return (
     <div className="border-t border-slate-100 px-4 py-3 dark:border-zinc-800">
       <div className="flex items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200/70 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700/60">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200/70 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700/60">
           <BellRing className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
@@ -49,7 +49,7 @@ export function PushToggle() {
           >
             <span
               className={cn(
-                "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                "inline-block h-5 w-5 rounded-full bg-white transition-transform",
                 on ? "translate-x-[22px]" : "translate-x-0.5",
               )}
             />

@@ -4,7 +4,7 @@ export default function Loading() {
   return (
     <div className="space-y-6" role="status" aria-label="타임라인을 불러오는 중">
       <div className="space-y-2">
-        <Skeleton className="h-8 w-44 rounded-xl" />
+        <Skeleton className="h-8 w-44 rounded-lg" />
         <Skeleton className="h-3.5 w-72 rounded-full" />
       </div>
       <Skeleton className="h-28" />

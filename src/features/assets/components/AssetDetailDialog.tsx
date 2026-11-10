@@ -30,7 +30,7 @@ function RentalInfo({ asset, today }: { asset: Asset; today: string }) {
   return (
     <section
       aria-label="렌탈 정보"
-      className="space-y-4 rounded-2xl border border-violet-200/70 bg-violet-50/40 p-4 dark:border-violet-900/50 dark:bg-violet-950/20"
+      className="space-y-4 rounded-xl border border-violet-200/70 bg-violet-50/40 p-4 dark:border-violet-900/50 dark:bg-violet-950/20"
     >
       <div className="flex items-end justify-between gap-3">
         <div>
@@ -160,10 +160,10 @@ export function AssetDetailDialog({
           </button>
         </DialogTrigger>
 
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-2xl border-slate-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <DialogHeader className="text-left">
             <div className="flex items-center gap-3">
-              <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl", tone)}>
+              <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-lg", tone)}>
                 <Icon className="h-6 w-6" />
               </div>
               <div className="min-w-0 space-y-1 text-left">
@@ -208,7 +208,7 @@ export function AssetDetailDialog({
                   className={cn(
                     "rounded-full px-4 py-1.5 text-xs font-medium transition-colors",
                     tab === key
-                      ? "bg-slate-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
+                      ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                       : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
                   )}
                 >
@@ -238,7 +238,7 @@ export function AssetDetailDialog({
                 ) : (
                   <ul className="space-y-1.5">
                     {asset.task_rules.map((r) => (
-                      <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 px-3 py-2 dark:border-zinc-800">
+                      <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
                         <span className="truncate text-xs font-medium text-slate-800 dark:text-zinc-200">{r.title}</span>
                         <span className="shrink-0 text-[11px] font-normal text-slate-500 dark:text-zinc-400">
                           {formatRecurrence(r.recurring_type, r.interval_n)}

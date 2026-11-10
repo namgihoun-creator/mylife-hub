@@ -30,7 +30,7 @@ export function InviteAcceptForm({ code, defaultName }: { code: string; defaultN
         <label htmlFor="displayName" className="text-sm font-medium text-slate-800 dark:text-zinc-200">
           표시 이름
         </label>
-        <Input id="displayName" name="displayName" defaultValue={defaultName} placeholder="예: 엄마" maxLength={50} className="rounded-xl" />
+        <Input id="displayName" name="displayName" defaultValue={defaultName} placeholder="예: 엄마" maxLength={50} className="rounded-lg" />
       </div>
       {error && (
         <p role="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400">
@@ -40,7 +40,7 @@ export function InviteAcceptForm({ code, defaultName }: { code: string; defaultN
       <button
         type="submit"
         disabled={pending}
-        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-base font-semibold text-white shadow-sm transition-all hover:bg-slate-800 active:scale-[0.98] disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-base font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.98] disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
       >
         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
         {pending ? "참여하는 중…" : "가구에 참여하기"}

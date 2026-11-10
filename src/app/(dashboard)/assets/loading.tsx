@@ -4,7 +4,7 @@ export default function Loading() {
   return (
     <div className="space-y-6" role="status" aria-label="자산을 불러오는 중">
       <div className="space-y-2">
-        <Skeleton className="h-8 w-40 rounded-xl" />
+        <Skeleton className="h-8 w-40 rounded-lg" />
         <Skeleton className="h-3.5 w-64 rounded-full" />
       </div>
       <Skeleton className="h-28" />

@@ -19,12 +19,12 @@ import { applyFilter, groupTasks, type TimelineFilter } from "../utils/timeline-
 import { TaskCard, type TaskCardProps, type TaskEmphasis } from "./TaskCard";
 
 const PILL_BASE = "shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "bg-slate-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900";
+const PILL_ACTIVE = "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900";
 const PILL_INACTIVE =
   "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
 const CTA =
-  "inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
+  "inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
 
 type SectionKey = "overdue" | "today" | "upcoming" | "recent";
 
@@ -43,7 +43,7 @@ const SECTIONS: Record<SectionKey, SectionStyle> = {
     title: "기한 초과",
     icon: AlertTriangle,
     iconTone: "bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-950/60 dark:text-rose-400 dark:ring-rose-900/60",
-    shell: "rounded-2xl border border-rose-200/80 bg-rose-50/60 p-4 dark:border-rose-900/60 dark:bg-rose-950/20",
+    shell: "rounded-xl border border-rose-200/80 bg-rose-50/60 p-4 dark:border-rose-900/60 dark:bg-rose-950/20",
     badge: { text: "긴급", className: "bg-rose-600 text-white" },
     emphasis: "overdue",
   },
@@ -52,8 +52,8 @@ const SECTIONS: Record<SectionKey, SectionStyle> = {
     icon: CalendarCheck,
     iconTone: "bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900/50",
     shell:
-      "rounded-2xl border border-amber-300/70 bg-amber-50/40 p-4 ring-2 ring-amber-200/50 dark:border-amber-800/60 dark:bg-amber-950/15 dark:ring-amber-900/30",
-    badge: { text: "TODAY", className: "bg-amber-500 text-white" },
+      "rounded-xl border border-amber-300/70 bg-amber-50/40 p-4 ring-2 ring-amber-200/50 dark:border-amber-800/60 dark:bg-amber-950/15 dark:ring-amber-900/30",
+    badge: { text: "TODAY", className: "bg-amber-600 text-white dark:bg-amber-500 dark:text-black" },
     emphasis: "today",
   },
   upcoming: {
@@ -185,7 +185,7 @@ export function TaskList({
               onClick={() => setCollapsed((c) => ({ ...c, [key]: !c[key] }))}
               className="flex w-full items-center gap-2.5 text-left"
             >
-              <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", s.iconTone)}>
+              <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", s.iconTone)}>
                 <Icon className="h-4 w-4" />
               </span>
               <span className="text-base font-semibold text-slate-800 dark:text-zinc-200">{s.title}</span>

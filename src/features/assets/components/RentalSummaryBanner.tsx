@@ -7,14 +7,14 @@ export function RentalSummaryBanner({ summary }: { summary: RentalSummary }) {
     <section
       aria-label="월 렌탈 지출 요약"
       data-testid="rental-summary"
-      className="flex items-center gap-3 rounded-2xl border border-violet-200/70 bg-violet-50/40 px-4 py-3 dark:border-violet-900/50 dark:bg-violet-950/20"
+      className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 shadow-sm ring-1 ring-inset ring-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:ring-violet-900/50">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-500 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:ring-violet-900/50">
         <Repeat className="h-4 w-4" />
       </span>
       <div className="min-w-0">
         <p className="text-xs font-normal text-slate-500 dark:text-zinc-400">우리 집 월 렌탈 지출</p>
-        <p className="text-base font-extrabold tracking-tight tabular-nums text-slate-900 dark:text-zinc-50">
+        <p className="text-base font-semibold tracking-tight tabular-nums text-slate-900 dark:text-zinc-50">
           <span data-testid="rental-summary-text">
             {summary.count}개 품목, 월 {formatWon(summary.monthlyTotal)}
           </span>

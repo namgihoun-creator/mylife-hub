@@ -22,7 +22,7 @@ import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 export const OPEN_PRESET_MODAL_EVENT = "mylife:open-preset-modal";
 
 const PILL_BASE = "shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "bg-slate-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900";
+const PILL_ACTIVE = "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900";
 const PILL_INACTIVE =
   "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
@@ -92,13 +92,13 @@ export function PresetAddModal({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Plus className="h-4 w-4" />
           {triggerLabel}
         </button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-2xl border-slate-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">
             생활가전 프리셋으로 추가
@@ -109,7 +109,7 @@ export function PresetAddModal({
         </DialogHeader>
 
         {presets === null ? (
-          <p className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 dark:border-zinc-800 dark:text-zinc-400">
+          <p className="rounded-lg border border-dashed border-slate-200 p-4 text-xs text-slate-500 dark:border-zinc-800 dark:text-zinc-400">
             프리셋 데이터가 없어요. Supabase SQL Editor에서 <code>supabase/seeds/01_appliance_presets.sql</code>을
             실행해 주세요.
           </p>
@@ -142,7 +142,7 @@ export function PresetAddModal({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="가전 검색 (예: 정수기)"
                   aria-label="가전 검색"
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-zinc-800 dark:bg-zinc-900 dark:placeholder:text-zinc-500"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-zinc-800 dark:bg-zinc-900 dark:placeholder:text-zinc-500"
                 />
               </div>
               <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -171,11 +171,11 @@ export function PresetAddModal({
                       onClick={() => add(p.preset_key)}
                       disabled={pendingKey !== null}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 text-left shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900/90 dark:hover:bg-zinc-800",
+                        "flex w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800",
                         count > 0 && "border-emerald-200 dark:border-emerald-900",
                       )}
                     >
-                      <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", tone)}>
+                      <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", tone)}>
                         <Icon className="h-5 w-5" />
                       </span>
                       <span className="min-w-0 flex-1">

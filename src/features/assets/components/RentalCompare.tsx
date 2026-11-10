@@ -88,7 +88,7 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
 
   return (
     <div className="space-y-4" data-testid="rental-compare">
-      <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-normal leading-relaxed text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+      <p className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] font-normal leading-relaxed text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
           아래는 <b>추정치</b>예요. 신규 렌탈 요금·지원금·구매가는 가정값이라 실제 조건과 다를 수 있어요. 가정값을 직접 고쳐 보고, 최신 조건은 아래 링크에서 확인하세요.
@@ -97,7 +97,7 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
 
       <div
         data-testid="compare-summary"
-        className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900 dark:bg-emerald-950/20"
+        className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900 dark:bg-emerald-950/20"
       >
         <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
           {runnerUp ? "비용 차이가 크지 않아요" : `추천: ${cheapestTitle}`}
@@ -120,12 +120,12 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
               key={key}
               data-testid={`compare-${key}`}
               className={cn(
-                "rounded-2xl border bg-white p-3.5 dark:bg-zinc-900/90",
-                best ? "border-emerald-300 ring-1 ring-emerald-200 dark:border-emerald-800 dark:ring-emerald-900/50" : "border-slate-200/80 dark:border-zinc-800",
+                "rounded-xl border bg-white p-3.5 dark:bg-zinc-950",
+                best ? "border-emerald-300 ring-1 ring-emerald-200 dark:border-emerald-800 dark:ring-emerald-900/50" : "border-zinc-200 dark:border-zinc-800",
               )}
             >
               <div className="flex items-center gap-3">
-                <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", meta.tone)}>
+                <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", meta.tone)}>
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -196,7 +196,7 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
           가정값 조정
         </button>
         <Collapse open={adjusting}>
-          <div className="mt-1 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3.5 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
+          <div className="mt-1 grid grid-cols-1 gap-3 rounded-xl border border-zinc-200 bg-slate-50/60 p-3.5 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/50">
             {FIELDS.map((f) => (
               <div key={f.key} className="space-y-1">
                 <label htmlFor={`assume-${f.key}`} className="text-xs font-medium text-slate-700 dark:text-zinc-300">
@@ -207,7 +207,7 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
                   inputMode="numeric"
                   value={values[f.key]}
                   onChange={(e) => setValues((prev) => ({ ...prev, [f.key]: e.target.value.replace(/\D/g, "").slice(0, 9) }))}
-                  className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 {f.hint && <p className={LABEL}>{f.hint}</p>}
               </div>
@@ -231,7 +231,7 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
           target="_blank"
           rel="noopener noreferrer"
           data-testid="compare-link-danawa"
-          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           최신 모델 렌탈 조건 비교하기
           <ExternalLink className="h-4 w-4" />
@@ -241,7 +241,7 @@ export function RentalCompare({ asset, today, canEdit, onEdit }: { asset: Asset;
           target="_blank"
           rel="noopener noreferrer"
           data-testid="compare-link-naver"
-          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >
           네이버 쇼핑에서도 찾아보기
           <ExternalLink className="h-3.5 w-3.5" />

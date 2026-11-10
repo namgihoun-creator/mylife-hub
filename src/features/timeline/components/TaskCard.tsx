@@ -23,8 +23,8 @@ export type TaskEmphasis = "overdue" | "today" | "upcoming" | "none";
 const EMPHASIS_CLASS: Record<TaskEmphasis, string> = {
   overdue: "border-rose-200/80 dark:border-rose-900/60",
   today: "border-amber-200/80 border-l-4 border-l-amber-400 dark:border-amber-900/60 dark:border-l-amber-500",
-  upcoming: "border-slate-200/80 dark:border-zinc-800",
-  none: "border-slate-200/80 dark:border-zinc-800",
+  upcoming: "border-zinc-200 dark:border-zinc-800",
+  none: "border-zinc-200 dark:border-zinc-800",
 };
 
 export type TaskCardProps = {
@@ -65,14 +65,14 @@ export function TaskCard({
   return (
     <li
       className={cn(
-        "rounded-2xl border bg-white p-4 shadow-sm transition-all duration-200 dark:bg-zinc-900/90",
+        "rounded-xl border bg-white p-4 transition-all duration-200 dark:bg-zinc-950",
         EMPHASIS_CLASS[emphasis],
-        !settled && !isHistory && "hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none",
+        !settled && !isHistory && " motion-reduce:transform-none",
         (settled || isHistory) && "opacity-60",
       )}
     >
       <div className="flex items-center gap-3">
-        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", tone)}>
+        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", tone)}>
           <Icon className="h-5 w-5" />
         </div>
 

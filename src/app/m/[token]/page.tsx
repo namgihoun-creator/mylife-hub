@@ -7,6 +7,8 @@ import { EmptyState } from "@/shared/components/ui/empty-state";
 import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 import { toSeoulDate } from "@/shared/lib/recurrence";
 import { cn } from "@/shared/lib/utils";
+import { AmbientBackground } from "@/shared/components/ui/ambient-background";
+import { ThemeToggle } from "@/shared/components/ui/theme-toggle";
 
 // Token pages must never be cached, indexed, or leak the token through the Referer header.
 export const dynamic = "force-dynamic";
@@ -32,8 +34,8 @@ function formatKst(iso: string | null) {
 
 function HouseholdBanner({ name }: { name: string }) {
   return (
-    <header className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm ring-1 ring-inset ring-white/60 dark:border-zinc-800 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900">
+    <header className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-slate-50 p-4 ring-1 ring-inset ring-white/60 dark:border-zinc-800 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
         <Home className="h-5 w-5" />
       </span>
       <div className="min-w-0">
@@ -50,12 +52,12 @@ function TaskCard({ info, today, muted = false }: { info: MagicTaskInfo; today: 
     <section
       aria-label="과업 정보"
       className={cn(
-        "rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/90",
+        "rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950",
         muted && "opacity-70",
       )}
     >
       <div className="flex items-center gap-4">
-        <div className={cn("flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl", tone)}>
+        <div className={cn("flex h-16 w-16 shrink-0 items-center justify-center rounded-xl", tone)}>
           <Icon className="h-8 w-8" />
         </div>
         <div className="min-w-0 space-y-1.5">
@@ -89,7 +91,9 @@ export default async function MagicLinkPage({ params }: { params: Promise<{ toke
   const today = toSeoulDate(new Date().toISOString());
 
   return (
-    <main className="min-h-screen bg-slate-50/70 dark:bg-zinc-950">
+    <main className="relative isolate min-h-screen overflow-x-clip bg-white dark:bg-black">
+      <AmbientBackground />
+      <ThemeToggle className="absolute right-4 top-4 z-10" />
       <div className="mx-auto w-full max-w-md space-y-4 px-4 py-6">
         {view.kind === "invalid" && (
           <EmptyState

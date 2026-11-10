@@ -125,7 +125,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
         {items === null ? (
           <div className="space-y-2 p-4" aria-busy>
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100 motion-reduce:animate-none dark:bg-zinc-800" />
+              <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none dark:bg-zinc-800" />
             ))}
           </div>
         ) : items.length === 0 ? (
@@ -151,7 +151,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
                       unread && "bg-sky-50/50 dark:bg-sky-950/20",
                     )}
                   >
-                    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", tone)}>
+                    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", tone)}>
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">

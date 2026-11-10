@@ -1615,6 +1615,159 @@ const CRON_SECRET = process.env.CRON_SECRET;
     await svc.from("notifications").delete().eq("user_id", uid);
   }
 }
+// ---------------------------------------------------------------- v3 redesign: theme system + light/dark captures
+{
+  const themeCtx = (vp, scheme, state) =>
+    browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+  const rgb = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
+  const lum = ([r, g, b]) => {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+
+  // A rental fixture so the summary banner / rental badges appear in the captures (removed in finally).
+  const { data: meRow } = await sb.auth.getUser();
+  const { data: prof } = await sb.from("profiles").select("household_id").eq("id", meRow.user.id).single();
+  const { data: fx } = await sb
+    .from("assets")
+    .insert({ household_id: prof.household_id, owner_id: meRow.user.id, name: "E2E 테마 정수기", ownership_type: "RENTAL", rental_provider: "E2E렌탈", monthly_fee: 32900, obligation_end_date: shift(45) })
+    .select("id")
+    .single();
+
+  try {
+    // 1) system preference is followed when the user has not chosen
+    for (const scheme of ["light", "dark"]) {
+      const c = await themeCtx(VIEWPORTS[0], scheme, storageState);
+      const p = await c.newPage();
+      const errs = [];
+      p.on("pageerror", (e) => errs.push(e.message));
+      p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+      await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      const info = await p.evaluate(() => ({
+        dark: document.documentElement.classList.contains("dark"),
+        bg: getComputedStyle(document.body.firstElementChild.nextElementSibling ?? document.body).backgroundColor,
+        wrap: getComputedStyle(document.querySelector('[data-testid="ambient-bg"]').parentElement).backgroundColor,
+      }));
+      record("theme", "desktop", `system ${scheme}: html.dark=${scheme === "dark"} and page background is ${scheme === "dark" ? "pure black" : "white"}`, info.dark === (scheme === "dark") && info.wrap === (scheme === "dark" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)"), JSON.stringify(info));
+      record("theme", "desktop", `system ${scheme}: no hydration / console errors`, errs.length === 0, errs.join(" | ").slice(0, 200));
+      await c.close();
+    }
+
+    // 2) toggle: crossfade icons, persistence, header glass, aurora
+    {
+      const c = await themeCtx(VIEWPORTS[0], "light", storageState);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      const toggle = p.getByTestId("theme-toggle");
+      record("theme", "desktop", "ThemeToggle sits in the header (right cluster, before the bell)", (await toggle.count()) === 1 && (await p.locator("header").getByTestId("theme-toggle").count()) === 1);
+      record("theme", "desktop", "header is sticky glass (backdrop blur + translucent bg + 1px border)", await p.locator("header").evaluate((h) => { const s = getComputedStyle(h); return s.position === "sticky" && /blur/.test(s.backdropFilter) && s.borderBottomWidth === "1px" && /rgba/.test(s.backgroundColor); }));
+      const ambient = p.getByTestId("ambient-bg");
+      const ambBox = await ambient.boundingBox();
+      record("theme", "desktop", "ambient aurora: 3 blurred circles at the page top, decorative (aria-hidden, no pointer events)", (await ambient.locator("div").count()) === 3 && (await ambient.getAttribute("aria-hidden")) === "true" && (await ambient.evaluate((e) => getComputedStyle(e).pointerEvents)) === "none" && ambBox !== null && ambBox.y <= 1, JSON.stringify(ambBox));
+      await toggle.click();
+      await p.waitForTimeout(450);
+      const afterDark = await p.evaluate(() => ({ dark: document.documentElement.classList.contains("dark"), stored: localStorage.getItem("theme") }));
+      const icons = await toggle.evaluate((b) => [...b.querySelectorAll("svg")].map((s) => ({ o: +getComputedStyle(s).opacity })));
+      record("theme", "desktop", "toggle → dark: class applied, choice stored, Moon visible and Sun faded out", afterDark.dark && afterDark.stored === "dark" && icons[0].o < 0.05 && icons[1].o > 0.95, JSON.stringify({ afterDark, icons }));
+      await p.reload({ waitUntil: "networkidle" });
+      record("theme", "desktop", "dark choice survives a reload (no flash: html.dark present immediately)", await p.evaluate(() => document.documentElement.classList.contains("dark")));
+      await toggle.click();
+      await p.waitForTimeout(450);
+      record("theme", "desktop", "toggle → light again", (await p.evaluate(() => localStorage.getItem("theme"))) === "light" && !(await p.evaluate(() => document.documentElement.classList.contains("dark"))));
+      await c.close();
+    }
+
+    // 3) forced dark overrides a light OS preference, and public pages carry the toggle too
+    {
+      const c = await themeCtx(VIEWPORTS[1], "light");
+      await c.addInitScript(() => localStorage.setItem("theme", "dark"));
+      const p = await c.newPage();
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      record("theme", "mobile", "login: toggle present, stored dark beats light OS preference", (await p.getByTestId("theme-toggle").count()) === 1 && (await p.evaluate(() => document.documentElement.classList.contains("dark"))));
+      record("theme", "mobile", "login: no horizontal scroll with the aurora layer", await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+      await c.close();
+    }
+
+    // 4) captures (light + dark, desktop + mobile) and a contrast audit
+    const SHOTS = [
+      ["assets", "/assets"],
+      ["timeline", "/timeline"],
+    ];
+    for (const scheme of ["light", "dark"]) {
+      for (const vp of VIEWPORTS) {
+        const c = await themeCtx(vp, scheme, storageState);
+        const p = await c.newPage();
+        const errs = [];
+        p.on("pageerror", (e) => errs.push(e.message));
+        for (const [name, path] of SHOTS) {
+          await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+          await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+          await p.waitForTimeout(700);
+          await p.screenshot({ path: `${OUT}/v3-${name}-${scheme}-${vp.name}.png`, fullPage: true });
+          if (vp.name === "desktop") {
+            // contrast audit: every visible text element vs its nearest opaque ancestor background (WCAG AA large-ish floor of 3:1 for tinted/secondary text)
+            const bad = await p.evaluate(() => {
+              const L = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+              const parse = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
+              const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const v = parse(getComputedStyle(e).backgroundColor); if (v.length >= 3 && (v[3] === undefined || v[3] > 0.9)) return v; } return [255, 255, 255]; };
+              const out = [];
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                if (!n.textContent.trim()) continue;
+                const el = n.parentElement;
+                const r = el.getBoundingClientRect();
+                if (r.width === 0 || r.height === 0 || getComputedStyle(el).visibility === "hidden") continue;
+                const fg = parse(getComputedStyle(el).color);
+                if (fg.length === 4 && fg[3] < 0.5) continue;
+                const a = L(fg), b = L(bgOf(el));
+                const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+                if (ratio < 3) out.push(`${ratio.toFixed(2)} ${el.tagName} "${n.textContent.trim().slice(0, 20)}"`);
+              }
+              return out;
+            });
+            record("theme", `${vp.name}`, `${scheme} ${name}: text contrast ≥ 3:1 everywhere`, bad.length === 0, bad.slice(0, 6).join(" | "));
+          }
+        }
+        record("theme", vp.name, `${scheme}: no page errors across captures`, errs.length === 0, errs.join(" | ").slice(0, 200));
+        // overflow check on mobile
+        if (vp.name === "mobile") {
+          await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+          record("theme", "mobile", `${scheme} assets: no horizontal scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+        }
+        // rental form with segmented cards
+        if (vp.name === "desktop") {
+          await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+          await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+          await p.getByRole("button", { name: "가전 추가" }).first().click();
+          const d = p.getByRole("dialog");
+          await d.waitFor();
+          const owned = d.getByRole("radio", { name: "직접 구매" });
+          const rental = d.getByRole("radio", { name: "렌탈·구독" });
+          if (await rental.count()) {
+            await rental.click();
+            await p.waitForTimeout(600);
+            const st = await p.evaluate(() => [...document.querySelectorAll('[role="radiogroup"][aria-label="소유 형태"] [role="radio"]')].map((r) => ({ c: r.getAttribute("aria-checked"), b: getComputedStyle(r).borderTopColor, w: getComputedStyle(r).borderTopWidth, ind: r.querySelector("span[aria-hidden]") ? getComputedStyle(r.querySelector("span[aria-hidden]")).borderRadius : "" })));
+            const sel = st.find((x) => x.c === "true"), un = st.find((x) => x.c === "false");
+            record("theme", "desktop", `${scheme} ownership cards: selected card has a crisp 1px border distinct from the unselected one, round indicator`, !!sel && !!un && sel.w === "1px" && sel.b !== un.b && /9999|50%|\d{3,}px/.test(sel.ind), JSON.stringify(st));
+            record("theme", "desktop", `${scheme} ownership cards: radio semantics kept (2 radios, exactly one aria-checked)`, st.length === 2 && st.filter((x) => x.c === "true").length === 1);
+            await p.screenshot({ path: `${OUT}/v3-ownership-modal-${scheme}-desktop.png` });
+            await owned.click();
+          } else {
+            record("theme", "desktop", `${scheme} ownership cards reachable from the add dialog`, false, "radio not found");
+          }
+          await p.keyboard.press("Escape");
+        }
+        await c.close();
+      }
+    }
+  } finally {
+    if (fx?.id) await sb.from("assets").delete().eq("id", fx.id);
+  }
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report

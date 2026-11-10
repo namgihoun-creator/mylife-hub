@@ -11,12 +11,12 @@ const ICON_TONE = {
 
 export type SummaryTone = keyof typeof ICON_TONE;
 
-/** Hero briefing container: soft surface tint + fine inset border (docs/DESIGN_SYSTEM.md §4.A). */
+/** Row of flat metric tiles (docs/DESIGN_SYSTEM.md v3 metric cards). */
 export function SummaryBanner({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section
       aria-label={label}
-      className="grid grid-cols-3 gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm ring-1 ring-inset ring-white/60 dark:border-zinc-800 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5 sm:gap-4 sm:p-5"
+      className="grid grid-cols-3 gap-3 sm:gap-4"
     >
       {children}
     </section>
@@ -42,10 +42,10 @@ export function SummaryStat({
   return (
     <div
       className={cn(
-        "relative flex min-w-0 flex-col gap-2 rounded-xl p-3 ring-1 ring-inset sm:flex-row sm:items-center sm:gap-3 sm:p-4",
+        "relative flex min-w-0 flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-3 sm:p-4",
         danger
-          ? "bg-rose-50/80 ring-rose-200/70 dark:bg-rose-950/30 dark:ring-rose-900/60"
-          : "bg-white/70 ring-slate-200/60 dark:bg-zinc-900/50 dark:ring-zinc-800",
+          ? "border-rose-200 bg-rose-50/60 dark:border-rose-900/60 dark:bg-rose-950/20"
+          : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
       )}
     >
       {danger && (
@@ -54,13 +54,13 @@ export function SummaryStat({
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
         </span>
       )}
-      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset", ICON_TONE[tone])}>
+      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", ICON_TONE[tone])}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
         <p
           className={cn(
-            "text-2xl font-extrabold tracking-tight tabular-nums sm:text-3xl",
+            "text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl",
             danger ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-zinc-50",
           )}
         >

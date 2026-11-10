@@ -10,6 +10,8 @@ import { getMembers } from "@/features/household/server/household.queries";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { getUnreadNotificationCount } from "@/features/notifications/server/notification.actions";
 import { MainNav } from "@/shared/components/layout/MainNav";
+import { AmbientBackground } from "@/shared/components/ui/ambient-background";
+import { ThemeToggle } from "@/shared/components/ui/theme-toggle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, profile } = await getSessionProfile();
@@ -32,11 +34,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [members, unreadCount] = await Promise.all([getMembers(), getUnreadNotificationCount()]);
 
   return (
-    <div className="min-h-screen bg-slate-50/70 dark:bg-zinc-950">
-      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/80">
+    <div className="relative isolate min-h-screen overflow-x-clip bg-white dark:bg-black">
+      <AmbientBackground />
+      <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-md dark:border-zinc-800/80 dark:bg-black/80">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
           <Link href="/assets" className="flex items-center gap-2" aria-label="MyLife Hub 홈">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-white dark:bg-white dark:text-black">
               <Home className="h-4 w-4" />
             </span>
             <span className="hidden text-sm font-bold tracking-tight text-slate-900 dark:text-zinc-50 sm:inline">
@@ -54,6 +57,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <ThemeToggle />
             <NotificationBell initialCount={unreadCount} />
             <HouseholdSettingsModal members={members} role={profile.role} householdName={profile.householdName} />
             <span

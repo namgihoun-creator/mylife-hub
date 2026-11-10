@@ -1,8 +1,43 @@
-# MyLife Hub UX/UI Design System Specification (v2 · Visual Polish)
+# MyLife Hub UX/UI Design System Specification (v3 · Modern Tech Minimal)
 
 > **필수 준수:** 모든 프론트엔드 UI 컴포넌트와 페이지는 이 문서의 토큰·패턴을 따른다 (CLAUDE.md §4.F).
 > 벤치마크: CookSaver 스타일 — 따뜻한 웜 슬레이트 배경, 상태 중심 뱃지, 알약 필터, 아이콘 박스 카드.
+> **v3 (현재 규격) — Vercel / Supabase 대시보드 스타일의 모던 테크 미니멀리즘 + 완전한 라이트/다크.** 아래 "v3 토큰" 절이 v2 본문과 충돌하면 **v3가 우선**한다 (v2 본문의 `slate-*` 색은 `zinc` 스케일로 매핑되고, 컨테이너 `rounded-2xl`은 `rounded-xl`, 내부 요소 `rounded-xl`은 `rounded-lg`, 카드 그림자는 1px 보더로 대체).
 > v2 변경 요약: 와이드 컨테이너(`max-w-6xl`) · 블러 헤더 · 틴트/인셋 요약 배너 + 펄스 · 3열 그리드 + 소모품 게이지 · 섹션별 성격 분리(Overdue/Today/Upcoming) · 올 클리어 일러스트 · 스켈레톤.
+
+## 0. v3 토큰 (우선 적용)
+
+### 테마
+- `next-themes`: `attribute="class"`, `defaultTheme="system"`, `enableSystem`, `<html suppressHydrationWarning>`. 사용자가 헤더의 **Sun/Moon 토글**로 라이트/다크를 고르면 localStorage(`theme`)에 저장, 선택 전에는 OS 설정을 따른다.
+- 토글(`ThemeToggle`): `h-8 w-8 rounded-lg` 고스트 아이콘 버튼, Sun과 Moon을 겹쳐 놓고 `dark:` 클래스로 **회전 + 스케일 + 투명도 크로스페이드**(`transition-all duration-300`, `motion-reduce:transition-none`). 하이드레이션 불일치가 없도록 아이콘 전환은 CSS(`dark:`)로만 한다. 공개 페이지(로그인·Magic Link·초대)에는 우상단 고정 토글.
+- 모든 색 클래스는 라이트/다크 쌍으로 쓴다(`dark:` 필수, CLAUDE.md §4.F).
+
+### 색 (zinc 중립 + 의미색 액센트)
+| 용도 | Light | Dark |
+|---|---|---|
+| 페이지 바탕 | `bg-white` | `dark:bg-black` |
+| 표면(카드·모달·팝오버) | `bg-white border border-zinc-200` | `dark:bg-zinc-950 dark:border-zinc-800` |
+| 보조 표면(입력·패널 틴트) | `bg-zinc-50` | `dark:bg-zinc-900/50` |
+| 본문 / 보조 텍스트 | `text-zinc-900` / `text-zinc-500` | `dark:text-zinc-50` / `dark:text-zinc-400` |
+| Primary 버튼·활성 알약 | `bg-black text-white hover:bg-zinc-800` | `dark:bg-white dark:text-black dark:hover:bg-zinc-200` |
+| Secondary / Outline | `border border-zinc-200 bg-transparent text-zinc-900 hover:bg-zinc-100` | `dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900` |
+| 입력 | `rounded-lg border-zinc-200 bg-white` | `dark:border-zinc-800 dark:bg-black` |
+| 입력 포커스(날렵한 단색 링) | `focus-visible:border-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-900` | `dark:focus-visible:border-zinc-100 dark:focus-visible:ring-zinc-100` |
+| 헤더 | `sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-zinc-200/80` | `dark:bg-black/80 dark:border-zinc-800/80` |
+- **의미색 액센트**(Supabase 스타일, 은은하게): 완료·활성·성공 = emerald, 렌탈·구독 = violet, 정보 = sky, 주의 = amber, 위험 = rose. 면적은 작게(뱃지·아이콘·1px 보더·점).
+
+### 모양
+- 카드·모달·배너 `rounded-xl`, 버튼·입력·아이콘 박스·칩 `rounded-lg`, 알약·캡슐·아바타 `rounded-full`.
+- **그림자 없음**: 카드는 `border border-zinc-200 dark:border-zinc-800` 1px 보더만. 오버레이(모달·팝오버·드롭다운·토스트)에만 `shadow-lg`. 호버는 보더 색 전환(`hover:border-zinc-300 dark:hover:border-zinc-700`, `transition-colors`).
+
+### 앰비언트 메쉬 오로라 (페이지 최상단 배경)
+- `AmbientBackground`: 페이지 래퍼(`relative isolate overflow-x-clip bg-white dark:bg-black`) 안 첫 자식, `absolute inset-x-0 top-0 -z-10 h-[520px] overflow-hidden pointer-events-none` + 아래로 사라지는 마스크(`[mask-image:linear-gradient(to_bottom,black,transparent)]`). 안에 흐릿한 파스텔 원 3개(violet · sky · emerald, `blur-3xl`): 라이트 `/25~30`, 다크 `/10~15` 불투명도. 정보 요소가 아니므로 `aria-hidden`.
+
+### 소유 형태 선택형 세그먼트 카드 (Vercel Secret/Config 스타일)
+- 2열 카드 라디오(`role="radiogroup"` / `role="radio" aria-checked`): 좌측 **라디오 인디케이터**(`h-4 w-4 rounded-full border`, 선택 시 안쪽 점), 제목(`text-sm font-medium`) + 한 줄 설명(`text-xs` 보조). 선택된 카드는 `border-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:ring-zinc-100`, 비선택은 `border-zinc-200 dark:border-zinc-800 hover:border-zinc-300`. 렌탈은 선택 시 인디케이터에 violet 액센트.
+
+### 메트릭 카드 (요약 배너 · 렌탈 요약 · 3-Way 비교)
+- 군더더기 없는 평평한 타일: `rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950`, 라벨(`text-xs` 보조) → 큰 숫자(`text-2xl font-semibold tracking-tight tabular-nums`) → 보조 한 줄. 아이콘은 `h-4 w-4` 모노톤(액센트는 점·뱃지로). 그라데이션 금지.
 
 ## 1. 디자인 철학
 - **따뜻하고 정돈된 생활 OS:** 딱딱한 관리자 도구가 아닌, 매일 열어보고 싶은 가족 친화적 SaaS 대시보드.

@@ -11,7 +11,7 @@ import { OwnershipToggle, RentalForm, emptyRentalForm, toRentalInput, type Renta
 
 const LABEL = "text-xs font-medium text-slate-700 dark:text-zinc-300";
 const CONTROL =
-  "w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+  "w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
 const str = (v: string | number | null | undefined) => (v === null || v === undefined ? "" : String(v));
 
@@ -75,7 +75,7 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
         <label htmlFor="edit-name" className={LABEL}>
           이름 <span className="text-rose-500">*</span>
         </label>
-        <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} className="h-10 rounded-xl" />
+        <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} className="h-10 rounded-lg" />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -96,7 +96,7 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
           <label htmlFor="edit-category" className={LABEL}>
             카테고리
           </label>
-          <Input id="edit-category" value={category} onChange={(e) => setCategory(e.target.value)} maxLength={50} className="h-10 rounded-xl" />
+          <Input id="edit-category" value={category} onChange={(e) => setCategory(e.target.value)} maxLength={50} className="h-10 rounded-lg" />
         </div>
       </div>
 
@@ -131,14 +131,14 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
           type="button"
           onClick={onClose}
           disabled={pending}
-          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >
           취소
         </button>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex min-w-20 items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex min-w-20 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           저장
@@ -151,7 +151,7 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
 export function AssetEditModal({ asset, open, onOpenChange }: { asset: Asset; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-2xl border-slate-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <DialogHeader className="text-left">
           <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">자산 정보 수정</DialogTitle>
           <DialogDescription className="text-xs font-normal text-slate-500 dark:text-zinc-400">
