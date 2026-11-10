@@ -12,7 +12,10 @@ import {
 } from "@/shared/components/ui/dialog";
 import { cn } from "@/shared/lib/utils";
 import { formatRecurrence } from "@/shared/lib/recurrence";
+import { Collapse } from "@/shared/components/ui/collapse";
 import { addAssetFromPreset } from "../server/asset.actions";
+import type { OwnershipType } from "../schemas/asset.schema";
+import { OwnershipToggle, RentalForm, emptyRentalForm, toRentalInput, type RentalFormState } from "./RentalForm";
 import type { AppliancePreset } from "../schemas/asset.schema";
 import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 
@@ -36,6 +39,8 @@ export function PresetAddModal({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [addedCount, setAddedCount] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
+  const [ownership, setOwnership] = useState<OwnershipType>("OWNED");
+  const [rental, setRental] = useState<RentalFormState>(emptyRentalForm);
   const [, startTransition] = useTransition();
 
   // The empty-state CTA lives elsewhere in the tree and opens this single instance via an event, so the
@@ -64,9 +69,18 @@ export function PresetAddModal({
   function add(presetKey: string) {
     if (pendingKey) return;
     setError(null);
+
+    // Rental: the details panel above applies to every appliance added while "렌탈·구독" is selected.
+    let payload: Parameters<typeof addAssetFromPreset>[0] = { presetKey, visibility: "FAMILY", ownershipType: "OWNED" };
+    if (ownership === "RENTAL") {
+      const parsed = toRentalInput(rental);
+      if (!parsed.ok) return setError(parsed.error);
+      payload = { presetKey, visibility: "FAMILY", ownershipType: "RENTAL", rental: parsed.value };
+    }
+
     setPendingKey(presetKey);
     startTransition(async () => {
-      const res = await addAssetFromPreset({ presetKey, visibility: "FAMILY" });
+      const res = await addAssetFromPreset(payload);
       setPendingKey(null);
       if (!res.ok) return setError(res.error);
       setAddedCount((prev) => ({ ...prev, [presetKey]: (prev[presetKey] ?? 0) + 1 }));
@@ -84,7 +98,7 @@ export function PresetAddModal({
           {triggerLabel}
         </button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl grid-rows-[auto_auto_1fr] overflow-hidden rounded-2xl border-slate-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-2xl border-slate-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">
             생활가전 프리셋으로 추가
@@ -101,6 +115,25 @@ export function PresetAddModal({
           </p>
         ) : (
           <>
+            <div>
+              <OwnershipToggle
+                value={ownership}
+                onChange={(v) => {
+                  setOwnership(v);
+                  setError(null);
+                }}
+              />
+              {/* Rental details expand only for "렌탈·구독" (height + opacity transition, inert while collapsed). */}
+              <Collapse open={ownership === "RENTAL"}>
+                <RentalForm value={rental} onChange={(patch) => setRental((prev) => ({ ...prev, ...patch }))} />
+              </Collapse>
+              {error && (
+                <p role="alert" className="mt-3 text-xs font-medium text-rose-600 dark:text-rose-400">
+                  {error}
+                </p>
+              )}
+            </div>
+
             <div className="space-y-3">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500" />
@@ -124,14 +157,9 @@ export function PresetAddModal({
                   </button>
                 ))}
               </div>
-              {error && (
-                <p role="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400">
-                  {error}
-                </p>
-              )}
             </div>
 
-            <ul className="grid gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            <ul className="grid max-h-[45vh] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
               {filtered.map((p) => {
                 const count = addedCount[p.preset_key] ?? 0;
                 const busy = pendingKey === p.preset_key;

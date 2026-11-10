@@ -6,6 +6,9 @@ import { formatRecurrence } from "@/shared/lib/recurrence";
 import { cn } from "@/shared/lib/utils";
 import type { Asset } from "../schemas/asset.schema";
 import { getGauge } from "../utils/gauge";
+import { isRentalAsset } from "../utils/rental";
+import { AssetDetailDialog } from "./AssetDetailDialog";
+import { RentalBadge } from "./RentalBadge";
 import { nextTaskOf } from "../utils/asset-summary";
 
 const TAG =
@@ -25,6 +28,7 @@ export function AssetCard({ asset, today }: { asset: Asset; today: string }) {
 
   return (
     <li className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none dark:border-zinc-800 dark:bg-zinc-900/90">
+      {isRentalAsset(asset) && <RentalBadge provider={asset.rental_provider} className="mb-2.5" />}
       <div className="flex items-center gap-3">
         <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", tone)}>
           <Icon className="h-5 w-5" />
@@ -46,7 +50,10 @@ export function AssetCard({ asset, today }: { asset: Asset; today: string }) {
         <DDayBadge dueDate={next?.due_date} today={today} className="shrink-0" />
       </div>
 
-      <p className="mt-3 truncate text-xs font-normal text-slate-500 dark:text-zinc-400">{cycle}</p>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-zinc-400">{cycle}</p>
+        <AssetDetailDialog asset={asset} today={today} />
+      </div>
 
       {gauge && next && (
         <div className="mt-2.5 space-y-1">

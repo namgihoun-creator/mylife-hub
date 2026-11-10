@@ -133,6 +133,12 @@
 - **갱신:** 60초 폴링(탭이 보일 때만) + 창 포커스/탭 복귀 즉시 갱신. 낙관적으로 카운트를 줄이고 실패하면 서버 값으로 되돌린다.
 - **푸시 토글(팝오버 하단 행):** 목록 아래 `border-t px-4 py-3` 행 — 아이콘 박스(`h-8 w-8 rounded-xl`) + 라벨 `푸시 알림`(`text-sm font-medium`) + 보조 문구(`text-[11px]`) + 스위치(`role="switch"`, `h-6 w-11 rounded-full`, 켜짐 `bg-emerald-500` · 꺼짐 `bg-slate-200 dark:bg-zinc-700`, 흰 노브 `h-5 w-5`). 처리 중에는 스피너로 교체. 미지원/차단/오류 안내는 스위치 아래 `text-[11px] font-medium text-rose-600`(`role="alert"`).
 
+### J. 렌탈·구독 자산
+- **소유 형태 토글(자산 추가 모달 최상단):** 2칸 세그먼트 `rounded-full border bg-slate-100/60 p-1` — `직접 구매` / `렌탈·구독`. 활성 칸은 `bg-white shadow-sm`(렌탈은 `text-violet-600`), `role="radiogroup"` + 각 칸 `role="radio" aria-checked`.
+- **렌탈 입력 패널(렌탈 선택 시에만):** 토글 바로 아래에서 **높이 + 투명도 전환**으로 펼침/접힘 — 래퍼 `grid transition-[grid-template-rows,opacity] duration-300 ease-out` (`grid-rows-[0fr] opacity-0` ↔ `grid-rows-[1fr] opacity-100`), 안쪽 `overflow-hidden`, 접힌 상태는 `inert`(포커스 불가) + `motion-reduce:transition-none`. 패널 본체는 `rounded-2xl border border-violet-200/70 bg-violet-50/40 p-4`(다크 `border-violet-900/50 bg-violet-950/20`), 필드는 2열 그리드 `gap-3`, 라벨 `text-xs font-medium`, 입력 `h-9 rounded-xl text-sm`. 케어 방식은 `없음 / 방문 / 자가` 알약 세그먼트. 필수(렌탈사명)는 라벨 옆 `*`, 오류는 패널 하단 `text-xs font-medium text-rose-600`.
+- **카드 뱃지:** 렌탈 자산 카드 최상단(이름 위)에 `[렌탈] {렌탈사명}` 알약 — 바깥 `inline-flex rounded-full border border-violet-200 bg-violet-50 py-0.5 pl-0.5 pr-2.5 text-[11px] font-semibold text-violet-600`(다크 `border-violet-900 bg-violet-950/40 text-violet-400`) 안에 채워진 `렌탈` 칩(`rounded-full bg-violet-600 px-1.5 text-[10px] font-bold text-white`) + 렌탈사명(`truncate`).
+- **상세 모달:** 카드 우측 하단 `상세` 텍스트 버튼 → `Dialog`(§E). 본문은 섹션 카드. 렌탈 자산에는 **렌탈 정보 카드** 추가: ① 월 렌탈료(`text-2xl font-extrabold tabular-nums`, `32,900원`) + 결제일(`매월 15일`) ② **약정 만료까지 D-N** — 큰 D-Day 뱃지(`lg`, §2 긴급도 규칙) + 만료일 + 계약 진행률 게이지(§C-4와 같은 트랙 스타일, 채움 `bg-violet-500`) ③ 케어 방식 · 소유권 이전일 · 제휴카드 메모(보조 텍스트). 약정이 지났으면 `약정이 N일 전에 만료됐어요`(보조), 정보가 없으면 `약정 정보가 없어요`.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

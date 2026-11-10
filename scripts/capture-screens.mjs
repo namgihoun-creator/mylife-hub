@@ -238,6 +238,168 @@ for (const vp of VIEWPORTS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------- Phase 3-1: rental / subscription assets
+// Everything created here (assets, their rules and first tasks) is removed again in `finally`.
+{
+  const { data: beforeAssets } = await sb.from("assets").select("id");
+  const beforeIds = new Set((beforeAssets ?? []).map((a) => a.id));
+  const ctx = await newContext(VIEWPORTS[0], storageState);
+  const page = await ctx.newPage();
+  page.__errors = [];
+  page.on("pageerror", (e) => page.__errors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => m.type() === "error" && page.__errors.push(`console: ${m.text()}`));
+  const vp = VIEWPORTS[0];
+  try {
+    await page.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    await page.getByRole("button", { name: "가전 추가" }).first().click();
+    const dialog = page.getByRole("dialog");
+    const ownedRadio = dialog.getByRole("radio", { name: "직접 구매" });
+    const rentalRadio = dialog.getByRole("radio", { name: "렌탈·구독" });
+    await ownedRadio.waitFor();
+
+    // -- toggle + conditional, animated panel
+    const providerInput = dialog.getByLabel(/렌탈사명/);
+    // Playwright treats clipped / opacity-0 content as visible, so the collapsed state is checked the way a user experiences it:
+    // the wrapper is inert (no focus, hidden from assistive tech) and has no height.
+    const panel = () => dialog.locator("fieldset").evaluate((el) => { const w = el.closest("[aria-hidden]"); return { inert: w.hasAttribute("inert"), hidden: w.getAttribute("aria-hidden"), h: Math.round(w.getBoundingClientRect().height) }; });
+    const waitPanel = (collapsed) => page.waitForFunction((c) => { const w = document.querySelector('[role="dialog"] fieldset')?.closest("[aria-hidden]"); if (!w) return false; const h = w.getBoundingClientRect().height; return c ? w.hasAttribute("inert") && h < 2 : !w.hasAttribute("inert") && h > 100; }, collapsed, { timeout: 5000 });
+    record("rental", vp.name, "modal top: [직접 구매]/[렌탈·구독] toggle, OWNED selected, rental panel collapsed (hidden + inert)", (await ownedRadio.getAttribute("aria-checked")) === "true" && (await rentalRadio.getAttribute("aria-checked")) === "false" && await (async () => { const p = await panel(); return p.inert && p.hidden === "true" && p.h < 2; })());
+    await rentalRadio.click();
+    await waitPanel(false);
+    await page.waitForTimeout(500); // let the 300ms transition finish before measuring / capturing
+    const reveal = await dialog.locator("fieldset").evaluate((el) => { const w = el.closest("[aria-hidden]"); return { wrap: Math.round(w.getBoundingClientRect().height), content: Math.round(el.getBoundingClientRect().height + parseFloat(getComputedStyle(el).marginTop)) }; });
+    record("rental", vp.name, "expanded panel is fully revealed after the transition (wrapper height = content height, nothing clipped)", Math.abs(reveal.wrap - reveal.content) <= 2, JSON.stringify(reveal));
+    const fieldsOk = await Promise.all(["월 렌탈료 (원)", "결제일 (매월)", "계약 시작일", "약정 만료일", "소유권 이전 만료일", "제휴카드 메모"].map((l) => dialog.getByLabel(l).isVisible()));
+    const careOk = await Promise.all(["없음", "방문 코디", "자가 관리"].map((l) => dialog.getByRole("radio", { name: l }).isVisible()));
+    const anim = await dialog.locator("fieldset").evaluate((el) => {
+      const wrap = el.closest("[aria-hidden]");
+      const cs = getComputedStyle(wrap);
+      return { prop: cs.transitionProperty, dur: cs.transitionDuration, inert: wrap.hasAttribute("inert") };
+    });
+    record("rental", vp.name, "selecting 렌탈·구독 expands the panel with all 6 fields (+2 optional dates) and a height/opacity transition", fieldsOk.every(Boolean) && careOk.every(Boolean) && /grid-template-rows/.test(anim.prop) && /opacity/.test(anim.prop) && anim.dur.includes("0.3") && !anim.inert, JSON.stringify(anim));
+    await page.screenshot({ path: `${OUT}/assets-rental-form-desktop.png` });
+
+    // -- client/server validation (nothing may be stored on failure)
+    const preset = (name) => dialog.getByRole("button", { name: new RegExp(`^${name}`) }).first();
+    const alertText = async () => ((await dialog.getByRole("alert").first().textContent({ timeout: 8000 }).catch(() => "")) ?? "").trim();
+    const countRentals = async () => (await sb.from("assets").select("id", { count: "exact", head: true }).eq("rental_provider", "E2E렌탈")).count ?? 0;
+
+    await preset("정수기").click();
+    const noProvider = await alertText();
+    record("rental", vp.name, "rental without a provider is rejected (“렌탈사명을 입력해 주세요.”)", /렌탈사명을 입력해 주세요/.test(noProvider) && (await countRentals()) === 0, noProvider);
+
+    await providerInput.fill("E2E렌탈");
+    await dialog.getByLabel("월 렌탈료 (원)").fill("-5");
+    await preset("정수기").click();
+    await page.waitForFunction(() => /0원 이상/.test(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? ""), null, { timeout: 15_000 }).catch(() => {});
+    const negFee = await alertText();
+    await dialog.getByLabel("월 렌탈료 (원)").fill("32900");
+    await dialog.getByLabel("결제일 (매월)").fill("32");
+    await preset("정수기").click();
+    await page.waitForFunction(() => /1~31일/.test(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? ""), null, { timeout: 15_000 }).catch(() => {});
+    const badDay = await alertText();
+    await dialog.getByLabel("결제일 (매월)").fill("15");
+    await dialog.getByLabel("계약 시작일").fill(shift(50));
+    await dialog.getByLabel("약정 만료일").fill(shift(45));
+    await preset("정수기").click();
+    await page.waitForFunction(() => /빠를 수 없어요/.test(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? ""), null, { timeout: 15_000 }).catch(() => {});
+    const badOrder = await alertText();
+    record("rental", vp.name, "server validation: negative fee, billing day 32 and end-before-start are rejected with clear messages, nothing stored", /0원 이상/.test(negFee) && /1~31일/.test(badDay) && /빠를 수 없어요/.test(badOrder) && (await countRentals()) === 0, `${negFee} | ${badDay} | ${badOrder}`);
+
+    // -- valid rental registration
+    await dialog.getByLabel("계약 시작일").fill(shift(-320));
+    await dialog.getByLabel("약정 만료일").fill(shift(45));
+    await dialog.getByLabel("소유권 이전 만료일").fill(shift(400));
+    await dialog.getByRole("radio", { name: "방문 코디" }).click();
+    await dialog.getByLabel("제휴카드 메모").fill("KB국민 30만원 실적");
+    await preset("정수기").click();
+    let rentalRow = null;
+    for (let i = 0; i < 30 && !rentalRow; i++) {
+      rentalRow = (await sb.from("assets").select("*").eq("rental_provider", "E2E렌탈")).data?.[0] ?? null;
+      if (!rentalRow) await page.waitForTimeout(500);
+    }
+    record(
+      "rental",
+      vp.name,
+      "rental registration stores all 9 columns (RENTAL, provider, fee, billing day, contract/obligation/transfer dates, VISIT care, card note)",
+      !!rentalRow && rentalRow.ownership_type === "RENTAL" && rentalRow.rental_provider === "E2E렌탈" && rentalRow.monthly_fee === 32900 && rentalRow.billing_day === 15 && rentalRow.contract_start_date === shift(-320) && rentalRow.obligation_end_date === shift(45) && rentalRow.ownership_transfer_date === shift(400) && rentalRow.care_type === "VISIT" && rentalRow.payment_card_note === "KB국민 30만원 실적",
+      JSON.stringify(rentalRow && { o: rentalRow.ownership_type, f: rentalRow.monthly_fee, d: rentalRow.billing_day, c: rentalRow.care_type }),
+    );
+
+    // -- switching back to OWNED collapses the panel and registers a plain owned asset (rental columns untouched)
+    await ownedRadio.click();
+    await waitPanel(true);
+    await preset("에어컨").click();
+    let ownedRow = null;
+    for (let i = 0; i < 30 && !ownedRow; i++) {
+      const { data } = await sb.from("assets").select("*").eq("preset_key", "aircon");
+      ownedRow = (data ?? []).filter((a) => !beforeIds.has(a.id))[0] ?? null;
+      if (!ownedRow) await page.waitForTimeout(500);
+    }
+    record("rental", vp.name, "switching back to 직접 구매 collapses the panel; the new asset is OWNED with no rental data", !!ownedRow && ownedRow.ownership_type === "OWNED" && ownedRow.rental_provider === null && ownedRow.monthly_fee === null && ownedRow.care_type === "NONE");
+    await page.keyboard.press("Escape");
+
+    // -- list: badge on the rental card only
+    await page.reload({ waitUntil: "networkidle" });
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    const rentalCard = page.locator("main li").filter({ has: page.getByTestId("rental-badge") });
+    const badgeText = ((await rentalCard.first().getByTestId("rental-badge").textContent()) ?? "").replace(/\s+/g, " ").trim();
+    const badgeBox = await rentalCard.first().getByTestId("rental-badge").boundingBox();
+    const nameBox = await rentalCard.first().locator("h3").boundingBox();
+    record("rental", vp.name, "card shows the “[렌탈] 렌탈사명” badge above the name, only on rental assets", (await rentalCard.count()) === 1 && /^렌탈s*E2E렌탈$/.test(badgeText) && !!badgeBox && !!nameBox && badgeBox.y < nameBox.y, `badges=${await rentalCard.count()} text="${badgeText}"`);
+    await rentalCard.first().scrollIntoViewIfNeeded();
+    await rentalCard.first().screenshot({ path: `${OUT}/assets-rental-card-desktop.png` });
+
+    // -- detail: fee + remaining obligation
+    await rentalCard.first().getByRole("button", { name: /상세 보기/ }).click();
+    const detail = page.getByRole("dialog");
+    await detail.getByLabel("렌탈 정보").waitFor();
+    const fee = ((await detail.getByTestId("rental-fee").textContent()) ?? "").trim();
+    const obligation = ((await detail.getByTestId("rental-obligation").textContent()) ?? "").trim();
+    record("rental", vp.name, "detail: monthly fee “32,900원” + billing day + “약정 만료까지 D-45” with a D-45 badge", fee === "32,900원" && obligation === "약정 만료까지 D-45" && (await detail.getByText("D-45", { exact: true }).count()) >= 1 && (await detail.getByText("매월 15일 결제").count()) === 1, `${fee} | ${obligation}`);
+    record("rental", vp.name, "detail: contract progress bar, care type, card memo, transfer date", (await detail.getByRole("progressbar", { name: "계약 진행률" }).count()) === 1 && (await detail.getByText("방문 코디").count()) >= 1 && (await detail.getByText("KB국민 30만원 실적").count()) === 1 && (await detail.getByText("소유권 이전 만료일").count()) === 1);
+    await page.waitForTimeout(500); // dialog fade/zoom-in must finish before the capture
+    await page.screenshot({ path: `${OUT}/asset-detail-rental-desktop.png` });
+    await page.keyboard.press("Escape");
+
+    // -- an owned asset's detail has no rental section
+    const ownedCard = page.locator("main li").filter({ has: page.getByRole("button", { name: "에어컨 상세 보기" }) }).filter({ hasNot: page.getByTestId("rental-badge") });
+    await ownedCard.first().getByRole("button", { name: /상세 보기/ }).click();
+    const ownedDetail = page.getByRole("dialog");
+    await ownedDetail.getByText("관리 규칙").waitFor();
+    record("rental", vp.name, "owned asset detail: no rental section, still lists management rules", (await ownedDetail.getByLabel("렌탈 정보").count()) === 0 && (await ownedDetail.getByText("직접 구매").count()) >= 1);
+    await page.keyboard.press("Escape");
+
+    // -- mobile: the badge card and the detail dialog fit a 375px screen
+    const mctx = await newContext(VIEWPORTS[1], storageState);
+    const mp = await mctx.newPage();
+    await mp.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+    await mp.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    const mCard = mp.locator("main li").filter({ has: mp.getByTestId("rental-badge") }).first();
+    await mCard.getByRole("button", { name: /상세 보기/ }).click();
+    const mDetail = mp.getByRole("dialog");
+    await mDetail.getByLabel("렌탈 정보").waitFor();
+    const mBox = await mDetail.boundingBox();
+    record("rental", "mobile", "mobile: rental card + detail dialog fit 375px without horizontal overflow", (await overflowCheck(mp)) && !!mBox && mBox.width <= 375, `dialog w=${Math.round(mBox?.width ?? 0)}`);
+    await mp.waitForTimeout(500);
+    await mp.screenshot({ path: `${OUT}/asset-detail-rental-mobile.png` });
+    await mctx.close();
+    record("rental", vp.name, "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
+  } finally {
+    // Remove what this block created: tasks first (deleting an asset would only null their asset_id), then the assets (rules cascade).
+    const { data: afterAssets } = await sb.from("assets").select("id");
+    const created = (afterAssets ?? []).map((a) => a.id).filter((id) => !beforeIds.has(id));
+    if (created.length) {
+      await sb.from("tasks").delete().in("asset_id", created);
+      await sb.from("assets").delete().in("id", created);
+    }
+    await ctx.close();
+    const { count: left } = await sb.from("assets").select("id", { count: "exact", head: true }).eq("rental_provider", "E2E렌탈");
+    record("rental", vp.name, "cleanup: rental test assets, rules and tasks removed", left === 0, `created=${created.length} left=${left}`);
+  }
+}
+
 // ---------------------------------------------------------------- Magic Link flow (share -> anonymous page -> complete)
 // Sandbox: the flow runs on a throw-away one-off task created through the test user's session, so the
 // real demo tasks are never consumed. Leftovers of a crashed earlier run are cleaned up first.

@@ -19,8 +19,13 @@ import {
  */
 export async function addAssetFromPreset(input: unknown): Promise<ActionResult> {
   const parsed = addPresetInputSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "잘못된 요청입니다." };
-  const { presetKey, visibility } = parsed.data;
+  if (!parsed.success) {
+    // Validation messages are written for end users (e.g. "렌탈사명을 입력해 주세요."); show the first one.
+    const first = parsed.error.issues[0]?.message;
+    const friendly = first && /[가-힣]/.test(first) ? first : "잘못된 요청입니다.";
+    return { ok: false, error: friendly };
+  }
+  const { presetKey, visibility, ownershipType, rental } = parsed.data;
 
   const { user, profile } = await getSessionProfile();
   if (!user) return { ok: false, error: "로그인이 필요합니다." };
@@ -64,6 +69,20 @@ export async function addAssetFromPreset(input: unknown): Promise<ActionResult> 
       space: preset.default_space,
       category: preset.category,
       preset_key: preset.preset_key,
+      // Ownership (migration 0009). OWNED leaves every rental column at its default / NULL.
+      ownership_type: ownershipType,
+      ...(ownershipType === "RENTAL" && rental
+        ? {
+            rental_provider: rental.provider,
+            monthly_fee: rental.monthlyFee ?? null,
+            billing_day: rental.billingDay ?? null,
+            contract_start_date: rental.contractStartDate ?? null,
+            obligation_end_date: rental.obligationEndDate ?? null,
+            ownership_transfer_date: rental.ownershipTransferDate ?? null,
+            care_type: rental.careType,
+            payment_card_note: rental.paymentCardNote?.trim() ? rental.paymentCardNote.trim() : null,
+          }
+        : {}),
     })
     .select("id")
     .single();
