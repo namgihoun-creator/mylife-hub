@@ -14,6 +14,8 @@ export const metadata: Metadata = {
   title: { default: "MyLife Hub", template: "%s · MyLife Hub" },
   description: "개인·가족 통합 생활 OS — 입력은 최소로, 기억하고 연결하고 관리합니다.",
   applicationName: "MyLife Hub",
+  manifest: "/manifest.json",
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/icon-192.png" },
 };
 
 export const viewport: Viewport = {

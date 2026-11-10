@@ -3,6 +3,13 @@
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+
+// Syntactically valid fake subscription keys (65-byte P-256 point / 16-byte auth secret, base64url).
+const fakeKeys = () => ({
+  p256dh: Buffer.concat([Buffer.from([4]), randomBytes(64)]).toString("base64url"),
+  auth: randomBytes(16).toString("base64url"),
+});
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const EMAIL = process.env.E2E_EMAIL;
@@ -616,6 +623,34 @@ if (inviteUrl && svc) {
       const own = await msb.rpc("mark_notification_read", { p_notification_id: iso.id });
       const { data: ownAfter } = await svc.from("notifications").select("read_at").eq("id", iso.id).single();
       record("notifications", V, "owner can mark their own notification as read (RPC=true, read_at set)", own.data === true && ownAfter.read_at !== null);
+
+      // ---- Phase 2-3: push_subscriptions RLS + hand-off + service-only RPCs
+      const k = fakeKeys();
+      const epA = `https://fcm.googleapis.com/fcm/send/e2e-ok-rls-a-${rand}`;
+      const epM = `https://fcm.googleapis.com/fcm/send/e2e-ok-rls-m-${rand}`;
+      const { error: subFixErr } = await svc.from("push_subscriptions").insert({ user_id: memberId, endpoint: epM, ...k });
+      if (subFixErr) throw new Error(`push fixture failed: ${subFixErr.message}`);
+      const aSeesM = await sb.from("push_subscriptions").select("id").eq("endpoint", epM);
+      const mSeesM = await msb.from("push_subscriptions").select("id").eq("endpoint", epM);
+      record("push", V, "RLS: another user's subscription is invisible (admin 0 rows, owner 1 row)", aSeesM.data?.length === 0 && mSeesM.data?.length === 1, `admin=${aSeesM.data?.length} owner=${mSeesM.data?.length}`);
+
+      const aDelM = await sb.from("push_subscriptions").delete().eq("endpoint", epM).select("id");
+      const forged = await sb.from("push_subscriptions").insert({ user_id: memberId, endpoint: epA, ...k });
+      const ownIns = await sb.from("push_subscriptions").insert({ user_id: me.user.id, endpoint: epA, ...k }).select("id");
+      const updTry = await sb.from("push_subscriptions").update({ user_agent: "tampered" }).eq("endpoint", epA).select("id");
+      const { data: mStill } = await svc.from("push_subscriptions").select("id").eq("endpoint", epM);
+      record("push", V, "RLS: cannot delete or forge another user's subscription; own INSERT works; UPDATE is not granted", (aDelM.data?.length ?? 0) === 0 && mStill?.length === 1 && forged.error?.code === "42501" && ownIns.data?.length === 1 && !!updTry.error, `del=${aDelM.data?.length ?? 0} forged=${forged.error?.code} own=${ownIns.data?.length} update=${updTry.error?.code ?? "allowed"}`);
+
+      const hand = await msb.rpc("upsert_push_subscription", { p_endpoint: epA, p_p256dh: k.p256dh, p_auth: k.auth, p_user_agent: "e2e-handoff" });
+      const aAfter = await sb.from("push_subscriptions").select("id").eq("endpoint", epA);
+      const mAfter = await msb.from("push_subscriptions").select("id").eq("endpoint", epA);
+      record("push", V, "upsert_push_subscription hands a shared-device endpoint over to the new user", !hand.error && aAfter.data?.length === 0 && mAfter.data?.length === 1, hand.error?.message ?? `admin=${aAfter.data?.length} member=${mAfter.data?.length}`);
+
+      const delRpc = await msb.rpc("delete_expired_subscription", { p_endpoint: epM });
+      const claimRpc = await msb.rpc("claim_unsent_notifications", {});
+      const relRpc = await msb.rpc("release_notification_push", { p_ids: [] });
+      record("push", V, "dispatcher RPCs (delete_expired_subscription / claim / release) are not callable by users", !!delRpc.error && !!claimRpc.error && !!relRpc.error, `${delRpc.error?.code} ${claimRpc.error?.code} ${relRpc.error?.code}`);
+      await svc.from("push_subscriptions").delete().in("endpoint", [epA, epM]);
     } finally {
       await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
     }
@@ -737,6 +772,208 @@ if (inviteUrl && svc) {
   }
   record("notifications", "desktop", "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
   await ctx.close();
+}
+
+// ---------------------------------------------------------------- Phase 2-3: Web Push (SW, manifest, toggle, subscriptions, dispatch)
+const CRON_SECRET = process.env.CRON_SECRET;
+{
+  // Static pieces
+  const sw = await fetch(`${BASE}/sw.js`, { redirect: "manual" });
+  const swText = await sw.text();
+  record("push", "-", "sw.js: public JS, no-cache, push + notificationclick handlers", sw.status === 200 && /javascript/.test(sw.headers.get("content-type") ?? "") && /no-cache|no-store/.test(sw.headers.get("cache-control") ?? "") && /addEventListener\("push"/.test(swText) && /addEventListener\("notificationclick"/.test(swText), `status=${sw.status} cc=${sw.headers.get("cache-control")}`);
+  const mf = await fetch(`${BASE}/manifest.json`, { redirect: "manual" });
+  const manifest = await mf.json().catch(() => null);
+  record("push", "-", "manifest.json: name, standalone, start_url, 192/512 icons", mf.status === 200 && manifest?.display === "standalone" && manifest?.start_url === "/assets" && manifest?.icons?.some((i) => i.sizes === "512x512"), `status=${mf.status}`);
+  const iconStatuses = await Promise.all(["/icons/icon-192.png", "/icons/icon-512.png", "/icons/badge-72.png"].map(async (p) => (await fetch(`${BASE}${p}`, { redirect: "manual" })).status));
+  record("push", "-", "icons served (192 / 512 / badge)", iconStatuses.every((s) => s === 200), iconStatuses.join(","));
+
+  // ---- Browser toggle: permission -> SW -> subscribe (PushManager mocked: headless Chromium has no push service) -> Server Action -> DB
+  const endpoint = `https://fcm.googleapis.com/fcm/send/e2e-ok-ui-${Date.now()}`;
+  const kk = fakeKeys();
+  const mockPush = ({ endpoint: ep, p256dh, auth }) => {
+    // Headless Chromium keeps reporting Notification.permission = "denied" even after grantPermissions(),
+    // so the permission API is controlled explicitly (configurable: tests can redefine it).
+    let permission = "granted";
+    Object.defineProperty(Notification, "permission", { get: () => permission, configurable: true });
+    Notification.requestPermission = async () => permission;
+    const mk = () => ({
+      endpoint: ep,
+      expirationTime: null,
+      toJSON: () => ({ endpoint: ep, keys: { p256dh, auth } }),
+      unsubscribe: async () => {
+        sessionStorage.removeItem("__e2e_push");
+        return true;
+      },
+    });
+    PushManager.prototype.getSubscription = async () => (sessionStorage.getItem("__e2e_push") ? mk() : null);
+    PushManager.prototype.subscribe = async () => {
+      sessionStorage.setItem("__e2e_push", "1");
+      return mk();
+    };
+  };
+  const toggle = (page) => page.getByRole("switch", { name: "푸시 알림" });
+  const openBell = async (page) => {
+    await page.getByRole("button", { name: /^알림( \d+건)?$/ }).click();
+    await page.locator('[aria-label="알림 목록"]').waitFor();
+    // The switch replaces a spinner while the hook checks the browser + server state.
+    await page.getByRole("switch", { name: "푸시 알림" }).waitFor({ timeout: 15_000 }).catch(() => {});
+  };
+
+  const ctx = await newContext(VIEWPORTS[0], storageState);
+  await ctx.grantPermissions(["notifications"], { origin: BASE });
+  await ctx.addInitScript(mockPush, { endpoint, ...kk });
+  const page = await ctx.newPage();
+  page.__errors = [];
+  page.on("pageerror", (e) => page.__errors.push(`pageerror: ${e.message}`));
+  await page.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+  await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+  await openBell(page);
+  record("push", "desktop", "popover footer has the ‘푸시 알림’ switch (off by default)", (await toggle(page).count()) === 1 && (await toggle(page).getAttribute("aria-checked")) === "false");
+
+  await toggle(page).click();
+  const turnedOn = await page.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute("aria-checked") === "true", null, { timeout: 20_000 }).then(() => true).catch(() => false);
+  const { data: row } = await sb.from("push_subscriptions").select("endpoint, p256dh, auth, user_agent, last_used_at").eq("endpoint", endpoint).maybeSingle();
+  record("push", "desktop", "toggle ON → Server Action stored the subscription (endpoint, keys, user agent)", turnedOn && row?.p256dh === kk.p256dh && row?.auth === kk.auth && !!row?.user_agent, `on=${turnedOn} row=${!!row}`);
+  const swScript = await page.evaluate(async () => {
+    const r = await navigator.serviceWorker.getRegistration("/");
+    return (r?.active ?? r?.waiting ?? r?.installing)?.scriptURL ?? null;
+  });
+  record("push", "desktop", "Service Worker /sw.js is registered with scope /", !!swScript && swScript.endsWith("/sw.js"), String(swScript));
+  await page.screenshot({ path: `${OUT}/push-toggle-on-desktop.png` });
+
+  // Persisted across a reload: the hook re-checks the browser AND the server (hasPushSubscription).
+  await page.reload({ waitUntil: "networkidle" });
+  await openBell(page);
+  record("push", "desktop", "after reload the switch is still ON (browser + server agree)", (await toggle(page).getAttribute("aria-checked")) === "true");
+
+  await toggle(page).click();
+  const turnedOff = await page.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute("aria-checked") === "false", null, { timeout: 20_000 }).then(() => true).catch(() => false);
+  const { data: gone } = await sb.from("push_subscriptions").select("id").eq("endpoint", endpoint);
+  record("push", "desktop", "toggle OFF → subscription row deleted", turnedOff && gone?.length === 0);
+  record("push", "desktop", "no page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
+  await ctx.close();
+
+  // SSRF guard: an endpoint outside the push-service allowlist is rejected and never stored.
+  {
+    const evil = `https://evil.example.com/push/e2e-ok-${Date.now()}`;
+    const c2 = await newContext(VIEWPORTS[0], storageState);
+    await c2.grantPermissions(["notifications"], { origin: BASE });
+    await c2.addInitScript(mockPush, { endpoint: evil, ...fakeKeys() });
+    const p2 = await c2.newPage();
+    await p2.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+    await openBell(p2);
+    await toggle(p2).click();
+    const shownError = await p2.getByText("지원하지 않는 푸시 서비스 주소입니다.").waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
+    const { data: evilRow } = await sb.from("push_subscriptions").select("id").eq("endpoint", evil);
+    record("push", "desktop", "SSRF guard: non-push-service endpoint is rejected with a message and not stored", shownError && evilRow?.length === 0 && (await toggle(p2).getAttribute("aria-checked")) === "false");
+    await c2.close();
+  }
+
+  // Permission denied path (headless auto-denies the prompt)
+  {
+    const c3 = await newContext(VIEWPORTS[0], storageState);
+    await c3.addInitScript(mockPush, { endpoint: `https://fcm.googleapis.com/fcm/send/e2e-ok-denied-${Date.now()}`, ...fakeKeys() });
+    await c3.addInitScript(() => {
+      // Starts as "default" (the prompt has not been answered); answering it denies.
+      let permission = "default";
+      Object.defineProperty(Notification, "permission", { get: () => permission, configurable: true });
+      Notification.requestPermission = async () => {
+        permission = "denied";
+        return "denied";
+      };
+    });
+    const p3 = await c3.newPage();
+    await p3.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+    await openBell(p3);
+    await toggle(p3).click();
+    const blocked = await p3.getByText(/브라우저에서 알림이 차단되어 있어요/).first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
+    record("push", "desktop", "permission denied → clear guidance, switch stays off", blocked && (await toggle(p3).count()) === 1);
+    await c3.close();
+  }
+
+  // ---- /api/push/dispatch
+  const call = (headers = {}, init = {}) => fetch(`${BASE}/api/push/dispatch`, { method: "POST", headers, ...init });
+  const bearer = { Authorization: `Bearer ${CRON_SECRET}` };
+  const s0 = (await call()).status;
+  const s1 = (await call({ Authorization: "Bearer definitely-wrong" })).status;
+  const s2 = (await fetch(`${BASE}/api/push/dispatch`)).status;
+  const s3 = (await call({ Authorization: `Token ${CRON_SECRET}` })).status;
+  record("push", "-", "dispatch auth: missing / wrong / non-Bearer credentials → 401 (POST and GET)", [s0, s1, s2, s3].every((s) => s === 401), `${s0},${s1},${s2},${s3}`);
+
+  if (!CRON_SECRET || !svc) {
+    record("push", "-", "dispatch flow", true, "SKIPPED: needs CRON_SECRET and SUPABASE_SERVICE_ROLE_KEY");
+  } else {
+    const dispatch = async (body) => {
+      const res = await call({ ...bearer, "Content-Type": "application/json" }, { body: JSON.stringify({ user_ids: [me.user.id], ...body }) });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    };
+    const uid = me.user.id;
+    const sub = (kind) => ({ user_id: uid, endpoint: `https://fcm.googleapis.com/fcm/send/e2e-${kind}-d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, ...fakeKeys() });
+    const notif = async (title) => {
+      const { data } = await svc.from("notifications").insert({ household_id: myProfile.household_id, user_id: uid, type: "DUE_SOON", title, body: "dispatch test", dedupe_key: `e2e-dispatch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }).select("id").single();
+      return data.id;
+    };
+    // Start clean: nothing pending and no subscriptions for the E2E account.
+    await svc.from("notifications").update({ push_sent_at: new Date().toISOString() }).eq("user_id", uid).is("push_sent_at", null);
+    await svc.from("push_subscriptions").delete().eq("user_id", uid);
+
+    const bad = await call({ ...bearer, "Content-Type": "application/json" }, { body: JSON.stringify({ limit: 0 }) });
+    record("push", "-", "dispatch rejects an invalid body with 400", bad.status === 400, `status=${bad.status}`);
+
+    // 1) one healthy + one 410 + one 404 subscription
+    const ok = sub("ok"), g410 = sub("gone"), g404 = sub("notfound");
+    await svc.from("push_subscriptions").insert([ok, g410, g404]);
+    const n1 = await notif("E2E 푸시 발송 1");
+    const r1 = await dispatch({});
+    const { data: left } = await svc.from("push_subscriptions").select("endpoint, last_used_at").eq("user_id", uid);
+    const { data: n1row } = await svc.from("notifications").select("push_sent_at").eq("id", n1).single();
+    record("push", "-", "dispatch OK: claimed 1, 1 push sent, 410 + 404 subscriptions auto-removed, healthy one kept (last_used_at set)", r1.status === 200 && r1.json?.claimed === 1 && r1.json?.pushesSent === 1 && r1.json?.notificationsDelivered === 1 && r1.json?.expiredSubscriptionsRemoved === 2 && left?.length === 1 && left[0].endpoint === ok.endpoint && !!left[0].last_used_at && !!n1row.push_sent_at, JSON.stringify(r1.json));
+
+    // 2) no double push
+    const r2 = await dispatch({});
+    record("push", "-", "dispatch is not repeatable for the same notification (claimed 0, no second push)", r2.json?.claimed === 0 && r2.json?.pushesSent === 0, JSON.stringify(r2.json));
+
+    // 3) transient failure -> released, retried on the next run, then delivered
+    await svc.from("push_subscriptions").delete().eq("user_id", uid);
+    const fail = sub("fail");
+    await svc.from("push_subscriptions").insert(fail);
+    const n2 = await notif("E2E 푸시 재시도");
+    const r3 = await dispatch({});
+    const { data: n2row } = await svc.from("notifications").select("push_sent_at").eq("id", n2).single();
+    const { data: failSub } = await svc.from("push_subscriptions").select("id").eq("endpoint", fail.endpoint);
+    record("push", "-", "transient push-service error (500): notification released for retry, subscription kept", r3.json?.released === 1 && r3.json?.notificationsDelivered === 0 && n2row.push_sent_at === null && failSub?.length === 1, JSON.stringify(r3.json));
+    await svc.from("push_subscriptions").delete().eq("user_id", uid);
+    await svc.from("push_subscriptions").insert(sub("ok"));
+    const r4 = await dispatch({});
+    const { data: n2after } = await svc.from("notifications").select("push_sent_at").eq("id", n2).single();
+    record("push", "-", "released notification is delivered on the next run", r4.json?.claimed === 1 && r4.json?.pushesSent === 1 && !!n2after.push_sent_at, JSON.stringify(r4.json));
+
+    // 4) no subscription -> nothing to send, not retried forever
+    await svc.from("push_subscriptions").delete().eq("user_id", uid);
+    const n3 = await notif("E2E 구독 없음");
+    const r5 = await dispatch({});
+    const { data: n3row } = await svc.from("notifications").select("push_sent_at").eq("id", n3).single();
+    record("push", "-", "user without a subscribed device: counted as noSubscription and marked handled", r5.json?.noSubscription === 1 && r5.json?.pushesSent === 0 && !!n3row.push_sent_at, JSON.stringify(r5.json));
+
+    // 5) send-time allowlist: a stored endpoint outside the push services is dropped, never contacted
+    const evilSub = { user_id: uid, endpoint: `https://evil.example.com/e2e-ok-${Date.now()}`, ...fakeKeys() };
+    await svc.from("push_subscriptions").insert(evilSub);
+    await notif("E2E SSRF");
+    const r6 = await dispatch({});
+    const { data: evilLeft } = await svc.from("push_subscriptions").select("id").eq("endpoint", evilSub.endpoint);
+    record("push", "-", "send-time SSRF guard: disallowed endpoint is removed and not contacted", r6.json?.pushesSent === 0 && r6.json?.expiredSubscriptionsRemoved === 1 && evilLeft?.length === 0, JSON.stringify(r6.json));
+
+    // 6) user_ids scoping: another user's pending notification is untouched
+    const other = await notif("E2E scope");
+    const r7 = await call({ ...bearer, "Content-Type": "application/json" }, { body: JSON.stringify({ user_ids: ["00000000-0000-4000-8000-000000000000"] }) });
+    const j7 = await r7.json();
+    const { data: otherRow } = await svc.from("notifications").select("push_sent_at").eq("id", other).single();
+    record("push", "-", "dispatch scoped to other users leaves this user's pending notification unclaimed", j7.claimed === 0 && otherRow.push_sent_at === null, JSON.stringify(j7));
+
+    // Cleanup (dedicated E2E account)
+    await svc.from("push_subscriptions").delete().eq("user_id", uid);
+    await svc.from("notifications").delete().eq("user_id", uid);
+  }
 }
 await browser.close();
 

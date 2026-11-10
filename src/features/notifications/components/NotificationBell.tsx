@@ -17,33 +17,30 @@ import { cn } from "@/shared/lib/utils";
 import { useNotificationPolling } from "../hooks/useNotificationPolling";
 import type { AppNotification, NotificationType } from "../schemas/notification.schema";
 import { getRecentNotifications, markAllAsRead, markAsRead } from "../server/notification.actions";
+import { NOTIFICATION_HREF } from "../utils/notification-links";
+import { PushToggle } from "./PushToggle";
 
 // Complete class strings (Tailwind JIT) — tones per docs/DESIGN_SYSTEM.md §I.
-const VISUAL: Record<NotificationType, { icon: LucideIcon; tone: string; href: string }> = {
+const VISUAL: Record<NotificationType, { icon: LucideIcon; tone: string }> = {
   MAGIC_COMPLETED: {
     icon: CheckCircle2,
     tone: "bg-emerald-50 text-emerald-500 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900/50",
-    href: "/timeline",
   },
   INVITE_ACCEPTED: {
     icon: UserPlus,
     tone: "bg-sky-50 text-sky-500 ring-1 ring-inset ring-sky-100 dark:bg-sky-950/40 dark:text-sky-400 dark:ring-sky-900/50",
-    href: "/assets",
   },
   DUE_SOON: {
     icon: CalendarClock,
     tone: "bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900/50",
-    href: "/timeline",
   },
   DUE_TODAY: {
     icon: CalendarCheck,
     tone: "bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900/50",
-    href: "/timeline",
   },
   OVERDUE: {
     icon: AlertTriangle,
     tone: "bg-rose-50 text-rose-500 ring-1 ring-inset ring-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:ring-rose-900/50",
-    href: "/timeline",
   },
 };
 
@@ -76,7 +73,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
         if (!r.ok) void refresh();
       });
     }
-    router.push(VISUAL[n.type].href);
+    router.push(NOTIFICATION_HREF[n.type]);
   }
 
   async function onMarkAll() {
@@ -168,6 +165,8 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
             })}
           </ul>
         )}
+
+        <PushToggle />
       </PopoverContent>
     </Popover>
   );
