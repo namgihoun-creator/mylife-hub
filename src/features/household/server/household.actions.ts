@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { pushNewNotifications } from "@/features/notifications/server/push-trigger";
 import { createClient } from "@/shared/lib/supabase/server";
 import { getBaseUrl } from "@/shared/lib/base-url";
 import { generateRawToken, sha256Hex } from "@/shared/lib/token";
@@ -48,12 +49,15 @@ export async function acceptInvite(code: unknown, displayName: unknown): Promise
   if (!n.success) return { ok: false, error: ERRORS.INVALID_DISPLAY_NAME };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("accept_household_invite", {
+  const { data: householdId, error } = await supabase.rpc("accept_household_invite", {
     p_code_hash: await sha256Hex(c.data),
     p_display_name: n.data,
   });
   if (error) return { ok: false, error: ERRORS[error.message] ?? "초대를 수락하지 못했습니다." };
 
   revalidatePath("/", "layout");
+
+  // Instant push to the household admins who just got INVITE_ACCEPTED (after the response; never blocks it).
+  if (typeof householdId === "string") pushNewNotifications({ type: "INVITE_ACCEPTED", householdId });
   return { ok: true };
 }

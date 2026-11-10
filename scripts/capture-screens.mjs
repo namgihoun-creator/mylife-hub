@@ -254,6 +254,13 @@ const countRealOpen = async () =>
       .not("title", "like", `${SANDBOX_PREFIX}%`)
   ).count;
 const realOpenBefore = await countRealOpen();
+// Phase 2-5: a simulated push subscription for the admin, so the INSTANT push after Magic Link completion / invite
+// acceptance can be observed (the endpoint marker makes the test-mode sender answer 201; no cron runs in this suite).
+const instantEndpoint = `https://fcm.googleapis.com/fcm/send/e2e-ok-instant-${Date.now()}`;
+if (svc) {
+  await svc.from("push_subscriptions").delete().eq("user_id", me.user.id);
+  await svc.from("push_subscriptions").insert({ user_id: me.user.id, endpoint: instantEndpoint, ...fakeKeys() });
+}
 const sandboxTitle = `${SANDBOX_PREFIX} ${Date.now()}`;
 // Recurring sandbox (monthly rule + iteration 1) so completing it also proves next-iteration generation.
 await sb.from("task_rules").delete().like("title", `${SANDBOX_PREFIX}%`);
@@ -394,6 +401,19 @@ await sb.from("task_rules").delete().like("title", `${SANDBOX_PREFIX}%`);
     !!one && one.type === "MAGIC_COMPLETED" && one.title === "가족이 과업을 완료했어요" && one.read_at === null,
     `rows=${rows?.length} type=${one?.type}`,
   );
+
+  // Instant push: no cron has run in this suite yet, so push_sent_at can only come from the post-response trigger.
+  if (svc) {
+    let row = null;
+    for (let i = 0; i < 30; i++) {
+      row = (await svc.from("notifications").select("created_at, push_sent_at").like("body", `%${sandboxTitle}%`)).data?.[0];
+      if (row?.push_sent_at) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const { data: usedSub } = await svc.from("push_subscriptions").select("last_used_at").eq("endpoint", instantEndpoint).single();
+    const latencyMs = row?.push_sent_at ? new Date(row.push_sent_at) - new Date(row.created_at) : null;
+    record("push", "-", "instant push after Magic Link completion: pushed within seconds, no cron needed (push_sent_at + subscription last_used_at set)", !!row?.push_sent_at && latencyMs < 20_000 && !!usedSub?.last_used_at, `latency=${latencyMs}ms`);
+  }
 }
 
 // ---------------------------------------------------------------- rate limit on /api/tasks/magic-complete (10 / min / IP)
@@ -532,11 +552,24 @@ if (inviteUrl && svc) {
     record("invite", V, "after login: back on /invite with name field + 가구에 참여하기", (await mp.locator('input[name="displayName"]').count()) === 1 && (await mp.getByRole("button", { name: "가구에 참여하기" }).count()) === 1);
     await mp.screenshot({ path: `${OUT}/invite-join-mobile.png`, fullPage: true });
 
+    // Reset the admin's subscription so the INSTANT push for INVITE_ACCEPTED can be observed on its own.
+    await svc.from("push_subscriptions").update({ last_used_at: null }).eq("user_id", me.user.id);
     await mp.getByRole("button", { name: "가구에 참여하기" }).click();
     await mp.waitForURL(/\/assets/, { timeout: 20_000 });
     await mp.waitForLoadState("networkidle");
     await mp.addStyleTag({ content: "nextjs-portal{display:none!important}" });
     record("invite", V, "joined: /assets shows the household capsule", (await mp.getByText("E2E 테스트 가구").count()) > 0);
+    {
+      let row = null;
+      for (let i = 0; i < 30; i++) {
+        row = (await svc.from("notifications").select("created_at, push_sent_at").eq("type", "INVITE_ACCEPTED").like("body", "E2E 구성원%").order("created_at", { ascending: false }).limit(1)).data?.[0];
+        if (row?.push_sent_at) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      const { data: usedSub } = await svc.from("push_subscriptions").select("last_used_at").eq("endpoint", instantEndpoint).single();
+      const latencyMs = row?.push_sent_at ? new Date(row.push_sent_at) - new Date(row.created_at) : null;
+      record("push", V, "instant push after invite acceptance: admin pushed within seconds (push_sent_at + subscription last_used_at set)", !!row?.push_sent_at && latencyMs < 20_000 && !!usedSub?.last_used_at, `latency=${latencyMs}ms`);
+    }
     record("invite", V, "member role: no ‘가전 추가’ (ADMIN-only)", (await mp.getByRole("button", { name: "가전 추가" }).count()) === 0);
     {
       const { data: inv } = await sb.from("notifications").select("id, body, read_at").eq("type", "INVITE_ACCEPTED").like("body", "E2E 구성원%");

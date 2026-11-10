@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAdminClient } from "@/shared/lib/supabase/admin";
+import { pushNewNotifications } from "@/features/notifications/server/push-trigger";
 import { clientIp, rateLimit } from "@/shared/lib/rate-limit";
 import { sha256Hex } from "@/shared/lib/token";
 
@@ -83,6 +84,11 @@ export async function POST(request: Request) {
 
   revalidatePath("/timeline");
   revalidatePath("/assets");
+
+  // Instant push for the owner/admins who just got the MAGIC_COMPLETED notification (after the response; never blocks it).
+  if (result.task_id && !result.already_completed) {
+    pushNewNotifications({ type: "MAGIC_COMPLETED", taskId: result.task_id });
+  }
 
   return NextResponse.json(
     {
