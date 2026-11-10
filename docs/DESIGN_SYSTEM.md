@@ -125,6 +125,13 @@
 - **복구 확인:** 파일 선택 후 앰버 박스(`rounded-xl border-amber-200 bg-amber-50`) 안에서 "{파일명} 을(를) 복구할까요?" + [복구 실행] [취소]. 결과/오류는 모달 하단 `role="status"` 박스(성공 emerald · 오류 rose).
 - **초대 페이지 `/invite/[code]`:** Magic Link 페이지(§G)와 같은 구조 — 가구 배너("{가구명} / 가구에 초대받았어요") → 상태별 단일 액션(비로그인 `로그인 / 가입하고 참여하기` · 로그인 `표시 이름` 입력 + `가구에 참여하기` `h-14 rounded-2xl`) → 오류는 엠프티 스테이트(USED/EXPIRED/INVALID).
 
+### I. 알림 벨 · 팝오버
+- **벨 버튼:** 헤더 우측(설정·아바타 왼쪽) `h-8 w-8 rounded-full` 아이콘 버튼. 안 읽은 알림이 있으면 우상단 카운트 뱃지 `min-w-4 h-4 rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white`(9 초과는 `9+`) + 뒤에서 퍼지는 펄스(`animate-ping bg-rose-400/60`, `motion-reduce:animate-none`). `aria-label="알림 N건"`.
+- **팝오버:** `w-80 max-w-[92vw] rounded-2xl` Surface + `shadow-lg`, 패딩 없음. 상단 행 `px-4 py-3 border-b`: 제목 `알림`(`text-sm font-semibold`) + 우측 텍스트 버튼 `모두 읽음`(`text-xs font-medium`, 안 읽은 게 없으면 비활성).
+- **목록 항목:** 아이콘 박스(`h-9 w-9 rounded-xl`, 유형별 톤: 완료 emerald · 참여 sky · 임박/당일 amber · 초과 rose) + 제목(`text-sm font-semibold`) + 내용(`text-xs` 보조, 2줄 클램프) + 상대 시간(`text-[11px]`: 방금 전 · 10분 전 · 3시간 전 · 2일 전). 안 읽음은 우측 로즈 점 + 연한 틴트 배경. 항목 전체가 버튼: 읽음 처리 후 해당 화면으로 이동.
+- **빈 상태(컴팩트):** 원형 아이콘(`h-10 w-10`) + `새로운 알림이 없습니다`(`text-sm`), 패딩 `py-8`.
+- **갱신:** 60초 폴링(탭이 보일 때만) + 창 포커스/탭 복귀 즉시 갱신. 낙관적으로 카운트를 줄이고 실패하면 서버 값으로 되돌린다.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

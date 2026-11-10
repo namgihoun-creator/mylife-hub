@@ -376,6 +376,19 @@ await sb.from("task_rules").delete().like("title", `${SANDBOX_PREFIX}%`);
   record("magic", "mobile", "sandbox: temp task/rule removed & real tasks untouched", left === 0 && ruleLeft === 0 && realOpenAfter === realOpenBefore, `temp tasks=${left} rules=${ruleLeft}, real open ${realOpenBefore}→${realOpenAfter}`);
 }
 
+// ---------------------------------------------------------------- Phase 2-2: Magic Link completion -> notification
+{
+  const { data: rows } = await sb.from("notifications").select("id, type, title, body, read_at").like("body", `%${sandboxTitle}%`);
+  const one = rows?.length === 1 ? rows[0] : null;
+  record(
+    "notifications",
+    "-",
+    "magic completion created exactly 1 MAGIC_COMPLETED notification for the owner/admin (replays add none)",
+    !!one && one.type === "MAGIC_COMPLETED" && one.title === "가족이 과업을 완료했어요" && one.read_at === null,
+    `rows=${rows?.length} type=${one?.type}`,
+  );
+}
+
 // ---------------------------------------------------------------- rate limit on /api/tasks/magic-complete (10 / min / IP)
 {
   const ctx = await browser.newContext();
@@ -518,6 +531,10 @@ if (inviteUrl && svc) {
     await mp.addStyleTag({ content: "nextjs-portal{display:none!important}" });
     record("invite", V, "joined: /assets shows the household capsule", (await mp.getByText("E2E 테스트 가구").count()) > 0);
     record("invite", V, "member role: no ‘가전 추가’ (ADMIN-only)", (await mp.getByRole("button", { name: "가전 추가" }).count()) === 0);
+    {
+      const { data: inv } = await sb.from("notifications").select("id, body, read_at").eq("type", "INVITE_ACCEPTED").like("body", "E2E 구성원%");
+      record("notifications", V, "invite accepted → ADMIN received INVITE_ACCEPTED with the member's name", (inv?.length ?? 0) >= 1 && inv.some((n) => /E2E 구성원님이 가구에 참여했어요/.test(n.body)), `rows=${inv?.length}`);
+    }
     await mp.screenshot({ path: `${OUT}/invite-member-assets-mobile.png`, fullPage: true });
 
     await mp.getByRole("button", { name: "가구 설정" }).click();
@@ -573,6 +590,32 @@ if (inviteUrl && svc) {
       record("snooze", V, "days outside 1..60 → INVALID_DAYS", badDays.error?.message === "INVALID_DAYS", badDays.error?.message ?? "no error");
       const { data: logs } = await sb.from("event_logs").select("payload").eq("task_id", famTask.id).eq("event_type", "TASK_SNOOZED");
       record("snooze", V, "audit: 2 TASK_SNOOZED logs (UI + RPC; replay not duplicated) with days/previous/new dates", logs?.length === 2 && logs.every((l) => l.payload.days && l.payload.previous_due_date && l.payload.new_due_date), `logs=${logs?.length}`);
+
+      // ---- Phase 2-2: notification isolation (RLS). A row that belongs to the MEMBER only (created with the service role).
+      const isoTitle = `E2E 격리 ${rand}`;
+      const { data: iso, error: isoErr } = await svc
+        .from("notifications")
+        .insert({ household_id: myProfile.household_id, user_id: memberId, type: "OVERDUE", title: isoTitle, body: "member only", dedupe_key: `e2e-iso-${rand}` })
+        .select("id")
+        .single();
+      if (isoErr) throw new Error(`isolation fixture failed: ${isoErr.message}`);
+      const adminSees = await sb.from("notifications").select("id").eq("title", isoTitle);
+      const memberSees = await msb.from("notifications").select("id").eq("title", isoTitle);
+      record("notifications", V, "RLS: another user's notification is invisible (admin 0 rows, owner 1 row)", adminSees.data?.length === 0 && memberSees.data?.length === 1, `admin=${adminSees.data?.length} owner=${memberSees.data?.length}`);
+
+      const upd = await sb.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", iso.id).select("id");
+      const rpcOther = await sb.rpc("mark_notification_read", { p_notification_id: iso.id });
+      const { data: still } = await svc.from("notifications").select("read_at").eq("id", iso.id).single();
+      record("notifications", V, "RLS: cannot mark another user's notification as read (0 rows, RPC=false, still unread)", (upd.data?.length ?? 0) === 0 && rpcOther.data === false && still.read_at === null, `update=${upd.data?.length ?? 0} rpc=${rpcOther.data}`);
+
+      const ins = await sb.from("notifications").insert({ household_id: myProfile.household_id, user_id: me.user.id, type: "OVERDUE", title: "E2E forged", body: "x", dedupe_key: `e2e-forged-${rand}` });
+      const del = await sb.from("notifications").delete().eq("id", iso.id).select("id");
+      const { data: stillThere } = await svc.from("notifications").select("id").eq("id", iso.id);
+      record("notifications", V, "clients cannot INSERT or DELETE notifications", !!ins.error && stillThere?.length === 1, `insert=${ins.error?.code ?? "allowed"} delete=${del.error?.code ?? del.data?.length}`);
+
+      const own = await msb.rpc("mark_notification_read", { p_notification_id: iso.id });
+      const { data: ownAfter } = await svc.from("notifications").select("read_at").eq("id", iso.id).single();
+      record("notifications", V, "owner can mark their own notification as read (RPC=true, read_at set)", own.data === true && ownAfter.read_at !== null);
     } finally {
       await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
     }
@@ -591,6 +634,109 @@ if (inviteUrl && svc) {
   }
 } else {
   record("invite", "mobile", "invite acceptance flow", true, "SKIPPED: needs an invite URL and SUPABASE_SERVICE_ROLE_KEY");
+}
+
+// ---------------------------------------------------------------- Phase 2-2: notification bell (badge, polling, dropdown, read states)
+{
+  const unreadInDb = async () =>
+    (await sb.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null)).count ?? 0;
+  const badgeValue = async (page) => {
+    const badge = page.getByTestId("notification-badge");
+    if ((await badge.count()) === 0) return 0;
+    const t = (await badge.innerText()).trim();
+    return t === "9+" ? 10 : Number(t);
+  };
+  const shown = (n) => (n >= 10 ? 10 : n); // the badge caps at "9+"
+  const waitBadge = (page, want) =>
+    page
+      .waitForFunction((w) => {
+        const el = document.querySelector('[data-testid="notification-badge"]');
+        const t = el ? el.textContent.trim() : "0";
+        return (t === "9+" ? 10 : Number(t)) === w;
+      }, want, { timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+  const bellButton = (page) => page.getByRole("button", { name: /^알림( \d+건)?$/ });
+  const panel = (page) => page.locator('[aria-label="알림 목록"]');
+
+  const ctx = await newContext(VIEWPORTS[0], storageState);
+  const page = await ctx.newPage();
+  page.__errors = [];
+  page.on("pageerror", (e) => page.__errors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => m.type() === "error" && page.__errors.push(`console: ${m.text()}`));
+
+  const u0 = await unreadInDb();
+  await page.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+  await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+  record("notifications", "desktop", "header bell badge shows the unread count (server-rendered)", u0 > 0 && (await badgeValue(page)) === shown(u0), `db=${u0} badge=${await badgeValue(page)}`);
+  record("notifications", "desktop", "badge is rose with a pulse accent", (await page.locator('[data-testid="notification-badge"] .animate-ping').count()) === 1 && (await page.locator('[data-testid="notification-badge"] .bg-rose-500').count()) === 1);
+
+  // Polling: a new notification appears after the window regains focus (no reload).
+  let u1 = u0;
+  if (svc) {
+    await svc.from("notifications").insert({
+      household_id: myProfile.household_id,
+      user_id: me.user.id,
+      type: "DUE_SOON",
+      title: "E2E 폴링 알림",
+      body: "포커스 복귀 시 즉시 갱신되는지 확인",
+      dedupe_key: `e2e-poll-${Date.now()}`,
+    });
+    u1 = u0 + 1;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    record("notifications", "desktop", "polling hook: window focus refreshes the badge without reload", await waitBadge(page, shown(u1)), `want=${shown(u1)}`);
+  }
+
+  // Dropdown
+  await bellButton(page).click();
+  await panel(page).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('[aria-label="알림 목록"] li').length > 0, null, { timeout: 15_000 });
+  const items = panel(page).locator("li");
+  const first = items.first();
+  record("notifications", "desktop", "dropdown: title + ‘모두 읽음’, items with type icon, title, body, relative time", (await panel(page).getByRole("heading", { name: "알림" }).count()) === 1 && (await panel(page).getByRole("button", { name: "모두 읽음" }).count()) === 1 && /(방금 전|\d+분 전|\d+시간 전)/.test(await first.innerText()), (await first.innerText()).replace(/\n/g, " | ").slice(0, 80));
+  record("notifications", "desktop", "dropdown: unread items marked (dot + tint) = unread count", (await panel(page).locator('li button[data-unread="true"]').count()) === Math.min(u1, 20), `dots=${await panel(page).locator('li button[data-unread="true"]').count()} unread=${u1}`);
+  await page.screenshot({ path: `${OUT}/notifications-dropdown-desktop.png` });
+
+  // Single read: clicking an item marks it read and navigates.
+  const target = panel(page).locator("li button", { hasText: "가족이 과업을 완료했어요" }).first();
+  if ((await target.count()) > 0) {
+    await target.click();
+    await page.waitForURL(/\/timeline/, { timeout: 15_000 });
+    await page.waitForLoadState("networkidle");
+    record("notifications", "desktop", "clicking a notification routes to its page (/timeline)", /\/timeline/.test(page.url()));
+    await page.waitForTimeout(500);
+    const u2 = await unreadInDb();
+    record("notifications", "desktop", "single read: DB unread −1 and badge decreases", u2 === u1 - 1 && (await waitBadge(page, shown(u2))), `db ${u1}→${u2}`);
+    u1 = u2;
+  } else {
+    record("notifications", "desktop", "single read", false, "no MAGIC_COMPLETED item in the dropdown");
+  }
+
+  // Mark all read
+  await bellButton(page).click();
+  await panel(page).waitFor();
+  await panel(page).getByRole("button", { name: "모두 읽음" }).click();
+  const cleared = await page
+    .waitForFunction(() => !document.querySelector('[data-testid="notification-badge"]'), null, { timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+  await page.waitForTimeout(500);
+  record("notifications", "desktop", "‘모두 읽음’: badge disappears, DB unread = 0, no unread markers left", cleared && (await unreadInDb()) === 0 && (await panel(page).locator('li button[data-unread="true"]').count()) === 0, `db=${await unreadInDb()}`);
+  await page.keyboard.press("Escape");
+
+  // Empty state (the dedicated E2E account only ever holds test notifications; service role cleans them up)
+  if (svc) {
+    await svc.from("notifications").delete().eq("user_id", me.user.id);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    await bellButton(page).click();
+    await panel(page).waitFor();
+    const emptyShown = await panel(page).getByText("새로운 알림이 없습니다").waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
+    record("notifications", "desktop", "empty state: “새로운 알림이 없습니다”", emptyShown);
+    await page.screenshot({ path: `${OUT}/notifications-empty-desktop.png` });
+  }
+  record("notifications", "desktop", "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
+  await ctx.close();
 }
 await browser.close();
 

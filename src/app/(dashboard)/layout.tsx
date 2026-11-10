@@ -7,6 +7,8 @@ import { HouseholdSetup } from "@/features/auth/components/HouseholdSetup";
 import { HouseholdSettingsModal } from "@/features/household/components/HouseholdSettingsModal";
 import { inviteCodeSchema } from "@/features/household/schemas/household.schema";
 import { getMembers } from "@/features/household/server/household.queries";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { getUnreadNotificationCount } from "@/features/notifications/server/notification.actions";
 import { MainNav } from "@/shared/components/layout/MainNav";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const initial = profile.displayName.trim().charAt(0).toUpperCase() || "?";
-  const members = await getMembers();
+  const [members, unreadCount] = await Promise.all([getMembers(), getUnreadNotificationCount()]);
 
   return (
     <div className="min-h-screen bg-slate-50/70 dark:bg-zinc-950">
@@ -42,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </span>
           </Link>
 
-          <span className="inline-flex max-w-[40vw] items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-300">
+          <span className="inline-flex min-w-0 max-w-[40vw] items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-300">
             <Users className="h-3 w-3 shrink-0" />
             <span className="truncate">{profile.householdName}</span>
           </span>
@@ -51,7 +53,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <MainNav variant="top" />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <NotificationBell initialCount={unreadCount} />
             <HouseholdSettingsModal members={members} role={profile.role} householdName={profile.householdName} />
             <span
               title={profile.displayName}
