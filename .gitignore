@@ -7,13 +7,15 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
-# env (keep the example)
+# env: ignore every .env* file (.env.local, .env.production, .env.development…) except the example
 .env
-.env*.local
+.env.*
+!.env.local.example
 
 # misc
 .DS_Store
 npm-debug.log*
+*.log
 
 # Playwright screenshots
 .screenshots/
