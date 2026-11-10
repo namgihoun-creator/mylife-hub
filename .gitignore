@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# env (keep the example)
+.env
+.env*.local
+
+# misc
+.DS_Store
+npm-debug.log*
+
+# Playwright screenshots
+.screenshots/
