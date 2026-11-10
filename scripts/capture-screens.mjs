@@ -526,6 +526,57 @@ if (inviteUrl && svc) {
     record("invite", V, "member settings: lists 2 people, no invite/backup controls", (await md.getByText("구성원", { exact: true }).count()) >= 1 && (await md.getByRole("button", { name: "초대 링크 만들기" }).count()) === 0 && (await md.getByRole("button", { name: "JSON 내보내기" }).count()) === 0);
     record("invite", V, "no page errors", mp.__errors.length === 0, mp.__errors.slice(0, 2).join(" | "));
 
+    // ---- Phase 2-1: a MEMBER snoozes a FAMILY task (needs the snooze_task RPC; plain RLS would reject it)
+    await mp.keyboard.press("Escape");
+    const mk = (title, visibility) => ({ household_id: myProfile.household_id, owner_id: me.user.id, title, visibility, due_date: shift(2) });
+    const famTitle = `${SANDBOX_PREFIX} 연기 ${Date.now()}`;
+    const privTitle = `${SANDBOX_PREFIX} 개인 ${Date.now()}`;
+    const { data: famTask, error: famErr } = await sb.from("tasks").insert(mk(famTitle, "FAMILY")).select("id").single();
+    if (famErr) throw new Error(`snooze sandbox (FAMILY) failed: ${famErr.message}`);
+    const { data: privTask, error: privErr } = await sb.from("tasks").insert(mk(privTitle, "PRIVATE")).select("id").single();
+    if (privErr) throw new Error(`snooze sandbox (PRIVATE) failed: ${privErr.message}`);
+    try {
+      await mp.goto(`${BASE}/timeline`, { waitUntil: "networkidle" });
+      await mp.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      const card = mp.locator("main li").filter({ hasText: famTitle });
+      record("snooze", V, "member sees the admin's FAMILY task, not the admin's PRIVATE task", (await card.count()) === 1 && (await mp.locator("main li").filter({ hasText: privTitle }).count()) === 0);
+
+      await card.getByRole("button", { name: /더보기/ }).click();
+      await mp.getByRole("menuitem", { name: "3일 연기" }).click();
+      const expected = shift(5); // greatest(due = today+2, today) + 3
+      let row;
+      for (let i = 0; i < 24; i++) {
+        ({ data: row } = await sb.from("tasks").select("status, due_date, snoozed_until").eq("id", famTask.id).single());
+        if (row.status === "SNOOZED") break;
+        await mp.waitForTimeout(500);
+      }
+      record("snooze", V, "MEMBER snooze via UI: SNOOZED, due = max(due,today)+3, snoozed_until set", row.status === "SNOOZED" && row.due_date === expected && row.snoozed_until === expected, JSON.stringify(row));
+      await mp.waitForLoadState("networkidle");
+      await mp.waitForTimeout(800);
+      record("snooze", V, "UI shows the moved date (D-5 badge + 연기됨)", (await card.getByText("D-5", { exact: true }).count()) === 1 && (await card.getByText(/연기됨/).count()) === 1);
+      await mp.screenshot({ path: `${OUT}/snooze-member-mobile.png`, fullPage: true });
+
+      // Direct RPC checks with the member's own session.
+      const msb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      const { error: msbErr } = await msb.auth.signInWithPassword({ email: memberEmail, password: memberPassword });
+      if (msbErr) throw new Error(`member API sign-in failed: ${msbErr.message}`);
+      const args = { p_task_id: famTask.id, p_days: 1, p_idempotency_key: `e2e-snooze-${rand}-0001` };
+      const r1 = await msb.rpc("snooze_task", args);
+      const r2 = await msb.rpc("snooze_task", args);
+      const { data: after } = await sb.from("tasks").select("due_date").eq("id", famTask.id).single();
+      record("snooze", V, "RPC idempotent: replay returns the same result, no double snooze", !r1.error && !r2.error && JSON.stringify(r1.data) === JSON.stringify(r2.data) && after.due_date === shift(6), `due=${after.due_date} expected=${shift(6)}`);
+      const reuse = await msb.rpc("snooze_task", { ...args, p_days: 2 });
+      record("snooze", V, "same key with different days → IDEMPOTENCY_KEY_REUSED", reuse.error?.message === "IDEMPOTENCY_KEY_REUSED", reuse.error?.message ?? "no error");
+      const priv = await msb.rpc("snooze_task", { p_task_id: privTask.id, p_days: 1, p_idempotency_key: `e2e-snooze-${rand}-0002` });
+      record("snooze", V, "another member's PRIVATE task → NOT_AUTHORIZED (42501)", priv.error?.code === "42501" && priv.error?.message === "NOT_AUTHORIZED", `${priv.error?.code} ${priv.error?.message}`);
+      const badDays = await msb.rpc("snooze_task", { p_task_id: famTask.id, p_days: 0, p_idempotency_key: `e2e-snooze-${rand}-0003` });
+      record("snooze", V, "days outside 1..60 → INVALID_DAYS", badDays.error?.message === "INVALID_DAYS", badDays.error?.message ?? "no error");
+      const { data: logs } = await sb.from("event_logs").select("payload").eq("task_id", famTask.id).eq("event_type", "TASK_SNOOZED");
+      record("snooze", V, "audit: 2 TASK_SNOOZED logs (UI + RPC; replay not duplicated) with days/previous/new dates", logs?.length === 2 && logs.every((l) => l.payload.days && l.payload.previous_due_date && l.payload.new_due_date), `logs=${logs?.length}`);
+    } finally {
+      await sb.from("tasks").delete().like("title", `${SANDBOX_PREFIX}%`);
+    }
+
     // Single-use: the same link is now spent.
     const spent = await newContext(VIEWPORTS[1]);
     const sp = await spent.newPage();

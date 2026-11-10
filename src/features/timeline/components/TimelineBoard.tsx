@@ -58,7 +58,7 @@ export function TimelineBoard({
 
   function run(
     task: TimelineTask,
-    kind: "complete" | "skip" | "snooze",
+    kind: string, // part of the idempotency-key slot: "snooze:3" and "snooze:7" must not share a key
     optimistic: Optimistic,
     call: (idempotencyKey: string) => Promise<TimelineActionResult>,
   ) {
@@ -142,9 +142,9 @@ export function TimelineBoard({
         onSnooze={(t, days) =>
           run(
             t,
-            "snooze",
+            `snooze:${days}`,
             { type: "snooze", id: t.id, dueDate: snoozeTargetDate(t.due_date, today, days) },
-            () => snoozeTask(t.id, days),
+            (k) => snoozeTask(t.id, days, k),
           )
         }
       />
