@@ -139,6 +139,18 @@
 - **카드 뱃지:** 렌탈 자산 카드 최상단(이름 위)에 `[렌탈] {렌탈사명}` 알약 — 바깥 `inline-flex rounded-full border border-violet-200 bg-violet-50 py-0.5 pl-0.5 pr-2.5 text-[11px] font-semibold text-violet-600`(다크 `border-violet-900 bg-violet-950/40 text-violet-400`) 안에 채워진 `렌탈` 칩(`rounded-full bg-violet-600 px-1.5 text-[10px] font-bold text-white`) + 렌탈사명(`truncate`).
 - **상세 모달:** 카드 우측 하단 `상세` 텍스트 버튼 → `Dialog`(§E). 본문은 섹션 카드. 렌탈 자산에는 **렌탈 정보 카드** 추가: ① 월 렌탈료(`text-2xl font-extrabold tabular-nums`, `32,900원`) + 결제일(`매월 15일`) ② **약정 만료까지 D-N** — 큰 D-Day 뱃지(`lg`, §2 긴급도 규칙) + 만료일 + 계약 진행률 게이지(§C-4와 같은 트랙 스타일, 채움 `bg-violet-500`) ③ 케어 방식 · 소유권 이전일 · 제휴카드 메모(보조 텍스트). 약정이 지났으면 `약정이 N일 전에 만료됐어요`(보조), 정보가 없으면 `약정 정보가 없어요`.
 
+### J-2. 환승 & 비용 비교 (렌탈 자산 상세 모달의 두 번째 탭)
+- **탭:** 상세 모달 헤더 아래 `role="tablist"` 2칸 — `정보` / `환승 & 비용 비교`(렌탈 자산에만). 필터 알약(§B)과 같은 형태, 활성 `bg-slate-900 text-white`.
+- **면책 배너:** 탭 최상단 `rounded-xl border-amber-200 bg-amber-50 p-3 text-[11px]` — "추정치예요. 실제 조건은 업체·시점마다 달라요" (색은 amber = 주의).
+- **추천 콜아웃:** 가장 유리한 선택 + 절약액 한 줄(`text-sm font-semibold`), 비용 차이가 5% 이내면 "비용 차이가 크지 않아요" 로 톤다운. 추천 카드에는 `추천` 칩(`bg-emerald-500 text-white text-[10px] font-bold rounded-full`)과 `border-emerald-300 ring-1 ring-emerald-200`.
+- **옵션 카드 3개(세로 스택):** `현재 유지` · `신규 렌탈 환승` · `자가 구매` — 아이콘 박스 + 제목 + **3년(36개월) 부담 총액**(`text-xl font-extrabold tabular-nums`) + 월 평균(보조) + 산식 요약 줄(`text-[11px]`) + 상대 길이 막대(최대값 대비, 추천=emerald, 나머지=slate).
+- **가정값 조정(접이식, §J Collapse):** 신규 렌탈 월 요금 · 환승 지원금 · 위약금 · 구매가 · 연 소모품비 숫자 입력 + `기본값으로` 텍스트 버튼. 값이 바뀌면 즉시 재계산.
+- **외부 링크:** `최신 모델 렌탈 조건 비교하기 ↗` Primary 버튼(다나와) + 보조 버튼(네이버 쇼핑). `target="_blank" rel="noopener noreferrer"`, 주소의 검색어는 반드시 `encodeURIComponent`.
+
+### J-3. 자산 수정 모달
+- 상세 모달 설명 줄 우측 `수정` 알약 버튼(관리자에게만). 클릭하면 상세를 닫고 수정 모달(`max-w-lg rounded-2xl`)을 연다.
+- 폼: 이름(필수) · 위치(select) · 카테고리 · 메모(textarea) · **소유 형태 토글 + 렌탈 패널**(§J 컴포넌트 재사용, 기존 값으로 채움). 렌탈 → 직접 구매로 바꾸면 렌탈 정보가 삭제된다는 안내(`text-[11px]` 보조)를 토글 아래에 표시. 하단 `취소`(보조) / `저장`(Primary, 처리 중 스피너). 오류는 버튼 위 `role="alert"`.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

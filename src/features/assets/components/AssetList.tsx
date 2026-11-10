@@ -38,10 +38,12 @@ export function AssetList({
   assets,
   today,
   emptyAction,
+  canEdit = false,
 }: {
   assets: Asset[];
   today: string;
   emptyAction?: React.ReactNode;
+  canEdit?: boolean;
 }) {
   const [dim, setDim] = useState<Dimension>("space");
   const [selected, setSelected] = useState<string>("전체");
@@ -120,7 +122,7 @@ export function AssetList({
           </h2>
           <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {items.map((a) => (
-              <AssetCard key={a.id} asset={a} today={today} />
+              <AssetCard key={a.id} asset={a} today={today} canEdit={canEdit} />
             ))}
           </ul>
         </section>

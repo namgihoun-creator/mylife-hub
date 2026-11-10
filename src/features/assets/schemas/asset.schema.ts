@@ -54,6 +54,25 @@ export const addPresetInputSchema = z
   })
   .refine((v) => v.ownershipType !== "RENTAL" || !!v.rental, { message: "렌탈 정보를 입력해 주세요.", path: ["rental"] });
 
+/**
+ * Asset edit. visibility is intentionally NOT editable (the asset's rules/tasks carry their own visibility, so a
+ * silent change here could expose or hide them inconsistently). Switching RENTAL -> OWNED clears the rental data.
+ */
+export const updateAssetInputSchema = z
+  .object({
+    assetId: z.uuid(),
+    name: z.string().trim().min(1, "이름을 입력해 주세요.").max(100, "이름은 100자 이하예요."),
+    space: z.string().trim().max(30, "위치는 30자 이하예요.").nullish(),
+    category: z.string().trim().max(50, "카테고리는 50자 이하예요.").nullish(),
+    note: z.string().trim().max(500, "메모는 500자 이하예요.").nullish(),
+    ownershipType: z.enum(OWNERSHIP_TYPES),
+    rental: rentalInputSchema.optional(),
+  })
+  .refine((v) => v.ownershipType !== "RENTAL" || !!v.rental, { message: "렌탈 정보를 입력해 주세요.", path: ["rental"] });
+
+export type UpdateAssetInput = z.input<typeof updateAssetInputSchema>;
+export type UpdateAssetResult = { ok: true } | { ok: false; error: string };
+
 export type PresetTask = z.infer<typeof presetTaskSchema>;
 export type AddPresetInput = z.input<typeof addPresetInputSchema>;
 
@@ -100,6 +119,7 @@ export type Asset = RentalColumns & {
   space: string | null;
   category: string | null;
   preset_key: string | null;
+  note: string | null;
   visibility: "FAMILY" | "PRIVATE";
   created_at: string;
   task_rules: AssetRule[];

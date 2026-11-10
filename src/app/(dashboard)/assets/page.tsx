@@ -29,7 +29,7 @@ export default async function AssetsPage() {
       </div>
 
       {assets.length > 0 && <AssetSummaryBanner summary={summarizeAssets(assets, today)} />}
-      <AssetList assets={assets} today={today} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
+      <AssetList assets={assets} today={today} canEdit={isAdmin} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
     </div>
   );
 }

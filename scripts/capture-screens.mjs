@@ -384,7 +384,172 @@ for (const vp of VIEWPORTS) {
     record("rental", "mobile", "mobile: rental card + detail dialog fit 375px without horizontal overflow", (await overflowCheck(mp)) && !!mBox && mBox.width <= 375, `dialog w=${Math.round(mBox?.width ?? 0)}`);
     await mp.waitForTimeout(500);
     await mp.screenshot({ path: `${OUT}/asset-detail-rental-mobile.png` });
+    {
+      // Long nowrap lines must never widen the dialog's grid column (that clipped the cards and the ‘수정’ button).
+      await mDetail.getByRole("tab", { name: "환승 & 비용 비교" }).click();
+      await mDetail.getByTestId("rental-compare").waitFor();
+      await mp.waitForTimeout(500);
+      const fit = await mDetail.evaluate((el) => ({ scrollW: el.scrollWidth, clientW: el.clientWidth }));
+      record("compare", "mobile", "mobile: comparison tab fits the 375px dialog (no horizontal clipping)", fit.scrollW <= fit.clientW + 1 && (await overflowCheck(mp)), JSON.stringify(fit));
+      await mp.screenshot({ path: `${OUT}/asset-compare-mobile.png` });
+    }
     await mctx.close();
+
+    // ================================================================ Phase 3-2: 환승 & 비용 비교 tab
+    // Expected figures are computed HERE from the same inputs (fee 32,900 · obligation +45d · transfer +400d · 정수기 defaults),
+    // independently of the app code: a formula bug in the app would show up as a mismatch.
+    const dayNum = (d) => Date.UTC(...d.split("-").map((v, i) => (i === 1 ? Number(v) - 1 : Number(v)))) / 86_400_000;
+    const monthsTo = (d) => Math.max(0, Math.ceil((dayNum(d) - dayNum(today)) / 30.4375));
+    const won = (n) => `${n.toLocaleString("ko-KR")}원`;
+    const FEE = 32_900;
+    const exp = {
+      keep: FEE * Math.min(36, monthsTo(shift(400))),
+      obligationMonths: monthsTo(shift(45)),
+      switch: 25_000 * 36 - 250_000,
+      buy: 450_000 + 90_000 * 3,
+    };
+
+    await rentalCard.first().getByRole("button", { name: /상세 보기/ }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("렌탈 정보").waitFor();
+    const infoTab = dlg.getByRole("tab", { name: "정보" });
+    const compareTab = dlg.getByRole("tab", { name: "환승 & 비용 비교" });
+    record("compare", vp.name, "rental detail has a tablist: ‘정보’ (selected) + ‘환승 & 비용 비교’", (await infoTab.getAttribute("aria-selected")) === "true" && (await compareTab.count()) === 1);
+
+    await compareTab.click();
+    await dlg.getByTestId("rental-compare").waitFor();
+    await page.waitForTimeout(500);
+    const totalOf = async (k) => (((await dlg.getByTestId(`compare-${k}-total`).textContent()) ?? "").trim());
+    const recommendedIn = async (k) => (await dlg.getByTestId(`compare-${k}`).getByTestId("compare-recommended").count()) === 1;
+    record("compare", vp.name, "3-way totals over 36 months match the independent calculation (keep / new rental / buy)", (await totalOf("keep")) === won(exp.keep) && (await totalOf("switch")) === won(exp.switch) && (await totalOf("buy")) === won(exp.buy), `${await totalOf("keep")} | ${await totalOf("switch")} | ${await totalOf("buy")}`);
+    const oblLine = ((await dlg.getByTestId("compare-obligation-line").textContent()) ?? "").replace(/\s+/g, " ");
+    record("compare", vp.name, "cheapest is flagged ‘추천’ once; remaining obligation line = N개월 × fee", (await recommendedIn("keep")) && (await dlg.getByTestId("compare-recommended").count()) === 1 && oblLine.includes(`잔여 의무 ${exp.obligationMonths}개월`) && oblLine.includes(won(FEE * exp.obligationMonths)), oblLine);
+    record("compare", vp.name, "‘추정치’ disclaimer and the keep-option basis are shown", (await dlg.getByText("추정치", { exact: false }).count()) >= 1 && (await dlg.getByText(/소유권 이전 후에는 렌탈료가 없어요/).count()) === 1);
+    const fitDesktop = await dlg.evaluate((el) => ({ scrollW: el.scrollWidth, clientW: el.clientWidth }));
+    record("compare", vp.name, "desktop: comparison tab fits the dialog (cards and ‘수정’ button are not clipped)", fitDesktop.scrollW <= fitDesktop.clientW + 1, JSON.stringify(fitDesktop));
+    await page.screenshot({ path: `${OUT}/asset-compare-desktop.png` });
+
+    // Outbound links (fixed hosts, encoded keyword, safe rel)
+    const dHref = (await dlg.getByTestId("compare-link-danawa").getAttribute("href")) ?? "";
+    const nHref = (await dlg.getByTestId("compare-link-naver").getAttribute("href")) ?? "";
+    const dRel = (await dlg.getByTestId("compare-link-danawa").getAttribute("rel")) ?? "";
+    record(
+      "compare",
+      vp.name,
+      "outlinks: 다나와 + 네이버 쇼핑 search for “정수기 렌탈”, new tab, rel=noopener noreferrer",
+      dHref === `https://search.danawa.com/dsearch.php?query=${encodeURIComponent("정수기 렌탈")}` &&
+        nHref === `https://search.shopping.naver.com/search/all?query=${encodeURIComponent("정수기 렌탈")}` &&
+        (await dlg.getByTestId("compare-link-danawa").getAttribute("target")) === "_blank" &&
+        /noopener/.test(dRel) && /noreferrer/.test(dRel) &&
+        (await dlg.getByText("최신 모델 렌탈 조건 비교하기").count()) === 1,
+      dHref,
+    );
+
+    // Assumptions recalculate live and move the recommendation
+    await dlg.getByRole("button", { name: "가정값 조정" }).click();
+    await dlg.getByLabel("신규 렌탈 월 요금 (원)").fill("10000");
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="compare-switch"] [data-testid="compare-recommended"]'), null, { timeout: 5000 }).catch(() => {});
+    const swTotal = await totalOf("switch");
+    record("compare", vp.name, "editing ‘신규 렌탈 월 요금’ recalculates instantly and moves ‘추천’ to 신규 렌탈 환승", swTotal === won(10_000 * 36 - 250_000) && (await recommendedIn("switch")) && /신규 렌탈 환승/.test((await dlg.getByTestId("compare-summary").textContent()) ?? ""), swTotal);
+    await dlg.getByLabel("위약금 (원)").fill("500000");
+    await page.waitForTimeout(150);
+    record("compare", vp.name, "penalty is added to both switching options; keep becomes cheapest again", (await totalOf("switch")) === won(10_000 * 36 - 250_000 + 500_000) && (await totalOf("buy")) === won(exp.buy + 500_000) && (await recommendedIn("keep")), `${await totalOf("switch")} | ${await totalOf("buy")}`);
+    await dlg.getByRole("button", { name: "기본값으로" }).click();
+    await page.waitForTimeout(150);
+    record("compare", vp.name, "‘기본값으로’ restores the default assumptions", (await totalOf("switch")) === won(exp.switch) && (await totalOf("buy")) === won(exp.buy));
+    await page.keyboard.press("Escape");
+
+    // ================================================================ Phase 3-2: asset edit modal
+    await rentalCard.first().getByRole("button", { name: /상세 보기/ }).click();
+    await dlg.getByLabel("렌탈 정보").waitFor();
+    await dlg.getByRole("button", { name: "수정" }).click();
+    const edit = page.getByRole("dialog", { name: "자산 정보 수정" });
+    await edit.waitFor();
+    await page.waitForTimeout(500);
+    const valueOf = (label) => edit.getByLabel(label).inputValue();
+    record(
+      "edit",
+      vp.name,
+      "‘수정’ opens the edit modal pre-filled with the saved values (name, place, rental details, care, card memo)",
+      (await edit.getByLabel(/^이름/).inputValue()) === "정수기" &&
+        (await edit.getByLabel(/렌탈사명/).inputValue()) === "E2E렌탈" &&
+        (await valueOf("월 렌탈료 (원)")) === "32900" &&
+        (await valueOf("결제일 (매월)")) === "15" &&
+        (await valueOf("약정 만료일")) === shift(45) &&
+        (await valueOf("제휴카드 메모")) === "KB국민 30만원 실적" &&
+        (await edit.getByRole("radio", { name: "방문 코디" }).getAttribute("aria-checked")) === "true" &&
+        (await edit.getByRole("radio", { name: "렌탈·구독" }).getAttribute("aria-checked")) === "true",
+    );
+    await page.screenshot({ path: `${OUT}/asset-edit-rental-desktop.png` });
+
+    // validation
+    await edit.getByLabel(/^이름/).fill("");
+    await edit.getByRole("button", { name: "저장" }).click();
+    await edit.getByRole("alert").waitFor({ timeout: 10_000 });
+    const noName = ((await edit.getByRole("alert").textContent()) ?? "").trim();
+    await edit.getByLabel(/^이름/).fill("정수기");
+    await edit.getByLabel("결제일 (매월)").fill("40");
+    await edit.getByRole("button", { name: "저장" }).click();
+    await page.waitForFunction(() => /1~31일/.test(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? ""), null, { timeout: 10_000 }).catch(() => {});
+    const badDay2 = ((await edit.getByRole("alert").textContent()) ?? "").trim();
+    const { data: untouched } = await sb.from("assets").select("name, billing_day").eq("rental_provider", "E2E렌탈").single();
+    record("edit", vp.name, "invalid edits are rejected with clear messages and nothing is saved", /이름을 입력해 주세요/.test(noName) && /1~31일/.test(badDay2) && untouched.name === "정수기" && untouched.billing_day === 15, `${noName} | ${badDay2}`);
+
+    // successful edit
+    await edit.getByLabel(/^이름/).fill("정수기 (거실)");
+    await edit.getByLabel("위치").selectOption("거실");
+    await edit.getByLabel("카테고리").fill("생활가전 테스트");
+    await edit.getByLabel("메모", { exact: true }).fill("E2E 메모");
+    await edit.getByLabel("월 렌탈료 (원)").fill("29900");
+    await edit.getByLabel("결제일 (매월)").fill("20");
+    await edit.getByRole("radio", { name: "자가 관리" }).click();
+    await edit.getByRole("button", { name: "저장" }).click();
+    await edit.waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
+    let edited = null;
+    for (let i = 0; i < 20 && !edited; i++) {
+      const { data } = await sb.from("assets").select("*").eq("rental_provider", "E2E렌탈").eq("name", "정수기 (거실)");
+      edited = data?.[0] ?? null;
+      if (!edited) await page.waitForTimeout(500);
+    }
+    record(
+      "edit",
+      vp.name,
+      "saving updates the row (name, place, category, memo, fee, billing day, care) and keeps it a rental",
+      !!edited && edited.space === "거실" && edited.category === "생활가전 테스트" && edited.note === "E2E 메모" && edited.monthly_fee === 29_900 && edited.billing_day === 20 && edited.care_type === "SELF" && edited.ownership_type === "RENTAL" && edited.obligation_end_date === shift(45),
+    );
+
+    // the list/detail reflect the new values without a manual reload
+    const renamedCard = page.locator("main li").filter({ hasText: "정수기 (거실)" });
+    await renamedCard.first().waitFor({ timeout: 15_000 });
+    await renamedCard.first().getByRole("button", { name: /상세 보기/ }).click();
+    await dlg.getByLabel("렌탈 정보").waitFor();
+    const feeNow = ((await dlg.getByTestId("rental-fee").textContent()) ?? "").trim();
+    record("edit", vp.name, "card + detail show the edited values (name, ‘29,900원’, ‘매월 20일’, memo)", feeNow === "29,900원" && (await dlg.getByText("매월 20일 결제").count()) === 1 && (await dlg.getByText("E2E 메모").count()) >= 1 && (await dlg.getByText("자가 관리").count()) >= 1, feeNow);
+    await dlg.getByRole("tab", { name: "환승 & 비용 비교" }).click();
+    await page.waitForTimeout(300);
+    record("edit", vp.name, "the comparison recalculates from the edited fee (29,900 × months to transfer)", (await totalOf("keep")) === won(29_900 * Math.min(36, monthsTo(shift(400)))), await totalOf("keep"));
+    await page.keyboard.press("Escape");
+
+    // rental -> owned clears the rental data
+    await renamedCard.first().getByRole("button", { name: /상세 보기/ }).click();
+    await dlg.getByRole("button", { name: "수정" }).click();
+    await edit.waitFor();
+    await edit.getByRole("radio", { name: "직접 구매" }).click();
+    const warn = (await edit.getByRole("note").count()) === 1;
+    await edit.getByRole("button", { name: "저장" }).click();
+    await edit.waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
+    let owned = null;
+    for (let i = 0; i < 20 && !owned; i++) {
+      const { data } = await sb.from("assets").select("*").eq("name", "정수기 (거실)");
+      owned = data?.find((a) => a.ownership_type === "OWNED") ?? null;
+      if (!owned) await page.waitForTimeout(500);
+    }
+    record("edit", vp.name, "rental → 직접 구매 warns first, then clears every rental column (care back to NONE)", warn && !!owned && owned.rental_provider === null && owned.monthly_fee === null && owned.billing_day === null && owned.obligation_end_date === null && owned.payment_card_note === null && owned.care_type === "NONE");
+    await page.locator("main li").filter({ hasText: "정수기 (거실)" }).first().waitFor();
+    await page.locator("main li").filter({ hasText: "정수기 (거실)" }).first().getByRole("button", { name: /상세 보기/ }).click();
+    await dlg.getByText("관리 규칙").waitFor();
+    record("edit", vp.name, "after the switch the detail has no rental badge/tabs/rental section", (await dlg.getByRole("tablist").count()) === 0 && (await dlg.getByTestId("rental-badge").count()) === 0 && (await dlg.getByLabel("렌탈 정보").count()) === 0);
+    await page.keyboard.press("Escape");
     record("rental", vp.name, "no console/page errors", page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
   } finally {
     // Remove what this block created: tasks first (deleting an asset would only null their asset_id), then the assets (rules cascade).
@@ -733,6 +898,15 @@ if (inviteUrl && svc) {
       record("push", V, "instant push after invite acceptance: admin pushed within seconds (push_sent_at + subscription last_used_at set)", !!row?.push_sent_at && latencyMs < 20_000 && !!usedSub?.last_used_at, `latency=${latencyMs}ms`);
     }
     record("invite", V, "member role: no ‘가전 추가’ (ADMIN-only)", (await mp.getByRole("button", { name: "가전 추가" }).count()) === 0);
+
+    {
+      // Phase 3-2: editing is ADMIN-only in the UI as well
+      await mp.getByRole("button", { name: /상세 보기/ }).first().click();
+      const memberDetail = mp.getByRole("dialog");
+      await memberDetail.waitFor();
+      record("edit", V, "member role: asset detail has no ‘수정’ button (ADMIN-only)", (await memberDetail.getByRole("button", { name: "수정" }).count()) === 0);
+      await mp.keyboard.press("Escape");
+    }
     {
       const { data: inv } = await sb.from("notifications").select("id, body, read_at").eq("type", "INVITE_ACCEPTED").like("body", "E2E 구성원%");
       record("notifications", V, "invite accepted → ADMIN received INVITE_ACCEPTED with the member's name", (inv?.length ?? 0) >= 1 && inv.some((n) => /E2E 구성원님이 가구에 참여했어요/.test(n.body)), `rows=${inv?.length}`);
@@ -792,6 +966,14 @@ if (inviteUrl && svc) {
       record("snooze", V, "days outside 1..60 → INVALID_DAYS", badDays.error?.message === "INVALID_DAYS", badDays.error?.message ?? "no error");
       const { data: logs } = await sb.from("event_logs").select("payload").eq("task_id", famTask.id).eq("event_type", "TASK_SNOOZED");
       record("snooze", V, "audit: 2 TASK_SNOOZED logs (UI + RPC; replay not duplicated) with days/previous/new dates", logs?.length === 2 && logs.every((l) => l.payload.days && l.payload.previous_due_date && l.payload.new_due_date), `logs=${logs?.length}`);
+
+      // ---- Phase 3-2: a member cannot edit assets even by calling the API directly (RLS: ADMIN-only UPDATE)
+      {
+        const { data: target } = await sb.from("assets").select("id, name").limit(1).single();
+        const hack = await msb.from("assets").update({ name: "HACKED", ownership_type: "RENTAL", rental_provider: "x" }).eq("id", target.id).select("id");
+        const { data: after } = await sb.from("assets").select("name, rental_provider").eq("id", target.id).single();
+        record("edit", V, "RLS: a member's direct UPDATE on assets changes nothing (0 rows)", (hack.data?.length ?? 0) === 0 && after.name === target.name && after.rental_provider !== "x", `rows=${hack.data?.length ?? 0} err=${hack.error?.code ?? "-"}`);
+      }
 
       // ---- Phase 2-2: notification isolation (RLS). A row that belongs to the MEMBER only (created with the service role).
       const isoTitle = `E2E 격리 ${rand}`;

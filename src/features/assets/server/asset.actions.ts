@@ -8,7 +8,9 @@ import { getSessionProfile } from "@/features/auth/server/session";
 import {
   addPresetInputSchema,
   presetTaskSchema,
+  updateAssetInputSchema,
   type ActionResult,
+  type UpdateAssetResult,
 } from "../schemas/asset.schema";
 
 /**
@@ -134,4 +136,69 @@ export async function addAssetFromPreset(input: unknown): Promise<ActionResult> 
 
   revalidatePath("/assets");
   return { ok: true, assetId: asset.id, ruleCount: tasks.data.length };
+}
+
+/**
+ * Edits an existing asset (name, place, category, memo, ownership type and rental details).
+ * Runs under the caller's JWT, so RLS decides who may write (ADMIN; own PRIVATE assets only). The session role is
+ * checked first for a clear message, and an UPDATE that matches no row (not allowed / not found) is reported
+ * instead of silently succeeding. Switching to OWNED clears every rental column.
+ */
+export async function updateAsset(input: unknown): Promise<UpdateAssetResult> {
+  const parsed = updateAssetInputSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0]?.message;
+    return { ok: false, error: first && /[가-힣]/.test(first) ? first : "잘못된 요청입니다." };
+  }
+  const { assetId, name, space, category, note, ownershipType, rental } = parsed.data;
+
+  const { user, profile } = await getSessionProfile();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+  if (!profile) return { ok: false, error: "가구 설정이 필요합니다." };
+  if (profile.role !== "ADMIN") return { ok: false, error: "자산 수정은 관리자만 할 수 있어요." };
+
+  const clean = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+  const rentalColumns =
+    ownershipType === "RENTAL" && rental
+      ? {
+          rental_provider: rental.provider,
+          monthly_fee: rental.monthlyFee ?? null,
+          billing_day: rental.billingDay ?? null,
+          contract_start_date: rental.contractStartDate ?? null,
+          obligation_end_date: rental.obligationEndDate ?? null,
+          ownership_transfer_date: rental.ownershipTransferDate ?? null,
+          care_type: rental.careType,
+          payment_card_note: clean(rental.paymentCardNote),
+        }
+      : {
+          rental_provider: null,
+          monthly_fee: null,
+          billing_day: null,
+          contract_start_date: null,
+          obligation_end_date: null,
+          ownership_transfer_date: null,
+          care_type: "NONE",
+          payment_card_note: null,
+        };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("assets")
+    .update({
+      name,
+      space: clean(space),
+      category: clean(category),
+      note: clean(note),
+      ownership_type: ownershipType,
+      ...rentalColumns,
+    })
+    .eq("id", assetId)
+    .eq("household_id", profile.householdId)
+    .select("id");
+  if (error) return { ok: false, error: "자산을 수정하지 못했어요." };
+  if (!data || data.length === 0) return { ok: false, error: "수정할 수 없는 자산이에요 (권한이 없거나 이미 삭제됐어요)." };
+
+  revalidatePath("/assets");
+  revalidatePath("/timeline"); // task cards show the asset name / place
+  return { ok: true };
 }

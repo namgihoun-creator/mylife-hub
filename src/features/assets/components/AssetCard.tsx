@@ -15,7 +15,7 @@ const TAG =
   "rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-300";
 
 /** Item card: icon box · name/tags/cycle · D-Day badge, plus a remaining-time gauge (docs/DESIGN_SYSTEM.md §4.C, C-4). */
-export function AssetCard({ asset, today }: { asset: Asset; today: string }) {
+export function AssetCard({ asset, today, canEdit = false }: { asset: Asset; today: string; canEdit?: boolean }) {
   const { icon: Icon, tone } = getApplianceVisual(asset.preset_key);
   const next = nextTaskOf(asset);
   const firstRule = asset.task_rules[0];
@@ -52,7 +52,7 @@ export function AssetCard({ asset, today }: { asset: Asset; today: string }) {
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-zinc-400">{cycle}</p>
-        <AssetDetailDialog asset={asset} today={today} />
+        <AssetDetailDialog asset={asset} today={today} canEdit={canEdit} />
       </div>
 
       {gauge && next && (
