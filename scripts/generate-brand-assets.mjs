@@ -1,4 +1,4 @@
-// Renders the brand assets (OpenGraph card, favicon set, PWA icons) from HTML with Playwright.
+// Renders the brand assets (OpenGraph card, favicon set, PWA icons incl. maskable) with Playwright.
 // Usage: node scripts/generate-brand-assets.mjs     (outputs are committed; re-run only when the brand changes)
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -40,14 +40,30 @@ h1{font-size:82px;font-weight:800;letter-spacing:-2.5px;line-height:1.1;margin-t
 </div>
 </body></html>`;
 
-// Square app icon: deep black, faint violet/emerald glow, white house glyph (same Home mark as the header logo).
-const iconHtml = (px, glyphPct = 0.5) => `<!doctype html><html><head><meta charset="utf-8"><style>
-*{margin:0}body{width:${px}px;height:${px}px;background:${BG};position:relative;overflow:hidden}
-.g{position:absolute;border-radius:9999px;filter:blur(${Math.round(px * 0.14)}px)}
-.a{width:${px * 0.7}px;height:${px * 0.7}px;left:-${px * 0.2}px;top:-${px * 0.25}px;background:rgba(139,92,246,.5)}
-.b{width:${px * 0.7}px;height:${px * 0.7}px;right:-${px * 0.22}px;bottom:-${px * 0.25}px;background:rgba(16,185,129,.4)}
-.c{position:absolute;display:flex;align-items:center;justify-content:center;inset:0}
-</style></head><body><div class="g a"></div><div class="g b"></div><div class="c">${HOME_SVG(Math.round(px * glyphPct), px <= 48 ? 2.4 : 1.9)}</div></body></html>`;
+// v4 app icon: Sky Blue -> Mint diagonal gradient, a bold soft-white house outline with a round serving cloche inside
+// (home + kitchen), and a gentle highlight. One SVG drives every size: `small` thickens the strokes for 16-48px favicons,
+// `safe` shrinks the symbol into the maskable safe zone (inner 80%), `rounded` rounds the corners (icon.svg only).
+const iconSvg = ({ px = 512, rounded = false, safe = 1, small = false } = {}) => {
+  const sw = small ? 40 : 28;
+  const knob = small ? 15 : 11;
+  const plateH = small ? 26 : 20;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0ea5e9"/><stop offset="1" stop-color="#10b981"/></linearGradient>
+<radialGradient id="glow" cx=".26" cy=".18" r=".62"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="512" height="512" rx="${rounded ? 112 : 0}" fill="url(#bg)"/>
+<rect width="512" height="512" rx="${rounded ? 112 : 0}" fill="url(#glow)"/>
+<g transform="translate(256 256) scale(${safe}) translate(-256 -256)">
+<path d="M96 236 L256 104 L416 236 V388 a28 28 0 0 1 -28 28 H124 a28 28 0 0 1 -28 -28 Z" fill="none" stroke="#fff" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M186 372 a70 70 0 0 1 140 0 Z" fill="#fff"/>
+<circle cx="256" cy="${302 - knob + 1}" r="${knob}" fill="#fff"/>
+<rect x="166" y="368" width="180" height="${plateH}" rx="${plateH / 2}" fill="#fff"/>
+${small ? "" : '<path d="M212 348 a48 48 0 0 1 22 -32" fill="none" stroke="#0ea5e9" stroke-opacity=".5" stroke-width="9" stroke-linecap="round"/>'}
+</g>
+</svg>`;
+};
+const iconHtml = (px, opts = {}) => `<!doctype html><html><head><meta charset="utf-8"><style>*{margin:0}body{width:${px}px;height:${px}px;overflow:hidden}svg{display:block}</style></head><body>${iconSvg({ px, ...opts })}</body></html>`;
 
 const browser = await chromium.launch();
 const shot = async (html, w, h) => {
@@ -71,15 +87,18 @@ if (process.argv.includes("--og")) {
   console.log("share images written (--og: icons untouched)");
   process.exit(0);
 }
+await writeFile("src/app/icon.svg", iconSvg({ rounded: true }) + "\n");
+await writeFile("public/icons/icon.svg", iconSvg({ rounded: true }) + "\n");
 await writeFile("src/app/icon.png", await shot(iconHtml(512), 512, 512));
-await writeFile("src/app/apple-icon.png", await shot(iconHtml(180, 0.54), 180, 180));
+await writeFile("src/app/apple-icon.png", await shot(iconHtml(180), 180, 180)); // iOS rounds the corners itself: full-bleed square
 await writeFile("public/icons/icon-192.png", await shot(iconHtml(192), 192, 192));
 await writeFile("public/icons/icon-512.png", await shot(iconHtml(512), 512, 512));
+await writeFile("public/icons/icon-maskable.png", await shot(iconHtml(512, { safe: 0.78 }), 512, 512)); // full-bleed, symbol inside the 80% safe zone
 
 // favicon.ico: PNG-embedded ICO (16/32/48) — supported by every current browser.
 const sizes = [16, 32, 48];
 const pngs = [];
-for (const s of sizes) pngs.push(await shot(iconHtml(s, 0.62), s, s));
+for (const s of sizes) pngs.push(await shot(iconHtml(s, { small: true, safe: 1.04 }), s, s));
 const header = Buffer.alloc(6);
 header.writeUInt16LE(0, 0);
 header.writeUInt16LE(1, 2);

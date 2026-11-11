@@ -2508,7 +2508,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
   record("share", "-", "apple-icon.png is a real 180x180 PNG", ap.status === 200 && pngSize(ap.buf)?.w === 180 && pngSize(ap.buf)?.h === 180, JSON.stringify(pngSize(ap.buf)));
   const mf = JSON.parse((await get("/manifest.json")).buf.toString("utf8"));
   const i192 = await get("/icons/icon-192.png"), i512 = await get("/icons/icon-512.png");
-  record("share", "-", "PWA manifest icons (192/512) are valid PNGs of the right size, theme colour matches the dark brand", pngSize(i192.buf)?.w === 192 && pngSize(i512.buf)?.w === 512 && mf.theme_color === "#09090b" && mf.background_color === "#09090b");
+  record("share", "-", "PWA manifest icons (192/512) are valid PNGs of the right size, theme colour is the v4 sky blue on the off-white splash", pngSize(i192.buf)?.w === 192 && pngSize(i512.buf)?.w === 512 && mf.theme_color === "#0ea5e9" && mf.background_color === "#f8fafc");
   const unauth = await fetch(`${BASE}/analytics`, { redirect: "manual" });
   record("share", "-", "regression: protected /analytics still redirects anonymous visitors to /login (middleware + layout)", unauth.status >= 300 && unauth.status < 400 && /\/login/.test(unauth.headers.get("location") ?? ""), `${unauth.status} ${unauth.headers.get("location")}`);
 }
