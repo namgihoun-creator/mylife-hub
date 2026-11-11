@@ -261,6 +261,10 @@ export function HouseholdSettingsModal({
             {message.text}
           </p>
         )}
+
+        <p data-testid="household-privacy-note" className="rounded-2xl bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500 dark:bg-zinc-800/60 dark:text-zinc-400">
+          <span aria-hidden>🛡️ </span>우리 가구의 데이터는 가구 단위로 격리(RLS)되어, 다른 가구는 볼 수 없어요. 개인(PRIVATE) 항목은 본인에게만 보여요.
+        </p>
       </DialogContent>
     </Dialog>
   );

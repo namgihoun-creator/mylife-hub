@@ -185,6 +185,10 @@ export function AiChefSection({ petType, itemCount, onNotice }: { petType: PetTy
           </div>
         </div>
       )}
+
+      <p data-testid="chef-pet-caption" className="rounded-2xl bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500 dark:bg-zinc-800/60 dark:text-zinc-400">
+        <span aria-hidden>🐾 </span>반려동물 독성 및 레시피 정보는 참고용이며, 응급 상황 시 즉시 24시 동물병원을 방문하세요.
+      </p>
     </section>
   );
 }

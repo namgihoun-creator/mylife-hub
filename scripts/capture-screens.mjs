@@ -4072,17 +4072,20 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
     await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
     const f = p.getByTestId("app-footer");
     const txt = (await f.innerText()).replace(/\s+/g, " ");
-    record("footer", vp.name, "content: ‘MyLife Hub × CookSaver’ + slogan ‘우리 집 스마트 키친 & 가전 자산 케어 OS’", txt.includes("MyLife Hub × CookSaver") && txt.includes("우리 집 스마트 키친 & 가전 자산 케어 OS"), txt.slice(0, 80));
-    record("footer", vp.name, "pet-safety notice: reference only, go to a 24-hour animal hospital in an emergency", /반려동물 독성 및 레시피 정보는 참고용이며, 응급 상황 시 즉시 24시 동물병원을 방문하세요/.test(await f.getByTestId("footer-pet-notice").innerText()));
-    record("footer", vp.name, "household isolation (RLS) notice, privacy + terms links, ‘© 2026 MyLife Hub. All rights reserved.’ and the version", /가구 단위로 격리\(RLS\)/.test(txt) && (await f.getByTestId("footer-privacy").getAttribute("href")) === "/privacy" && (await f.getByTestId("footer-terms").getAttribute("href")) === "/terms" && /© 2026 MyLife Hub\. All rights reserved\. · v\d+\.\d+\.\d+/.test(txt), txt.slice(-70));
+    const brandRow = await f.evaluate((el) => { const b = el.querySelector('[data-testid="footer-brand"]').getBoundingClientRect(); const sl = el.querySelector('[data-testid="footer-brand"]').nextElementSibling.getBoundingClientRect(); return { sameLine: Math.abs((b.top + b.height / 2) - (sl.top + sl.height / 2)) < 8, h: el.getBoundingClientRect().height }; });
+    record("footer", vp.name, `brand row: bold ‘MyLife Hub × CookSaver’ with the slogan ‘우리 집 스마트 키친 & 가전 자산 케어 OS’ ${vp.name === "desktop" ? "side by side on ONE line" : "(wraps cleanly on phones)"}`, txt.includes("MyLife Hub × CookSaver") && txt.includes("우리 집 스마트 키친 & 가전 자산 케어 OS") && (vp.name !== "desktop" || brandRow.sameLine), JSON.stringify(brandRow));
+    record("footer", vp.name, "slim: the two long notices are GONE from the footer (pet-safety + RLS) and the footer is compact (desktop ≤ 100px, phone ≤ 190px)", !/반려동물 독성/.test(txt) && !/격리\(RLS\)/.test(txt) && (await f.getByTestId("footer-pet-notice").count()) === 0 && brandRow.h <= (vp.name === "desktop" ? 100 : 190), JSON.stringify(brandRow));
+    const meta = (await f.getByTestId("footer-meta").innerText()).replace(/\s+/g, " ");
+    record("footer", vp.name, "right side is ONE compact text line joined by ‘·’: Created by NamGiHoun · 개인정보 처리방침 · 이용약관 · © 2026 MyLife Hub · v0.1.0", /^Created by NamGiHoun · 개인정보 처리방침 · 이용약관 · © 2026 MyLife Hub · v\d+\.\d+\.\d+$/.test(meta) && (await f.getByTestId("footer-privacy").getAttribute("href")) === "/privacy" && (await f.getByTestId("footer-terms").getAttribute("href")) === "/terms", meta);
 
     const style = await f.evaluate((el) => {
+      const vpDesktopPy = (cs) => `${cs.paddingTop},${parseFloat(cs.paddingBottom) >= 72 && window.innerWidth < 768 ? "24px" : cs.paddingBottom}`;
       const link = el.querySelector('[data-testid="footer-privacy"]');
       const brand = el.querySelector("p");
       const cs = getComputedStyle(el);
-      return { bt: cs.borderTopWidth, bc: cs.borderTopColor, linkColor: getComputedStyle(link).color, brandColor: getComputedStyle(brand).color };
+      return { bg: cs.backgroundColor, py: vpDesktopPy(cs), bt: cs.borderTopWidth, bc: cs.borderTopColor, linkColor: getComputedStyle(link).color, brandColor: getComputedStyle(brand).color };
     });
-    record("footer", vp.name, "tone: quiet slate-500 text/links (AA contrast) on the off-white page, a soft slate-100 hairline on top (not a hard black rule)", style.linkColor === "rgb(100, 116, 139)" && style.bt === "1px" && style.bc === "rgb(241, 245, 249)", JSON.stringify(style));
+    record("footer", vp.name, "band: tinted slate-100/80 background with a slate-200 top border (clearly separated from the page), links slate-500", style.linkColor === "rgb(100, 116, 139)" && style.bt === "1px" && style.bc === "rgb(226, 232, 240)" && style.bg === "rgba(241, 245, 249, 0.8)" && style.py === "24px,24px" , JSON.stringify(style));
     await f.getByTestId("footer-privacy").hover();
     await p.waitForTimeout(250);
     record("footer", vp.name, "link hover turns slate-700", (await f.getByTestId("footer-privacy").evaluate((el) => getComputedStyle(el).color)) === "rgb(51, 65, 85)");
@@ -4098,7 +4101,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         return { lastBottom: last.bottom, navTop: n.top, pb: parseFloat(getComputedStyle(f).paddingBottom), scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth };
       });
       record("footer", vp.name, "at the very bottom of the page the footer's last line sits ABOVE the fixed 4-tab bar (not hidden behind it)", geo.lastBottom <= geo.navTop, JSON.stringify(geo));
-      record("footer", vp.name, "mobile bottom padding clears the tab bar (≥ 96px = pb-24) and there is no horizontal scroll", geo.pb >= 96 && geo.scrollW <= geo.innerW, JSON.stringify(geo));
+      record("footer", vp.name, "mobile bottom padding clears the tab bar (≥ 72px = 4.5rem + safe area) and there is no horizontal scroll", geo.pb >= 72 && geo.scrollW <= geo.innerW, JSON.stringify(geo));
       // tapping a tab while scrolled to the bottom still works (the footer never intercepts the bar)
       const tab = p.locator('nav[aria-label="주요 메뉴"]').last().getByRole("link", { name: "리포트" });
       await tab.click();
@@ -4109,7 +4112,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
       record("footer", vp.name, "the footer follows the page content (below the main content, not floating over it)", !!fp);
     } else {
       const geo = await f.evaluate((el) => ({ pb: parseFloat(getComputedStyle(el).paddingBottom), top: el.getBoundingClientRect().top + window.scrollY, doc: document.documentElement.scrollHeight }));
-      record("footer", vp.name, "desktop: compact 32px bottom padding (md:pb-8), footer sits at the end of the document", geo.pb === 32 && Math.abs(geo.top + (await f.evaluate((el) => el.getBoundingClientRect().height)) - geo.doc) <= 2, JSON.stringify(geo));
+      record("footer", vp.name, "desktop: compact 24px bottom padding (py-6), footer sits at the end of the document", geo.pb === 24 && Math.abs(geo.top + (await f.evaluate((el) => el.getBoundingClientRect().height)) - geo.doc) <= 2, JSON.stringify(geo));
     }
     await p.screenshot({ path: `${OUT}/footer-light-${vp.name}.png`, fullPage: true });
     record("footer", vp.name, "no console/page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
@@ -4124,8 +4127,26 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
     await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
     await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
     const col = await p.getByTestId("footer-privacy").evaluate((el) => getComputedStyle(el).color);
-    record("footer", "mobile", "dark theme: footer links stay quiet but readable (zinc-500 on the dark page)", col === "rgb(113, 113, 122)", col);
+    record("footer", "mobile", "dark theme: footer links stay quiet but readable (slate-400 on the dark band)", col === "rgb(148, 163, 184)", col);
     await p.screenshot({ path: `${OUT}/footer-dark-mobile.png`, fullPage: true });
+    await c.close();
+  }
+
+  // the moved notices
+  {
+    const c = await newContext(VIEWPORTS[0], storageState);
+    const pg = await c.newPage();
+    await pg.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+    await pg.getByTestId("ai-chef").waitFor();
+    const cap = pg.getByTestId("ai-chef").getByTestId("chef-pet-caption");
+    const capBox = await cap.boundingBox();
+    const chefBox = await pg.getByTestId("ai-chef").boundingBox();
+    record("footer", "desktop", "pet-safety caption now sits at the BOTTOM of the AI chef section on /kitchen", (await cap.count()) === 1 && /반려동물 독성 및 레시피 정보는 참고용이며, 응급 상황 시 즉시 24시 동물병원을 방문하세요/.test(await cap.innerText()) && !!capBox && !!chefBox && capBox.y + capBox.height <= chefBox.y + chefBox.height + 1 && capBox.y > chefBox.y + chefBox.height * 0.5);
+    await pg.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+    await pg.getByRole("button", { name: /가구 설정|구성원/ }).first().click().catch(async () => { await pg.locator('header button[aria-haspopup="dialog"]').nth(1).click(); });
+    const hd = pg.getByRole("dialog");
+    await hd.waitFor();
+    record("footer", "desktop", "data-isolation note now lives at the bottom of the 가구 설정 dialog", (await hd.getByTestId("household-privacy-note").count()) === 1 && /가구 단위로 격리\(RLS\)/.test(await hd.getByTestId("household-privacy-note").innerText()));
     await c.close();
   }
 
