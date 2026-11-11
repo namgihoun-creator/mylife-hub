@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Camera, PawPrint, Plus, Refrigerator } from "lucide-react";
+import { GRADIENT_CTA, GRADIENT_CTA_MINT } from "@/shared/components/ui/gradient-cta";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { cn } from "@/shared/lib/utils";
 import { PET_TYPES, PET_TYPE_LABEL, type KitchenDashboardData, type KitchenItem, type PetType } from "../schemas/kitchen.schema";
@@ -87,17 +88,17 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
             type="button"
             data-testid="snap-open"
             onClick={() => setSnapOpen(true)}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-white px-4 text-sm font-bold text-slate-800 shadow-sm transition-all hover:bg-sky-50 hover:text-sky-700 active:scale-95 motion-reduce:transform-none dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+            className={GRADIENT_CTA_MINT}
           >
-            <Camera className="h-4 w-4" aria-hidden /> 찰칵 입고
+            <Camera size={18} strokeWidth={2.5} aria-hidden /> 찰칵 입고
           </button>
           <button
             type="button"
             data-testid="add-item"
             onClick={() => setForm({ mode: "create" })}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-sky-600 px-5 text-sm font-bold text-white shadow-md transition-all hover:bg-sky-700 active:scale-95 motion-reduce:transform-none dark:bg-sky-500 dark:hover:bg-sky-400"
+            className={GRADIENT_CTA}
           >
-            <Plus className="h-4 w-4" aria-hidden /> 재료 추가
+            <Plus size={18} strokeWidth={2.5} aria-hidden /> 재료 추가
           </button>
         </div>
       </div>

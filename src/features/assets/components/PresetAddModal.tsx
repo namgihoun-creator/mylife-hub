@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Check, Loader2, Plus, Search } from "lucide-react";
+import { GRADIENT_CTA } from "@/shared/components/ui/gradient-cta";
 import {
   Dialog,
   DialogContent,
@@ -92,9 +93,9 @@ export function PresetAddModal({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
+          className={GRADIENT_CTA}
         >
-          <Plus className="h-4 w-4" />
+          <Plus size={18} strokeWidth={2.5} aria-hidden />
           {triggerLabel}
         </button>
       </DialogTrigger>
