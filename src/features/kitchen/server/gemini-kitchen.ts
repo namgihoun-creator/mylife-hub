@@ -63,7 +63,7 @@ export function geminiModels(env: Record<string, string | undefined> = process.e
 const baseUrl = (env: Record<string, string | undefined>) => (env.GEMINI_API_BASE_URL?.trim() || DEFAULT_GEMINI_BASE).replace(/\/+$/, "");
 
 // ---------------------------------------------------------------------------------------------- transport
-type GeminiReply = { candidates?: { content?: { parts?: { text?: string }[] } }[]; promptFeedback?: { blockReason?: string } };
+export type GeminiReply = { candidates?: { content?: { parts?: { text?: string }[] } }[]; promptFeedback?: { blockReason?: string } };
 
 async function post(url: string, body: unknown, key: string, fetchImpl: typeof fetch): Promise<GeminiReply> {
   let res: Response;
@@ -96,7 +96,7 @@ async function post(url: string, body: unknown, key: string, fetchImpl: typeof f
 }
 
 /** Try the models in order; only model-side problems (retryable) move on to the next one. */
-async function run<T>(key: string, body: unknown, parse: (reply: GeminiReply) => T, deps: GeminiDeps): Promise<T> {
+export async function run<T>(key: string, body: unknown, parse: (reply: GeminiReply) => T, deps: GeminiDeps): Promise<T> {
   const env = deps.env ?? process.env;
   const fetchImpl = deps.fetchImpl ?? fetch;
   const models = geminiModels(env);
@@ -110,7 +110,7 @@ async function run<T>(key: string, body: unknown, parse: (reply: GeminiReply) =>
   throw new AiError("쓸 수 있는 AI 모델이 없어요.");
 }
 
-function replyText(reply: GeminiReply): string {
+export function replyText(reply: GeminiReply): string {
   try {
     const parts = reply.candidates?.[0]?.content?.parts;
     if (!parts) throw new Error("no parts");

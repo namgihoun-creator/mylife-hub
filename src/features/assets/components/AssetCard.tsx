@@ -1,4 +1,6 @@
 import { Lock } from "lucide-react";
+import { FridgeKitchenChip } from "@/features/appliances/components/FridgeKitchenChip";
+import { isFridgeAsset, type FridgeStock } from "@/features/appliances/utils/fridge";
 import { DDayBadge } from "@/shared/components/ui/dday-badge";
 import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 import { URGENCY_BAR_CLASS } from "@/shared/lib/dday";
@@ -20,11 +22,14 @@ export function AssetCard({
   today,
   canEdit = false,
   deepLinkTab,
+  fridgeStock,
 }: {
   asset: Asset;
   today: string;
   canEdit?: boolean;
   deepLinkTab?: "info" | "compare";
+  /** kitchen contents, shown as a chip on refrigerator / freezer assets */
+  fridgeStock?: FridgeStock | null;
 }) {
   const { icon: Icon, tone } = getApplianceVisual(asset.preset_key);
   const next = nextTaskOf(asset);
@@ -64,6 +69,8 @@ export function AssetCard({
         <p className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-zinc-400">{cycle}</p>
         <AssetDetailDialog asset={asset} today={today} canEdit={canEdit} deepLinkTab={deepLinkTab} />
       </div>
+
+      {fridgeStock && isFridgeAsset(asset) && <FridgeKitchenChip stock={fridgeStock} className="mt-2.5" />}
 
       {gauge && next && (
         <div className="mt-2.5 space-y-1">

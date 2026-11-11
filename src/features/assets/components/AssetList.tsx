@@ -46,12 +46,14 @@ export function AssetList({
   emptyAction,
   canEdit = false,
   deepLink = null,
+  fridgeStock = null,
 }: {
   assets: Asset[];
   today: string;
   emptyAction?: React.ReactNode;
   canEdit?: boolean;
   deepLink?: AssetDeepLink | null;
+  fridgeStock?: { total: number; urgent: number } | null;
 }) {
   const router = useRouter();
   const [dim, setDim] = useState<Dimension>("space");
@@ -158,7 +160,7 @@ export function AssetList({
           </h2>
           <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {items.map((a) => (
-              <AssetCard key={a.id} asset={a} today={today} canEdit={canEdit} deepLinkTab={deepLink?.assetId === a.id ? deepLink.tab : undefined} />
+              <AssetCard key={a.id} asset={a} today={today} canEdit={canEdit} fridgeStock={fridgeStock} deepLinkTab={deepLink?.assetId === a.id ? deepLink.tab : undefined} />
             ))}
           </ul>
         </section>

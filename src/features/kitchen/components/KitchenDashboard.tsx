@@ -8,10 +8,12 @@ import { PET_TYPES, PET_TYPE_LABEL, type KitchenDashboardData, type KitchenItem,
 import type { KitchenBudgetData } from "../server/kitchen-budget.actions";
 import { setKitchenPetType } from "../server/kitchen.actions";
 import { DefrostGuideDialog } from "./DefrostGuideDialog";
+import { AiChefSection } from "./AiChefSection";
 import { KitchenBudgetCard } from "./KitchenBudgetCard";
 import { KitchenItemCard } from "./KitchenItemCard";
 import { KitchenItemFormDialog, type KitchenFormTarget } from "./KitchenItemFormDialog";
 import { KitchenPulse } from "./KitchenPulse";
+import { LocalLifeRadar } from "./LocalLifeRadar";
 import { PetToxicAlertBanner } from "./PetToxicAlertBanner";
 import { SmartCheckoutBar } from "./SmartCheckoutBar";
 import { SmartCheckoutDialog } from "./SmartCheckoutDialog";
@@ -105,6 +107,7 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
       <PetToxicAlertBanner petType={profile.pet_type} toxicItems={toxicItems} />
       <KitchenPulse stats={stats} profile={profile} />
       {budget && <KitchenBudgetCard data={budget} onNotice={showNotice} />}
+      <AiChefSection petType={profile.pet_type} itemCount={items.length} onNotice={showNotice} />
 
       {notice && (
         <p role="status" data-testid="kitchen-notice" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -136,6 +139,8 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
           ))}
         </ul>
       )}
+
+      <LocalLifeRadar petType={profile.pet_type} />
 
       <KitchenItemFormDialog target={form} today={today} petType={profile.pet_type} onClose={() => setForm(null)} onNotice={showNotice} />
       <DefrostGuideDialog item={fossilItem} today={today} onClose={() => setFossilItem(null)} />

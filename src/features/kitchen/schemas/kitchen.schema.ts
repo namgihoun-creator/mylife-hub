@@ -172,3 +172,6 @@ export const budgetSettingsSchema = z
   .refine((v) => v.humanMonthly !== undefined || v.petMonthly !== undefined, { message: "바꿀 예산 금액이 없어요." });
 
 export type AddExpenseInput = z.input<typeof addExpenseSchema>;
+
+// ---------------------------------------------------------------- AI chef
+export const consumeIdsSchema = z.object({ ids: z.array(z.uuid()).min(1, "소진할 재료가 없어요.").max(30, "한 번에 30개까지 처리할 수 있어요.") });

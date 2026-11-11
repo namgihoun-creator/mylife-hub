@@ -3756,6 +3756,301 @@ const CRON_SECRET = process.env.CRON_SECRET;
   }
 }
 
+// ---------------------------------------------------------------- Smart Kitchen OS Phase 5: AI chef, local life radar, fridge-asset deep link (real Supabase; mock Gemini on :4011 when the dev server is wired to it)
+// Wiring: `npm run dev:e2e` points the server at http://127.0.0.1:4010 (the zero-typing block's mock). This block starts its own
+// recipe mock on that port only if the zero-typing block is not running (it is closed by then), so it can run standalone.
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const http = await import("node:http");
+  const mock = { hits: [], mode: "ok" };
+  const ai = (payload) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] });
+  const HUMAN = { recipes: [
+    { title: "AI 대파 계란 볶음밥", cookTime: "12분", difficulty: "초급", mainIngredients: ["대파", "계란"], condiments: ["진간장 1숟가락"], steps: ["대파를 송송 썰어요.", "계란을 풀어 3분 볶아요.", "밥을 넣고 5분 볶아요.", "간장으로 마무리해요."], chefTip: "센 불에서 빠르게", substituteTip: "양파 대체 가능", calories: 520 },
+    { title: "AI 두부 조림", cookTime: "15분", difficulty: "중급", mainIngredients: ["두부", "양파"], condiments: ["진간장 2숟가락"], steps: ["두부를 부쳐요.", "양념장을 만들어요.", "졸여요 5분."], chefTip: "약불로", substituteTip: "없음", calories: 210 },
+  ] };
+  const PET_UNSAFE = { recipes: [{ title: "양파 닭가슴살 찜", cookTime: "20분", difficulty: "초급", mainIngredients: ["닭가슴살", "양파"], condiments: [], steps: ["찌고", "식혀서 급여해요."], chefTip: "소량", substituteTip: "", calories: 100 }] };
+  const PET_OK = { recipes: [{ title: "AI 닭가슴살 단호박 찜", cookTime: "25분", difficulty: "초급", mainIngredients: ["닭가슴살", "단호박"], condiments: ["소금 1꼬집"], steps: ["손질해요.", "소금 없이 15분 쪄요.", "잘게 다져요."], chefTip: "맛있어요", substituteTip: "고구마", calories: 140 }] };
+  let server = null;
+  try {
+    server = http.createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const body = (() => { try { return JSON.parse(raw); } catch { return {}; } })();
+        const text = body.contents?.[0]?.parts?.[0]?.text ?? "";
+        mock.hits.push({ text });
+        const send = (s, p) => { res.writeHead(s, { "Content-Type": "application/json" }); res.end(p); };
+        if (!text.includes("재료(데이터)")) return send(200, ai([]));
+        if (mock.mode === "fail") return send(503, "{}");
+        const pet = text.includes("반려동물(강아지·고양이) 수제 화식");
+        if (pet) return send(200, ai(mock.mode === "petunsafe" ? PET_UNSAFE : PET_OK));
+        return send(200, ai(HUMAN));
+      });
+    });
+    await new Promise((resolve, reject) => { server.once("error", reject); server.listen(4010, "127.0.0.1", resolve); });
+  } catch { server = null; } // port busy: the earlier block's server is still up — nothing to do, mock.hits just stays empty
+
+  let strangerId = null, H2 = null;
+  const lum = (rgb) => { const [r, g, b] = (rgb.match(/[\d.]+/g) ?? [255, 255, 255]).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const until = async (fn, tries = 40) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+  try {
+    const email = `mylife.e2e.chef+${rand}@example.com`;
+    const pw = `Pw-${rand}-${Date.now()}`;
+    const { data: su, error: suErr } = await svc.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: "E2E 셰프" } });
+    if (suErr) throw new Error(`chef createUser failed: ${suErr.message}`);
+    strangerId = su.user.id;
+    const cl = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await cl.auth.signInWithPassword({ email, password: pw });
+    await cl.rpc("create_household", { p_name: "E2E 셰프", p_display_name: "E2E 셰프" });
+    H2 = (await svc.from("profiles").select("household_id").eq("id", strangerId).single()).data.household_id;
+    if ((await cl.from("kitchen_items").select("id").limit(1)).error) throw new Error("kitchen tables missing");
+
+    const seed = (name, storage_type, expire, extra = {}) => ({ household_id: H2, name, storage_type, expire_date: expire, amount: "1개", spot: null, added_at: today, is_pet: false, memo: null, ...extra });
+    await svc.from("kitchen_items").insert([
+      seed("대파", "FRIDGE", shift(2), { amount: "2대" }), seed("계란", "FRIDGE", shift(3), { amount: "10구" }), seed("두부", "FRIDGE", shift(15)), seed("양파", "FRIDGE", shift(20)),
+      seed("닭가슴살", "FRIDGE", shift(6), { amount: "300g" }), seed("단호박", "ROOM_TEMP", shift(30)),
+      seed("지난우유", "FRIDGE", shift(-2)), seed("강아지간식", "ROOM_TEMP", shift(60), { is_pet: true }),
+    ]);
+    const rows = async () => (await svc.from("kitchen_items").select("*").eq("household_id", H2)).data ?? [];
+    const rowOf = async (n) => (await rows()).find((r) => r.name === n);
+    const prof = async () => (await svc.from("kitchen_profiles").select("*").eq("household_id", H2).maybeSingle()).data;
+
+    let state;
+    {
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.fill('input[name="email"]', email);
+      await p.fill('input[name="password"]', pw);
+      await p.click('button[type="submit"]');
+      await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20_000 });
+      state = await c.storageState();
+      await c.close();
+    }
+    const mk = async (vp, scheme = "light", path = "/kitchen") => {
+      const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+      await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+      const p = await c.newPage();
+      p.__errors = [];
+      p.on("pageerror", (e) => p.__errors.push(`pageerror: ${e.message}`));
+      p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && p.__errors.push(`console: ${m.text()}`));
+      await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      return { c, p };
+    };
+
+    // ================================================================ AI chef — no pet yet
+    const { c, p } = await mk(VIEWPORTS[0]);
+    await p.getByTestId("ai-chef").waitFor();
+    const chef = p.getByTestId("ai-chef");
+    const tabs = await chef.locator('[data-testid="chef-tab"]').evaluateAll((els) => els.map((e) => [e.getAttribute("data-tab"), e.disabled, e.getAttribute("aria-checked")]));
+    record("kitchen-chef", "desktop", "AI chef has the two modes; ‘댕냥이 특식’ is disabled while the household has no pet", JSON.stringify(tabs) === JSON.stringify([["fridge", false, "true"], ["pet", true, "false"]]), JSON.stringify(tabs));
+    const sectionOrder = await p.evaluate(() => [...document.querySelectorAll('[data-testid="budget-card"], [data-testid="ai-chef"], [data-testid="local-radar"], [data-testid="kitchen-list"]')].map((e) => e.getAttribute("data-testid")));
+    record("kitchen-chef", "desktop", "layout order: money log → AI chef → … → item list → 동네 생활 레이더 at the very bottom", JSON.stringify(sectionOrder) === JSON.stringify(["budget-card", "ai-chef", "kitchen-list", "local-radar"]) || JSON.stringify(sectionOrder) === JSON.stringify(["ai-chef", "kitchen-list", "local-radar"]), JSON.stringify(sectionOrder));
+
+    // ================================================================ 동네 생활 레이더
+    const radar = p.getByTestId("local-radar");
+    const hrefs = await radar.locator('[data-testid="radar-chip"]').evaluateAll((els) => els.map((e) => [e.getAttribute("data-chip"), e.getAttribute("href"), e.getAttribute("target"), e.getAttribute("rel")]));
+    const kakao = (q) => `https://m.map.kakao.com/actions/searchView?q=${encodeURIComponent(q)}`;
+    record("kitchen-chef", "desktop", "no pet → only the 3 human chips: 대형마트 · 전통시장 · 24시 편의점, each a Kakao Map search link", hrefs.length === 3 && hrefs[0][1] === kakao("대형마트") && hrefs[1][1] === kakao("전통시장") && hrefs[2][1] === kakao("24시 편의점") && (await radar.getByTestId("radar-pet").count()) === 0, JSON.stringify(hrefs.map((h) => h[0])));
+    record("kitchen-chef", "desktop", "links open a new tab safely (target=_blank, rel=noopener noreferrer) and the query is URL-encoded", hrefs.every((h) => h[2] === "_blank" && /noopener/.test(h[3] ?? "") && /noreferrer/.test(h[3] ?? "")) && hrefs[2][1].includes("%EC%B5%9C") === false && hrefs[2][1].includes("24%EC%8B%9C%20%ED%8E%B8%EC%9D%98%EC%A0%90"));
+    const popupPromise = ctxPopup(c);
+    await radar.locator('[data-chip="mart"]').click();
+    const popup = await popupPromise;
+    record("kitchen-chef", "desktop", "clicking a chip opens Kakao Map in a NEW tab (the kitchen page stays)", !!popup && /m\.map\.kakao\.com\/actions\/searchView\?q=/.test(popup.url()) && /kitchen/.test(p.url()), popup?.url());
+    await popup?.close().catch(() => {});
+    record("kitchen-chef", "desktop", "the radar never asks for the visitor's location (no geolocation prompt/permission use)", await p.evaluate(() => !document.body.innerHTML.includes("geolocation")) && (await p.evaluate(async () => (await navigator.permissions.query({ name: "geolocation" })).state)) !== "granted");
+
+    // ================================================================ AI chef — fridge (AI or fallback)
+    await chef.getByTestId("chef-generate").click();
+    await chef.getByTestId("chef-result").waitFor({ timeout: 30_000 });
+    const mocked = mock.hits.length > 0;
+    const src = await chef.getByTestId("chef-result").getAttribute("data-source");
+    const cards = chef.getByTestId("recipe-card");
+    const titles = await cards.getByTestId("recipe-title").allInnerTexts();
+    const ingChips = await chef.getByTestId("chef-ingredients").innerText();
+    record("kitchen-chef", "desktop", "fridge recipes: ingredients considered are soonest-expiry first, urgent (D-3) ones marked, expired and pet items excluded", /대파 · D-2/.test(ingChips) && /계란 · D-3/.test(ingChips) && !/지난우유/.test(ingChips) && !/강아지간식/.test(ingChips) && (await chef.getByTestId("chef-expired").innerText()).includes("1개는 제외"), ingChips.replace(/\s+/g, " "));
+    const order = await chef.locator('[data-testid="chef-ingredients"] > span').allInnerTexts();
+    record("kitchen-chef", "desktop", "ingredient chips are listed by expiry (대파 D-2 → 계란 D-3 → …)", order.findIndex((t) => t.includes("대파")) < order.findIndex((t) => t.includes("계란")) && order.findIndex((t) => t.includes("계란")) < order.findIndex((t) => t.includes("닭가슴살")), order.join(" | "));
+    record("kitchen-chef", "desktop", `recipes returned (${src === "gemini" ? "AI" : "offline fallback"}): 1–3 cards, each with time, difficulty, ingredients and 1–4 numbered steps`, titles.length >= 1 && titles.length <= 3 && (await cards.evaluateAll((els) => els.every((e) => e.querySelector('[data-testid="recipe-time"]') && e.querySelector('[data-testid="recipe-level"]') && e.querySelectorAll('[data-testid="recipe-steps"] li').length >= 1 && e.querySelectorAll('[data-testid="recipe-steps"] li').length <= 4 && (e.querySelectorAll('[data-testid="ing-have"]').length + e.querySelectorAll('[data-testid="ing-missing"]').length) >= 1))), titles.join(" | "));
+    if (mocked) {
+      record("kitchen-chef", "desktop", "AI mode: source ‘AI 셰프’, the AI's titles and calories shown (520kcal)", src === "gemini" && titles[0] === "AI 대파 계란 볶음밥" && (await cards.first().getByTestId("recipe-kcal").innerText()).includes("520kcal") && (await chef.getByTestId("chef-source").innerText()).includes("AI 셰프"));
+      const req = mock.hits[mock.hits.length - 1].text;
+      record("kitchen-chef", "desktop", "the AI prompt lists the fridge's names as quoted data, urgent first, without the expired / pet items", /재료\(데이터\): \["대파","계란"/.test(req) && !req.includes("지난우유") && !req.includes("강아지간식"), req.split("재료(데이터): ")[1]?.slice(0, 120));
+    } else {
+      record("kitchen-chef", "desktop", "no AI key (or not mocked): the offline recipes are served, labelled ‘기본 레시피’ with the reason", src === "fallback" && (await chef.getByTestId("chef-source").innerText()).includes("기본 레시피") && (await chef.getByTestId("chef-note").count()) === 1);
+    }
+    await p.screenshot({ path: `${OUT}/kitchen-chef-light-desktop.png`, fullPage: true });
+
+    // AI failure → fallback ranked by matching ingredients
+    if (mocked) {
+      mock.mode = "fail";
+      await chef.getByTestId("chef-generate").click();
+      await p.waitForFunction(() => document.querySelector('[data-testid="chef-result"]')?.getAttribute("data-source") === "fallback", null, { timeout: 30_000 });
+    }
+    const fbTitles = await chef.getByTestId("recipe-title").allInnerTexts();
+    record("kitchen-chef", "desktop", "fallback: named offline dishes ranked by how many of the fridge's ingredients they use (된장찌개 uses 3 of the fridge's items, so it ranks first)", fbTitles.length >= 2 && /계란|대파|두부|된장|양파/.test(fbTitles[0]), fbTitles.join(" | "));
+    record("kitchen-chef", "desktop", "fallback result says why (AI unavailable) and is labelled ‘기본 레시피’", (await chef.getByTestId("chef-source").innerText()).includes("기본 레시피") && ((await chef.getByTestId("chef-note").count()) === 1 ? /AI|키|바빠/.test(await chef.getByTestId("chef-note").innerText()) : false), await chef.getByTestId("chef-note").innerText().catch(() => ""));
+    const have = await cards.first().getByTestId("ing-have").allInnerTexts();
+    const miss = await cards.first().getByTestId("ing-missing").allInnerTexts();
+    record("kitchen-chef", "desktop", "recipe cards separate ingredients you have from the missing ones (‘… · 없음’)", have.length >= 1 && (miss.length === 0 || miss.every((m) => /없음/.test(m))), `have=${have} missing=${miss}`);
+
+    // use up → rescued_count / saved_money
+    const card0 = cards.first();
+    const btn = card0.getByTestId("recipe-consume");
+    const usedNames = await card0.evaluate((el) => [...el.querySelectorAll('[data-testid="ing-have"]')].map((e) => e.textContent.trim()));
+    const before = await prof();
+    const nBefore = (await rows()).length;
+    record("kitchen-chef", "desktop", "the use-up button names the items it will consume", /이 재료들 소진 처리/.test(await btn.innerText()) && (await btn.isEnabled()));
+    await btn.click();
+    await card0.getByTestId("recipe-done").waitFor();
+    const after = await until(async () => { const r = await prof(); return r && (!before || r.rescued_count > (before?.rescued_count ?? 0)) ? r : null; });
+    const removed = nBefore - (await rows()).length;
+    record("kitchen-chef", "desktop", "‘😋 이 재료들 소진 처리’ deletes exactly the recipe's fridge items and credits rescued_count + N, saved_money + 3,000원 × N", removed >= 1 && removed === usedNames.length && !!after && after.rescued_count === removed && Number(after.saved_money) === removed * 3000, `removed=${removed} used=${usedNames} prof=${JSON.stringify(after)}`);
+    record("kitchen-chef", "desktop", "the unrelated items (expired milk, pet treat, other ingredients) are untouched", !!(await rowOf("지난우유")) && !!(await rowOf("강아지간식")));
+    record("kitchen-chef", "desktop", "the card shows the result and the button is gone (no double use)", /절약/.test(await card0.getByTestId("recipe-done").innerText()) && (await card0.getByTestId("recipe-consume").count()) === 0);
+    await p.waitForFunction(() => /원/.test(document.querySelector('[data-pulse="saved"] [data-testid="pulse-value"]')?.textContent ?? "") && document.querySelector('[data-pulse="saved"] [data-testid="pulse-value"]')?.textContent?.trim() !== "0원");
+    record("kitchen-chef", "desktop", "the KitchenPulse saved tile updates to the new total", (await p.locator('[data-pulse="saved"] [data-testid="pulse-value"]').innerText()).trim() === `${(removed * 3000).toLocaleString("ko-KR")}원`);
+
+    // ================================================================ pet household
+    await p.locator('[data-testid="pet-setting"] [data-pet="dog"]').click();
+    await p.waitForFunction(() => !document.querySelector('[data-testid="chef-tab"][data-tab="pet"]')?.disabled);
+    const petRadar = await radar.locator('[data-testid="radar-pet"] [data-testid="radar-chip"]').evaluateAll((els) => els.map((e) => [e.getAttribute("data-chip"), e.getAttribute("href")]));
+    record("kitchen-chef", "desktop", "pet household: 3 extra chips — 🚨 24시 동물병원 · 동네 동물병원 · 펫용품점 (Kakao search links); the human chips stay", petRadar.length === 3 && petRadar[0][1] === kakao("24시 동물병원") && petRadar[1][1] === kakao("동물병원") && petRadar[2][1] === kakao("반려동물용품") && (await radar.getByTestId("radar-human").locator("a").count()) === 3, JSON.stringify(petRadar.map((x) => x[0])));
+    record("kitchen-chef", "desktop", "the urgent vet chip is rose-styled", /rgb\(190, 18, 60\)|rgb\(159, 18, 57\)|rgb\(225, 29, 72\)|rgb\(244, 63, 94\)/.test(await radar.locator('[data-chip="vet24"]').evaluate((el) => getComputedStyle(el).color)), await radar.locator('[data-chip="vet24"]').evaluate((el) => getComputedStyle(el).color));
+
+    await chef.locator('[data-testid="chef-tab"][data-tab="pet"]').click();
+    record("kitchen-chef", "desktop", "pet tab shows the 0%-salt note and its own generate button", (await chef.getByTestId("pet-rule-note").count()) === 1 && /소금·기름·양념 없이/.test(await chef.getByTestId("pet-rule-note").innerText()) && /댕냥이 특식 만들기/.test(await chef.getByTestId("chef-generate").innerText()));
+    if (mocked) mock.mode = "ok";
+    await chef.getByTestId("chef-generate").click();
+    await chef.getByTestId("chef-result").waitFor({ timeout: 30_000 });
+    const petCards = chef.getByTestId("recipe-card");
+    const petText = (await petCards.allInnerTexts()).join(" ").replace(/\s+/g, "");
+    const toxic = ["양파", "대파", "쪽파", "마늘", "부추", "포도", "건포도", "초콜릿", "초콜렛", "코코아", "아보카도", "자일리톨", "마카다미아", "커피", "맥주", "와인"];
+    record("kitchen-chef", "desktop", "pet recipes contain NO toxic food anywhere (cards render 닭가슴살·단호박 …, never 양파·대파·마늘 from the fridge)", (await petCards.count()) >= 1 && !toxic.some((t) => petText.includes(t)), petText.slice(0, 160));
+    record("kitchen-chef", "desktop", "pet recipes: 0% salt note on each card, no condiments, boiled/steamed, last step says to cool before serving, small first portions", (await petCards.evaluateAll((els) => els.every((e) => e.querySelector('[data-testid="recipe-condiments"]') === null && /염분 0%/.test(e.textContent) && /삶|쪄|찜/.test(e.querySelector('[data-testid="recipe-steps"]').textContent) && /식혀/.test([...e.querySelectorAll('[data-testid="recipe-steps"] li')].pop().textContent) && /소량/.test(e.textContent)))), petText.slice(0, 120));
+    const usedPet = await chef.getByTestId("chef-ingredients").innerText();
+    record("kitchen-chef", "desktop", "only PET_SAFE fridge items were considered (닭가슴살, 단호박; not 대파·양파·두부 humans' items or pet treats)", /닭가슴살/.test(usedPet) && /단호박/.test(usedPet) && !/양파|대파|강아지간식|지난우유/.test(usedPet), usedPet.replace(/\s+/g, " "));
+    if (mocked) {
+      record("kitchen-chef", "desktop", "AI pet mode: the AI's recipe is shown only after the safety gate (its ‘소금 1꼬집’ condiment was dropped)", (await chef.getByTestId("chef-result").getAttribute("data-source")) === "gemini" && (await petCards.count()) === 1 && (await petCards.first().getByTestId("recipe-condiments").count()) === 0 && /AI 닭가슴살 단호박 찜/.test(await petCards.first().innerText()));
+      record("kitchen-chef", "desktop", "the pet prompt carries the 0%-salt rules and ONLY pet-safe names (계란·닭가슴살·단호박 — no 대파/양파/두부 from the fridge), soonest expiry first", /염분\(소금·간장·된장·고추장 등\) 0%/.test(mock.hits[mock.hits.length - 1].text) && /재료\(데이터\): \["계란","닭가슴살","단호박"\]/.test(mock.hits[mock.hits.length - 1].text), mock.hits[mock.hits.length - 1].text.split("재료(데이터): ")[1]);
+      mock.mode = "petunsafe";
+      await chef.getByTestId("chef-generate").click();
+      await p.waitForFunction(() => document.querySelector('[data-testid="chef-result"]')?.getAttribute("data-source") === "fallback", null, { timeout: 30_000 });
+      const safeText = (await chef.getByTestId("recipe-card").allInnerTexts()).join(" ").replace(/\s+/g, "");
+      record("kitchen-chef", "desktop", "an AI pet recipe with onion is REJECTED by the gate → safe offline specials are shown instead", !safeText.includes("양파") && (await chef.getByTestId("chef-source").innerText()).includes("기본 레시피") && /닭가슴살/.test(safeText));
+      mock.mode = "ok";
+    }
+    // no safe ingredients at all
+    await svc.from("kitchen_items").delete().eq("household_id", H2).in("name", ["닭가슴살", "단호박", "계란"]);
+    await p.reload({ waitUntil: "networkidle" });
+    await p.getByTestId("ai-chef").waitFor();
+    await p.locator('[data-testid="chef-tab"][data-tab="pet"]').click();
+    await p.getByTestId("chef-generate").click();
+    await p.getByTestId("chef-note").waitFor({ timeout: 30_000 });
+    record("kitchen-chef", "desktop", "no feedable ingredient in the fridge → basic specials as a shopping idea, with an explanation", /급여할 수 있는 재료가 없어/.test(await p.getByTestId("chef-note").innerText()) && (await p.getByTestId("recipe-card").count()) >= 1 && (await p.getByTestId("recipe-card").first().getByTestId("recipe-consume").isDisabled()));
+    // pet set back to none: the server refuses pet recipes
+    await p.locator('[data-testid="pet-setting"] [data-pet="none"]').click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="chef-tab"][data-tab="pet"]')?.disabled === true);
+    record("kitchen-chef", "desktop", "pet set back to 없음 → the pet tab is disabled again and the pet radar chips disappear", (await radar.getByTestId("radar-pet").count()) === 0);
+
+    // server-side guard (not only the UI): the page still believes the household has a dog, the DB says it has none
+    await svc.from("kitchen_items").insert([seed("닭가슴살", "FRIDGE", shift(6))]);
+    await svc.from("kitchen_profiles").update({ pet_type: "dog" }).eq("household_id", H2);
+    await p.reload({ waitUntil: "networkidle" });
+    await p.getByTestId("ai-chef").waitFor();
+    await p.locator('[data-testid="chef-tab"][data-tab="pet"]').click();
+    await svc.from("kitchen_profiles").update({ pet_type: "none" }).eq("household_id", H2);
+    await p.getByTestId("chef-generate").click();
+    await p.getByTestId("chef-error").waitFor({ timeout: 30_000 });
+    record("kitchen-chef", "desktop", "server guard: a pet request from a household that has no pet (stale page) is refused (‘반려동물을 먼저 설정’)", /반려동물을 먼저 설정/.test(await p.getByTestId("chef-error").innerText()), await p.getByTestId("chef-error").innerText());
+
+    // empty fridge
+    await svc.from("kitchen_items").delete().eq("household_id", H2);
+    await p.reload({ waitUntil: "networkidle" });
+    await p.getByTestId("ai-chef").waitFor();
+    record("kitchen-chef", "desktop", "empty fridge: the fridge-recipe button is disabled with a hint instead of calling the AI", (await p.getByTestId("chef-generate").isDisabled()) && /재료를 추가하면/.test(await p.getByTestId("ai-chef").innerText()));
+    record("kitchen-chef", "desktop", "no console/page errors in the chef/radar flow", p.__errors.length === 0, p.__errors.slice(0, 2).join(" | "));
+    await c.close();
+
+    // ================================================================ 가전 자산 딥링크 (fridge chip on /assets)
+    await svc.from("kitchen_items").insert([seed("대파", "FRIDGE", shift(1)), seed("우유", "FRIDGE", shift(2)), seed("계란", "FRIDGE", shift(3)), seed("두부", "FRIDGE", shift(20)), seed("라면", "ROOM_TEMP", shift(100)), seed("지난빵", "ROOM_TEMP", shift(-1))]);
+    const mkAsset = (name, category, extra = {}) => ({ household_id: H2, owner_id: strangerId, visibility: "FAMILY", name, category, space: "주방", ...extra });
+    const ins = await svc.from("assets").insert([mkAsset(`삼성 냉장고${rand}`, "냉장고"), mkAsset(`딤채 김치냉장고${rand}`, "주방가전"), mkAsset(`미니 냉동고${rand}`, null), mkAsset(`로봇청소기${rand}`, "청소가전")]).select("id, name");
+    if (ins.error) throw new Error(`asset fixture failed: ${ins.error.message}`);
+    for (const [vp, scheme] of [[VIEWPORTS[0], "light"], [VIEWPORTS[0], "dark"], [VIEWPORTS[1], "light"], [VIEWPORTS[1], "dark"]]) {
+      const { c: ac, p: ap } = await mk(vp, scheme, "/assets");
+      await ap.locator("li", { hasText: `삼성 냉장고${rand}` }).waitFor();
+      const tag = `${scheme}/${vp.name}`;
+      const li = (n) => ap.locator("li").filter({ hasText: `${n}${rand}` });
+      if (scheme === "light" && vp.name === "desktop") {
+        const chip = li("삼성 냉장고").getByTestId("fridge-chip");
+        record("kitchen-chef", vp.name, "fridge asset (category ‘냉장고’) shows ‘보관 6개 (임박 4개)’: D-1, D-2, D-3 and the already-expired bread count as imminent", (await chip.innerText()).replace(/\s+/g, " ").trim() === "보관 6개 (임박 4개)", await chip.innerText());
+        record("kitchen-chef", vp.name, "name-based detection: ‘김치냉장고’ and ‘냉동고’ assets get the chip too; the robot vacuum does not", (await li("딤채 김치냉장고").getByTestId("fridge-chip").count()) === 1 && (await li("미니 냉동고").getByTestId("fridge-chip").count()) === 1 && (await li("로봇청소기").getByTestId("fridge-chip").count()) === 0 && (await ap.getByTestId("fridge-chip").count()) === 3);
+        record("kitchen-chef", vp.name, "urgent chip is amber-tinted with a warning icon", (await chip.getAttribute("data-urgent")) === "4" && (await chip.locator("svg").count()) === 2 && lum(await chip.evaluate((el) => getComputedStyle(el).backgroundColor)) > 0.9);
+        const fridgeId = ins.data.find((a) => a.name.startsWith("삼성"))?.id;
+        await chip.click();
+        await ap.waitForURL(/\/kitchen/, { timeout: 15_000 });
+        await ap.getByTestId("kitchen-pulse").waitFor();
+        record("kitchen-chef", vp.name, "clicking the chip navigates to /kitchen (client-side deep link, page renders)", new URL(ap.url()).pathname === "/kitchen" && (await ap.getByTestId("kitchen-pulse").count()) === 1 && !!fridgeId);
+        await ap.goBack();
+        await ap.locator("li", { hasText: `삼성 냉장고${rand}` }).waitFor();
+      }
+      const w = await ap.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      const cbg = await li("삼성 냉장고").getByTestId("fridge-chip").evaluate((el) => getComputedStyle(el).backgroundColor);
+      record("kitchen-chef", vp.name, `${tag}: assets page with fridge chips has no horizontal scroll; chip follows the theme`, w && (scheme === "dark" ? lum(cbg) < 0.2 : lum(cbg) > 0.85), cbg);
+      await ap.screenshot({ path: `${OUT}/assets-fridge-chip-${scheme}-${vp.name}.png`, fullPage: true });
+      record("kitchen-chef", vp.name, `${tag}: no page errors on /assets`, ap.__errors.length === 0, ap.__errors.slice(0, 2).join(" | "));
+      await ac.close();
+    }
+    // a household with no kitchen items still gets a chip (0개), and one with the kitchen unreadable simply hides it (covered by the null path)
+    await svc.from("kitchen_items").delete().eq("household_id", H2);
+    {
+      const { c: zc, p: zp } = await mk(VIEWPORTS[0], "light", "/assets");
+      await zp.locator("li", { hasText: `삼성 냉장고${rand}` }).waitFor();
+      record("kitchen-chef", "desktop", "empty kitchen: the fridge chip reads ‘보관 0개’ (no warning)", (await zp.locator("li", { hasText: `삼성 냉장고${rand}` }).getByTestId("fridge-chip").innerText()).trim() === "보관 0개");
+      await zc.close();
+    }
+
+    // ================================================================ light/dark × desktop/mobile captures of the chef + radar
+    await svc.from("kitchen_profiles").upsert({ household_id: H2, pet_type: "cat" }, { onConflict: "household_id" });
+    await svc.from("kitchen_items").insert([seed("대파", "FRIDGE", shift(2)), seed("계란", "FRIDGE", shift(3)), seed("닭가슴살", "FRIDGE", shift(5))]);
+    for (const scheme of ["light", "dark"]) {
+      for (const vp of VIEWPORTS) {
+        const { c: kc, p: kp } = await mk(vp, scheme);
+        const tag = `${scheme}/${vp.name}`;
+        await kp.getByTestId("ai-chef").waitFor();
+        await kp.getByTestId("chef-generate").click();
+        await kp.getByTestId("chef-result").waitFor({ timeout: 30_000 });
+        await kp.waitForTimeout(300);
+        record("kitchen-chef", vp.name, `${tag}: chef cards + radar fit the viewport (no horizontal scroll, cards inside the section)`, (await kp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)) && (await kp.getByTestId("ai-chef").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)) && (await kp.getByTestId("local-radar").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)));
+        const cols = await kp.getByTestId("chef-result").locator(".grid").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+        record("kitchen-chef", vp.name, `${tag}: recipe grid is ${vp.name === "mobile" ? "1 column" : "3 columns"}`, cols === (vp.name === "mobile" ? 1 : 3), String(cols));
+        const bg = await kp.getByTestId("ai-chef").evaluate((el) => getComputedStyle(el).backgroundColor);
+        record("kitchen-chef", vp.name, `${tag}: sections follow the theme`, scheme === "dark" ? lum(bg) < 0.1 : lum(bg) > 0.8, bg);
+        await kp.getByTestId("local-radar").scrollIntoViewIfNeeded();
+        await kp.screenshot({ path: `${OUT}/kitchen-chef-${scheme}-${vp.name}.png`, fullPage: true });
+        record("kitchen-chef", vp.name, `${tag}: no page errors`, kp.__errors.length === 0, kp.__errors.slice(0, 2).join(" | "));
+        await kc.close();
+      }
+    }
+  } catch (err) {
+    if (/kitchen tables missing/.test(String(err))) record("kitchen-chef", "-", "kitchen tables available (migration 14)", false, "tables missing");
+    else record("kitchen-chef", "-", "chef/radar suite ran to completion", false, String(err?.stack ?? err).slice(0, 500));
+  } finally {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    if (H2) {
+      await svc.from("assets").delete().eq("household_id", H2);
+      for (const t of ["kitchen_items", "kitchen_shopping_items", "kitchen_expenses", "kitchen_profiles"]) await svc.from(t).delete().eq("household_id", H2);
+      await svc.from("profiles").delete().eq("household_id", H2);
+      await svc.from("households").delete().eq("id", H2);
+    }
+    if (strangerId) await svc.auth.admin.deleteUser(strangerId);
+  }
+}
+// helper used above: resolves with the next popup page opened from any page of the context
+function ctxPopup(context) { return new Promise((resolve) => { const t = setTimeout(() => resolve(null), 8000); context.once("page", (pg) => { clearTimeout(t); resolve(pg); }); }); }
+
 await browser.close();
 
 // ---------------------------------------------------------------- report

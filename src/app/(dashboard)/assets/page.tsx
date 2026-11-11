@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { z } from "zod";
 import { getSessionProfile } from "@/features/auth/server/session";
+import { getFridgeStock } from "@/features/appliances/server/fridge-stock";
 import { getAssets, getPresets } from "@/features/assets/server/asset.queries";
 import { AssetList } from "@/features/assets/components/AssetList";
 import { AssetSummaryBanner } from "@/features/assets/components/AssetSummaryBanner";
@@ -12,7 +13,7 @@ import { toSeoulDate } from "@/shared/lib/recurrence";
 export const metadata: Metadata = { title: "자산 관리" };
 
 export default async function AssetsPage({ searchParams }: { searchParams: Promise<{ openAssetId?: string; tab?: string }> }) {
-  const [{ profile }, assets, presets] = await Promise.all([getSessionProfile(), getAssets(), getPresets()]);
+  const [{ profile }, assets, presets, fridgeStock] = await Promise.all([getSessionProfile(), getAssets(), getPresets(), getFridgeStock()]);
   const today = toSeoulDate(new Date().toISOString());
   const isAdmin = profile?.role === "ADMIN";
 
@@ -35,7 +36,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
       </div>
 
       {assets.length > 0 && <AssetSummaryBanner summary={summarizeAssets(assets, today)} />}
-      <AssetList assets={assets} today={today} canEdit={isAdmin} deepLink={deepLink} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
+      <AssetList assets={assets} today={today} canEdit={isAdmin} deepLink={deepLink} fridgeStock={fridgeStock} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
     </div>
   );
 }

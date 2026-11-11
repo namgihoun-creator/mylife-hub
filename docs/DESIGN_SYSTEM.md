@@ -252,6 +252,14 @@
 - **ExpenseDialog(머니로그):** 분류 3칸 라디오 → 금액·날짜·메모 → `지출 등록`(Primary) · 이번 달 전체 내역(행마다 2단계 삭제) · 접이식 `월 예산 설정`. 오류는 `role="alert"` Rose.
 - **KitchenExpenseStrip**(`/analytics`, KPI 그리드 아래, 모든 색은 §K 메트릭 카드 규격): 이번 달 식비 · 양육비 · 냉파로 아낀 금액(Emerald) 3타일 + **가계 종합 캐시플로우 요약** — `렌탈 고정 + 식비·양육비 변동 = 합계` 3열, 비중 스택 바(렌탈 violet · 식비 zinc · 양육비 cyan, `role="img"` + 퍼센트 라벨), 방어액 한 줄(누적값임을 명시). 방어액은 이번 달 값이 아니라 누적이므로 합계에서 빼지 않는다.
 
+### Q. AI 셰프 · 동네 생활 레이더 · 냉장고 자산 칩
+- **배치(`/kitchen`):** 머니로그 카드 → **AiChefSection** → 보관 탭·재료 목록 → **LocalLifeRadar**(맨 아래). 모두 평평한 `rounded-xl border` 섹션 카드(§0), 그림자 없음.
+- **AiChefSection:** 헤더(`ChefHat` 아이콘 박스 + 제목/설명) 우측에 `[즉석 냉파 | 댕냥이 특식]` 세그먼트(`role="radiogroup"`, 활성 Primary). **펫이 없으면 `댕냥이 특식`은 `disabled`(`opacity-40`, title 안내)**. Primary `레시피 만들기` 버튼(진행 중 스피너). 결과 위에 출처 알약(`AI 셰프` violet / `기본 레시피` 중립) + 사유 한 줄 + `기한이 지난 재료 N개는 제외했어요` + `사용한 재료` 칩(D-3 이하 amber, 소비기한순).
+- **레시피 카드:** 제목 → 알약(시간 `Clock` · 난이도 · 칼로리 amber `Flame` · 펫은 cyan `염분 0%`) → **주재료 칩**(냉장고에 있음 emerald, 없음은 점선 + `· 없음`) → 양념 칩(펫은 없음) → 번호 단계 1~4(`h-5 w-5` 번호 박스) → TIP 박스(`bg-zinc-50`) → 하단 Outline 버튼 `이 재료들 소진 처리 (재료명)` — 누르면 그 레시피의 냉장고 재료를 삭제하고 구출 +N · 절약 +3,000원×N, 완료 후 emerald 결과 줄로 대체(중복 불가). 소진할 재료가 없으면 비활성. 그리드: 모바일 1열 · `lg` 3열.
+- **댕냥이 특식 규칙:** cyan 안내 박스(소금·기름·양념 없이 삶거나 쪄서 식혀 급여, 처음엔 소량). 독성 재료는 프롬프트와 결과 모두에서 제외.
+- **LocalLifeRadar:** 사람용 칩 3개(`ShoppingCart` 대형마트 · `Sprout` 전통시장 · `Store` 24시 편의점) + 펫 가구에만 두 번째 줄 3개(Rose `Siren` 24시 동물병원 · `Stethoscope` 동네 동물병원 · `PawPrint` 펫용품점). `h-9 rounded-lg border` 칩, 우측 `ExternalLink` 보조 아이콘. **일반 링크**(`https://m.map.kakao.com/actions/searchView?q=<encodeURIComponent>`, `target="_blank" rel="noopener noreferrer"`) — 스크립트 불필요, 방문자 위치를 묻거나 저장하지 않는다(위치는 카카오맵이 필요할 때 직접 묻는다).
+- **냉장고 자산 칩(`FridgeKitchenChip`, `/assets`):** 카테고리가 `냉장고`이거나 이름에 `냉장고/냉동고`(김치냉장고 포함)가 든 자산 카드의 관리 규칙 줄 아래. `rounded-full` 알약 `ChefHat` + `보관 N개`, 임박(D-3 이하·기한 지남 포함)이 있으면 amber 틴트 + `(임박 M개)` + `TriangleAlert`. 클릭 시 `/kitchen`으로 이동(`next/link`).
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 
