@@ -119,8 +119,8 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-1">
-          <div className="min-w-0 overflow-x-auto">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <StorageTabs value={tab} onChange={setTab} counts={counts} />
           </div>
           <ContextHelpButton topic="smart_stock" />

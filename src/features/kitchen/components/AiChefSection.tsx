@@ -111,9 +111,9 @@ export function AiChefSection({ petType, itemCount, onNotice }: { petType: PetTy
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-900"><ChefHat className="h-4 w-4" aria-hidden /></span>
           <div>
-            <div className="flex items-center gap-0.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">AI 셰프</h2>
-              <ContextHelpButton topic="ai_chef" className="-my-1.5" />
+              <ContextHelpButton topic="ai_chef" />
             </div>
             <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">기한이 급한 재료부터 골라 만들 수 있는 요리를 알려 드려요.</p>
           </div>

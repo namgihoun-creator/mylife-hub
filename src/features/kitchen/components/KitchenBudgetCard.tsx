@@ -80,11 +80,11 @@ export function KitchenBudgetCard({ data, onNotice }: { data: KitchenBudgetData;
               <span data-testid="today-budget-value" className="block text-xl tabular-nums sm:inline sm:text-base">{formatWon(summary.todayBudget)}</span>
             </span>
           </div>
-          <div className="flex items-start gap-1">
+          <div className="flex flex-col items-start gap-1.5">
             <p data-testid="today-budget-hint" className="text-xs font-medium text-slate-500 dark:text-zinc-400">
               {overspent ? `이번 달 식비 예산을 ${summary.human.left < 0 ? `${formatWon(-summary.human.left)} 넘겼어요.` : "다 썼어요."}` : `남은 식비 ${formatWon(summary.human.left)}을 이번 달 ${summary.daysLeft}일(오늘 포함)로 나눈 금액이에요.`}
             </p>
-            <ContextHelpButton topic="daily_budget" className="-mt-1.5" />
+            <ContextHelpButton topic="daily_budget" />
           </div>
         </div>
       </div>

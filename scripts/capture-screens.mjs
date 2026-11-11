@@ -4165,15 +4165,16 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
   }
 }
 
-// ---------------------------------------------------------------- contextual help (? buttons)
+// ---------------------------------------------------------------- contextual help: "사용 가이드" capsule badges + 3-step slide tutorial
 {
   const spots = [
-    { path: "/assets", topic: "appliance_dday", title: "가전 자산 & 소모품 D-Day" },
-    { path: "/kitchen", topic: "daily_budget", title: "오늘의 권장 식비란?" },
-    { path: "/kitchen", topic: "smart_stock", title: "스마트 식재료 보관함" },
-    { path: "/kitchen", topic: "zero_typing", title: "찰칵 입고 & 말로 정리" },
-    { path: "/kitchen", topic: "ai_chef", title: "냉장고 파먹기 AI 셰프" },
+    { path: "/assets", topic: "appliance_dday", label: "사용 가이드", step1: "1. 가전·렌탈 추가", step3: "3. 교체 완료로 자동 갱신" },
+    { path: "/kitchen", topic: "daily_budget", label: "사용 가이드", step1: "1. 월 식비 예산 설정", step3: "3. 지출 기록 시 실시간 방어" },
+    { path: "/kitchen", topic: "smart_stock", label: "사용 가이드", step1: "1. 찰칵 영수증 입고", step3: "3. 다 쓰면 소진 체크" },
+    { path: "/kitchen", topic: "zero_typing", label: "등록 튜토리얼", step1: "1. 영수증·재료 찰칵", step3: "3. 냉장고와 장부에 자동 등록" },
+    { path: "/kitchen", topic: "ai_chef", label: "사용 가이드", step1: "1. 임박 재료 자동 선택", step3: "3. 반려동물 독성 안전 체크" },
   ];
+  const settle = (p) => p.waitForTimeout(450); // let the open / slide animation finish before measuring
   for (const vp of [...VIEWPORTS, { name: "fold280", width: 280, height: 800 }]) {
     const c = await newContext(vp, storageState);
     const p = await c.newPage();
@@ -4185,41 +4186,79 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         record("help", vp.name, `${path}: no horizontal overflow`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
         for (const s of spots.filter((x) => x.path === path)) {
           const btn = p.locator(`[data-help-topic="${s.topic}"]`);
-          const box = await btn.boundingBox();
-          const inView = !!box && box.x >= 0 && box.x + box.width <= vp.width + 1;
-          record("help", vp.name, `${s.topic}: ? button visible inside the viewport with a ≥32px hit area`, (await btn.count()) === 1 && inView && box.width >= 32 && box.height >= 32, JSON.stringify(box));
           await btn.scrollIntoViewIfNeeded();
+          const box = await btn.boundingBox();
+          const style = await btn.evaluate((el) => { const cs = getComputedStyle(el); return { radius: parseFloat(cs.borderTopLeftRadius), border: parseFloat(cs.borderTopWidth), bg: cs.backgroundColor, text: el.innerText.trim() }; });
+          record("help", vp.name, `${s.topic}: capsule badge “${s.label}” (pill, bordered, tinted, one line, ≥32px, inside the screen)`, (await btn.count()) === 1 && style.text === s.label && style.radius >= 16 && style.border >= 1 && style.bg !== "rgba(0, 0, 0, 0)" && !!box && box.height >= 32 && box.height < 48 && box.x >= 0 && box.x + box.width <= vp.width + 1, JSON.stringify({ ...style, box }));
+
           await btn.click();
           const dlg = p.getByTestId("help-dialog");
           await dlg.waitFor();
-          await p.waitForTimeout(450); // let the open animation settle before measuring
-          const txt = await dlg.innerText();
+          await settle(p);
+          const counter = async () => (await dlg.getByTestId("help-counter").innerText()).trim();
+          const visibleTitle = async () => (await dlg.locator('[data-testid="help-slide"]:not([inert]) h3').innerText()).trim();
+          const lit = () => dlg.locator('[data-testid="help-progress"][data-active="true"]').count();
           const dbox = await dlg.boundingBox();
-          record("help", vp.name, `${s.topic}: modal shows title, tips and ‘확인했어요’, fits the screen`, txt.includes(s.title) && txt.includes("확인했어요") && !!dbox && dbox.x >= 0 && dbox.x + dbox.width <= vp.width + 1);
-          await dlg.getByRole("button", { name: "확인했어요" }).click();
+          record("help", vp.name, `${s.topic}: opens on “Step 1 / 3” with 1 of 3 progress bars lit, no ‘이전’, fits the screen`, (await counter()) === "Step 1 / 3" && (await lit()) === 1 && (await dlg.getByTestId("help-prev").isDisabled()) && (await visibleTitle()) === s.step1 && !!dbox && dbox.x >= 0 && dbox.x + dbox.width <= vp.width + 1 && dbox.y >= 0 && dbox.y + dbox.height <= vp.height + 1, JSON.stringify(dbox));
+          await dlg.getByTestId("help-next").click();
+          await settle(p);
+          record("help", vp.name, `${s.topic}: ‘다음’ → Step 2 / 3 (2 bars), ‘이전’ enabled`, (await counter()) === "Step 2 / 3" && (await lit()) === 2 && (await dlg.getByTestId("help-prev").isEnabled()));
+          await p.keyboard.press("ArrowRight");
+          await settle(p);
+          const lastLabel = (await dlg.getByTestId("help-done").innerText()).trim();
+          record("help", vp.name, `${s.topic}: keyboard → reaches Step 3 / 3; ‘다음’ becomes the gradient ‘직접 해보기 🚀’`, (await counter()) === "Step 3 / 3" && (await visibleTitle()) === s.step3 && lastLabel === "직접 해보기 🚀" && (await dlg.getByTestId("help-next").count()) === 0);
+          const slideOk = await dlg.evaluate((el) => { const sl = el.querySelector('[data-testid="help-slide"]:not([inert])'); const r = sl.getBoundingClientRect(), d = el.getBoundingClientRect(); return r.left >= d.left - 1 && r.right <= d.right + 1; });
+          record("help", vp.name, `${s.topic}: the active slide sits fully inside the modal (neighbouring slides clipped)`, slideOk);
+          await p.keyboard.press("ArrowLeft");
+          await settle(p);
+          record("help", vp.name, `${s.topic}: keyboard ← goes back to Step 2 / 3`, (await counter()) === "Step 2 / 3");
+          // swipe: drag left = next, drag right = previous
+          const sb = await dlg.locator('[data-testid="help-slide"]:not([inert])').boundingBox();
+          const y = sb.y + 60, cx = sb.x + sb.width / 2;
+          await p.mouse.move(cx + 60, y); await p.mouse.down(); await p.mouse.move(cx - 60, y, { steps: 6 }); await p.mouse.up();
+          await settle(p);
+          const afterLeft = await counter();
+          const sb2 = await dlg.locator('[data-testid="help-slide"]:not([inert])').boundingBox();
+          await p.mouse.move(sb2.x + sb2.width / 2 - 60, y); await p.mouse.down(); await p.mouse.move(sb2.x + sb2.width / 2 + 60, y, { steps: 6 }); await p.mouse.up();
+          await settle(p);
+          const afterRight = await counter();
+          record("help", vp.name, `${s.topic}: swipe left → Step 3, swipe right → back to Step 2`, afterLeft === "Step 3 / 3" && afterRight === "Step 2 / 3", `${afterLeft} → ${afterRight}`);
+          if (s.topic === "appliance_dday" || s.topic === "ai_chef") await p.screenshot({ path: `${OUT}/help-tutorial-${s.topic}-${vp.name}.png` });
+          await p.keyboard.press("ArrowRight");
+          await settle(p);
+          await dlg.getByTestId("help-done").click();
           await dlg.waitFor({ state: "detached" });
+          await btn.click();
+          await p.getByTestId("help-dialog").waitFor();
+          await settle(p);
+          record("help", vp.name, `${s.topic}: ‘직접 해보기’ closes the modal; reopening starts at Step 1 again`, (await p.getByTestId("help-counter").innerText()).trim() === "Step 1 / 3");
+          await p.keyboard.press("Escape");
+          await p.getByTestId("help-dialog").waitFor({ state: "detached" });
         }
       }
-      // headings next to the button must not be pushed into broken wrapping
       await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
       const h1 = await p.locator("h1").first().boundingBox();
       const hb = await p.locator('[data-help-topic="appliance_dday"]').boundingBox();
-      record("help", vp.name, "assets title stays on one line next to the ? button", !!h1 && !!hb && h1.height < 40 && Math.abs((hb.y + hb.height / 2) - (h1.y + h1.height / 2)) < 16, `h1=${h1?.height}`);
+      const sameLine = !!h1 && !!hb && Math.abs((hb.y + hb.height / 2) - (h1.y + h1.height / 2)) < 20;
+      record("help", vp.name, "assets: title on ONE line; badge beside it (or wrapped whole beneath it), never squeezed", !!h1 && !!hb && h1.height < 40 && hb.height < 48 && (sameLine || hb.y > h1.y + h1.height - 2), `h1=${h1?.height} badge=${JSON.stringify(hb)}`);
       await p.screenshot({ path: `${OUT}/help-assets-${vp.name}.png` });
       await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      const add = await p.locator('[data-testid="add-item"]').boundingBox();
+      record("help", vp.name, "kitchen CTA row: ‘재료 추가’ fully inside the screen", !!add && add.x >= 0 && add.x + add.width <= vp.width + 1);
       await p.screenshot({ path: `${OUT}/help-kitchen-${vp.name}.png` });
-      // household settings modal
       await p.getByRole("button", { name: "가구 설정" }).first().click();
       const hh = p.locator('[data-help-topic="household_sync"]');
       await hh.waitFor();
-      await p.waitForTimeout(450);
+      await settle(p);
       const hbox = await hh.boundingBox();
-      record("help", vp.name, "household modal: ? beside the title; nested help modal opens and closes", !!hbox && hbox.x + hbox.width <= vp.width + 1);
+      record("help", vp.name, "household modal: badge beside the title and inside the screen", !!hbox && hbox.x >= 0 && hbox.x + hbox.width <= vp.width + 1 && hbox.height < 48);
+      await p.screenshot({ path: `${OUT}/help-household-${vp.name}.png` });
       await hh.click();
       await p.getByTestId("help-dialog").waitFor();
-      await p.getByRole("button", { name: "확인했어요" }).click();
+      await settle(p);
+      record("help", vp.name, "household_sync: nested tutorial opens on Step 1 / 3", (await p.getByTestId("help-counter").innerText()).trim() === "Step 1 / 3");
+      await p.keyboard.press("Escape");
       await p.getByTestId("help-dialog").waitFor({ state: "detached" });
-      await p.screenshot({ path: `${OUT}/help-household-${vp.name}.png` });
     } catch (err) {
       record("help", vp.name, "help suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
     }

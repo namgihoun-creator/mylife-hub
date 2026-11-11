@@ -144,7 +144,7 @@ export function HouseholdSettingsModal({
 
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900">
         <DialogHeader>
-          <div className="flex items-center gap-1 pr-6">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-6">
             <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">{householdName} 설정</DialogTitle>
             <ContextHelpButton topic="household_sync" />
           </div>

@@ -27,7 +27,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h1 className="whitespace-nowrap text-2xl font-bold tracking-tight text-slate-900 dark:text-zinc-50">자산 관리</h1>
             <ContextHelpButton topic="appliance_dday" />
           </div>
