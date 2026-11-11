@@ -1994,6 +1994,32 @@ const CRON_SECRET = process.env.CRON_SECRET;
       await svc.from("tasks").delete().eq("id", tid);
       await svc.from("assets").delete().eq("id", aid);
 
+      // ---- backup restore keeps the rental columns (patch 13)
+      const RENTAL_COLS = ["ownership_type", "rental_provider", "monthly_fee", "billing_day", "contract_start_date", "obligation_end_date", "ownership_transfer_date", "care_type", "payment_card_note"];
+      const backupSrc = await readFile("src/features/household/server/backup.actions.ts", "utf8");
+      const assetsCols = /assets:\s*"([^"]+)"/.exec(backupSrc)?.[1] ?? "";
+      record("backup-rental", "-", "export COLUMNS.assets lists all 9 rental columns", RENTAL_COLS.every((c) => assetsCols.split(",").map((s) => s.trim()).includes(c)), assetsCols);
+      const rentId = crypto.randomUUID(), ownedId = crypto.randomUUID(), legacyId = crypto.randomUUID();
+      const base = { visibility: "FAMILY", space: "주방", category: "가전", preset_key: null, note: null, model_name: null };
+      const rentalPayload = {
+        version: 1,
+        assets: [
+          { ...base, id: rentId, name: "E2E 렌탈 복구", ownership_type: "RENTAL", rental_provider: "코웨이", monthly_fee: 32900, billing_day: 15, contract_start_date: "2025-01-10", obligation_end_date: "2030-01-09", ownership_transfer_date: "2030-01-10", care_type: "VISIT", payment_card_note: "삼성 1234" },
+          { ...base, id: ownedId, name: "E2E 소유 복구", ownership_type: "OWNED", care_type: "NONE" },
+          { ...base, id: legacyId, name: "E2E 구백업 복구" }, // pre-patch backup: no rental keys at all
+        ],
+        task_rules: [], tasks: [], event_logs: [],
+      };
+      const rentRest = await sb.rpc("restore_household_backup", { p_payload: rentalPayload });
+      const got = (await svc.from("assets").select("id, ownership_type, rental_provider, monthly_fee, billing_day, contract_start_date, obligation_end_date, ownership_transfer_date, care_type, payment_card_note").in("id", [rentId, ownedId, legacyId])).data ?? [];
+      const g = (id) => got.find((x) => x.id === id);
+      record("backup-rental", "-", "restore round-trips a rental asset (all 9 columns)", !rentRest.error && g(rentId)?.ownership_type === "RENTAL" && g(rentId)?.rental_provider === "코웨이" && g(rentId)?.monthly_fee === 32900 && g(rentId)?.billing_day === 15 && g(rentId)?.contract_start_date === "2025-01-10" && g(rentId)?.obligation_end_date === "2030-01-09" && g(rentId)?.ownership_transfer_date === "2030-01-10" && g(rentId)?.care_type === "VISIT" && g(rentId)?.payment_card_note === "삼성 1234", rentRest.error?.message ?? JSON.stringify(g(rentId)));
+      record("backup-rental", "-", "owned asset stays OWNED / NONE", g(ownedId)?.ownership_type === "OWNED" && g(ownedId)?.care_type === "NONE" && g(ownedId)?.monthly_fee === null, JSON.stringify(g(ownedId)));
+      record("backup-rental", "-", "old backup without rental keys still restores as OWNED / NONE (column defaults)", g(legacyId)?.ownership_type === "OWNED" && g(legacyId)?.care_type === "NONE" && g(legacyId)?.rental_provider === null, JSON.stringify(g(legacyId)));
+      const badRent = await sb.rpc("restore_household_backup", { p_payload: { version: 1, assets: [{ ...base, id: crypto.randomUUID(), name: "E2E 잘못된 렌탈", ownership_type: "LEASE" }], task_rules: [], tasks: [], event_logs: [] } });
+      record("backup-rental", "-", "invalid ownership_type is rejected by the CHECK (restore rolls back)", !!badRent.error && /^2[23]/.test(badRent.error.code ?? ""), badRent.error?.code ?? "no error");
+      await svc.from("assets").delete().in("id", [rentId, ownedId, legacyId]);
+
       // ---- permissions: anonymous and another household cannot use the RPC / touch the rule
       const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
       const anonRpc = await anon.rpc("set_rule_consumable", { p_rule_id: r[0].id, p_name: "hack", p_model: "hack", p_url: "https://evil.example.com" });

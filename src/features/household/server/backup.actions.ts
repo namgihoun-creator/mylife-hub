@@ -14,7 +14,7 @@ const PAGE = 1000; // PostgREST returns at most 1000 rows per request
 const MAX_ROWS = { assets: 5000, task_rules: 5000, tasks: 5000, event_logs: 20000 } as const;
 
 const COLUMNS = {
-  assets: "id, visibility, name, space, category, preset_key, note, model_name, created_at",
+  assets: "id, visibility, name, space, category, preset_key, note, model_name, ownership_type, rental_provider, monthly_fee, billing_day, contract_start_date, obligation_end_date, ownership_transfer_date, care_type, payment_card_note, created_at",
   task_rules:
     "id, visibility, asset_id, title, recurring_type, interval_n, anchor, day_of_month, timezone, next_iteration_no, active, consumable_name, consumable_model, custom_purchase_url, created_at",
   tasks:
