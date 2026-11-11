@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarClock, Package } from "lucide-react";
+import { BarChart3, CalendarClock, ChefHat, Package } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 
 const ITEMS = [
   { href: "/assets", label: "자산 관리", icon: Package },
   { href: "/timeline", label: "생활 타임라인", icon: CalendarClock },
+  { href: "/kitchen", label: "키친", icon: ChefHat },
   { href: "/analytics", label: "리포트", icon: BarChart3 },
 ];
 
@@ -20,7 +21,7 @@ export function MainNav({ variant }: { variant: "top" | "bottom" }) {
     return (
       <nav
         aria-label="주요 메뉴"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-slate-200/80 bg-white/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-md dark:border-zinc-800/80 dark:bg-black/80 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200/80 bg-white/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-md dark:border-zinc-800/80 dark:bg-black/80 md:hidden"
       >
         {ITEMS.map(({ href, label, icon: Icon }) => (
           <Link

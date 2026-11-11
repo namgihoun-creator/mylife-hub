@@ -2327,7 +2327,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
           const links = await nav.locator("a").allInnerTexts();
           const cur = await nav.locator('a[aria-current="page"]').allInnerTexts();
           record("analytics", vp.name, "nav: [리포트] tab present and marked aria-current on /analytics (others not)", links.some((t) => t.includes("리포트")) && cur.length === 1 && cur[0].includes("리포트"), `links=${links.join("|")} cur=${cur.join("|")}`);
-          if (vp.name === "mobile") record("analytics", vp.name, "mobile bottom tab bar has 3 tabs", (await nav.locator("a").count()) === 3);
+          if (vp.name === "mobile") record("analytics", vp.name, "mobile bottom tab bar has 4 tabs (자산·타임라인·키친·리포트)", (await nav.locator("a").count()) === 4);
 
           const row = p.getByTestId("billing-row").filter({ hasText: `E2E렌탈A${rand}` });
           const rowText = await row.innerText();
@@ -2693,6 +2693,453 @@ const CRON_SECRET = process.env.CRON_SECRET;
     const r = await mp.goto(`${BASE}/`, { waitUntil: "networkidle" });
     record("pwa", "desktop", "signed-in launch at start_url ‘/’ lands on /assets (the app opens straight into the shell)", new URL(mp.url()).pathname === "/assets" && !!r, mp.url());
     await mfCtx.close();
+  }
+}
+
+// ---------------------------------------------------------------- Smart Kitchen OS: live RLS household isolation (migration 14, real Supabase)
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const H1 = myProfile.household_id; // the signed-in E2E household
+  const tables = ["kitchen_profiles", "kitchen_items", "kitchen_shopping_items", "kitchen_expenses"];
+  let strangerId = null, H2 = null;
+  const mine = { items: [], shop: [], exp: [] };
+  try {
+    // ---- probe: is migration 14 applied?
+    const probes = await Promise.all(tables.map((t) => sb.from(t).select("*").limit(1)));
+    const missing = tables.filter((_, i) => probes[i].error);
+    record("kitchen-rls", "-", "migration 14 applied: all 4 kitchen tables are reachable through the API", missing.length === 0, missing.length ? `missing/blocked: ${missing.join(", ")} (${probes.find((p) => p.error)?.error.message})` : "");
+    if (missing.length) throw new Error("kitchen tables missing");
+
+    // ---- a second household (stranger)
+    const strangerEmail = `mylife.e2e.kitchen+${rand}@example.com`;
+    const strangerPw = `Pw-${rand}-${Date.now()}`;
+    const { data: su, error: suErr } = await svc.auth.admin.createUser({ email: strangerEmail, password: strangerPw, email_confirm: true, user_metadata: { display_name: "E2E 키친타가구" } });
+    if (suErr) throw new Error(`kitchen stranger createUser failed: ${suErr.message}`);
+    strangerId = su.user.id;
+    const stranger = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await stranger.auth.signInWithPassword({ email: strangerEmail, password: strangerPw });
+    await stranger.rpc("create_household", { p_name: "E2E 키친타가구", p_display_name: "E2E 키친타가구" });
+    H2 = (await svc.from("profiles").select("household_id").eq("id", strangerId).single()).data.household_id;
+    const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+
+    // ---- household 1 (the signed-in user) writes through RLS
+    const N = (s) => `E2E키친${s}${rand}`;
+    const i1 = await sb.from("kitchen_items").insert({ household_id: H1, name: N("두부"), expire_date: shift(5) }).select("*").single();
+    const s1 = await sb.from("kitchen_shopping_items").insert({ household_id: H1, name: N("계란") }).select("*").single();
+    const e1 = await sb.from("kitchen_expenses").insert({ household_id: H1, category: "human_groceries", amount: 12345, memo: N("메모") }).select("*").single();
+    if (i1.data) mine.items.push(i1.data.id);
+    if (s1.data) mine.shop.push(s1.data.id);
+    if (e1.data) mine.exp.push(e1.data.id);
+    record("kitchen-rls", "-", "own household: insert + read-back works on items / shopping / expenses", !i1.error && !s1.error && !e1.error && i1.data.household_id === H1, [i1.error, s1.error, e1.error].filter(Boolean).map((e) => e.message).join(" | "));
+    record("kitchen-rls", "-", "defaults: item amount '1개' / FRIDGE / added_at = Seoul today / is_pet false; shopping is_done false; expense_date = today", i1.data?.amount === "1개" && i1.data?.storage_type === "FRIDGE" && i1.data?.added_at === today && i1.data?.is_pet === false && s1.data?.is_done === false && s1.data?.is_pet === false && e1.data?.expense_date === today, JSON.stringify({ a: i1.data?.added_at, d: e1.data?.expense_date, today }));
+
+    // ---- household 2 (stranger): own data, and nothing of household 1
+    const i2 = await stranger.from("kitchen_items").insert({ household_id: H2, name: N("타가구우유"), expire_date: shift(3), storage_type: "FREEZER" }).select("*").single();
+    const s2 = await stranger.from("kitchen_shopping_items").insert({ household_id: H2, name: N("타가구장보기") }).select("*").single();
+    const e2 = await stranger.from("kitchen_expenses").insert({ household_id: H2, category: "pet_care", amount: 999 }).select("*").single();
+    const p2 = await stranger.from("kitchen_profiles").insert({ household_id: H2 }).select("*").single();
+    record("kitchen-rls", "-", "stranger household: can create its own rows incl. its kitchen profile (defaults none / 350000 / 100000 / 0 / 0 / 0)", !i2.error && !s2.error && !e2.error && !p2.error && p2.data.pet_type === "none" && p2.data.human_monthly_budget === 350000 && p2.data.pet_monthly_budget === 100000 && p2.data.rescued_count === 0 && p2.data.discarded_count === 0 && Number(p2.data.saved_money) === 0, [i2.error, s2.error, e2.error, p2.error].filter(Boolean).map((e) => e.message).join(" | "));
+
+    const sSee = await Promise.all([stranger.from("kitchen_items").select("id, household_id"), stranger.from("kitchen_shopping_items").select("id, household_id"), stranger.from("kitchen_expenses").select("id, household_id"), stranger.from("kitchen_profiles").select("household_id")]);
+    record("kitchen-rls", "-", "isolation (read): the stranger sees ONLY its own rows in all 4 tables, never household 1's", sSee.every((r) => !r.error && r.data.length === 1 && r.data.every((x) => x.household_id === H2)), JSON.stringify(sSee.map((r) => r.data?.length)));
+    const mSee = await Promise.all([sb.from("kitchen_items").select("id").eq("household_id", H2), sb.from("kitchen_shopping_items").select("id").eq("household_id", H2), sb.from("kitchen_expenses").select("id").eq("household_id", H2), sb.from("kitchen_profiles").select("household_id").eq("household_id", H2)]);
+    record("kitchen-rls", "-", "isolation (read, reverse): household 1 asking for household 2's rows by id gets nothing", mSee.every((r) => !r.error && r.data.length === 0), JSON.stringify(mSee.map((r) => r.data?.length)));
+
+    // ---- forged writes
+    const forged = await Promise.all([
+      stranger.from("kitchen_items").insert({ household_id: H1, name: N("위조"), expire_date: shift(1) }),
+      stranger.from("kitchen_shopping_items").insert({ household_id: H1, name: N("위조") }),
+      stranger.from("kitchen_expenses").insert({ household_id: H1, category: "pet_care", amount: 1 }),
+      stranger.from("kitchen_profiles").insert({ household_id: H1 }),
+    ]);
+    record("kitchen-rls", "-", "isolation (insert): the stranger cannot create rows inside household 1 (RLS 42501) on any of the 4 tables", forged.every((r) => r.error?.code === "42501"), forged.map((r) => r.error?.code ?? "OK").join(","));
+    const leaked = await svc.from("kitchen_items").select("id").eq("household_id", H1).like("name", `%위조%${rand}`);
+    record("kitchen-rls", "-", "…and nothing was written (service-role check)", (leaked.data ?? []).length === 0);
+
+    const upd = await stranger.from("kitchen_items").update({ name: "hacked" }).eq("id", i1.data.id).select("id");
+    const updS = await stranger.from("kitchen_shopping_items").update({ is_done: true }).eq("id", s1.data.id).select("id");
+    const updE = await stranger.from("kitchen_expenses").update({ amount: 1 }).eq("id", e1.data.id).select("id");
+    const del = await stranger.from("kitchen_items").delete().eq("id", i1.data.id).select("id");
+    const delS = await stranger.from("kitchen_shopping_items").delete().eq("id", s1.data.id).select("id");
+    const delE = await stranger.from("kitchen_expenses").delete().eq("id", e1.data.id).select("id");
+    record("kitchen-rls", "-", "isolation (update/delete): the stranger's UPDATE and DELETE on household 1's rows affect 0 rows", [upd, updS, updE, del, delS, delE].every((r) => !r.error && r.data.length === 0), JSON.stringify([upd, updS, updE, del, delS, delE].map((r) => r.data?.length ?? r.error?.code)));
+    const intact = await Promise.all([svc.from("kitchen_items").select("name").eq("id", i1.data.id).single(), svc.from("kitchen_shopping_items").select("is_done").eq("id", s1.data.id).single(), svc.from("kitchen_expenses").select("amount").eq("id", e1.data.id).single()]);
+    record("kitchen-rls", "-", "household 1's data is intact after the attack attempts (verified with the service role)", intact[0].data?.name === N("두부") && intact[1].data?.is_done === false && intact[2].data?.amount === 12345, JSON.stringify(intact.map((r) => r.data)));
+
+    const move = await stranger.from("kitchen_items").update({ household_id: H1 }).eq("id", i2.data.id).select("id");
+    const move2 = await sb.from("kitchen_items").update({ household_id: H2 }).eq("id", i1.data.id).select("id");
+    record("kitchen-rls", "-", "a row cannot be moved to another household by either side (UPDATE WITH CHECK)", !!move.error && !!move2.error && move.error.code === "42501" && move2.error.code === "42501", `${move.error?.code} ${move2.error?.code}`);
+
+    // ---- anonymous
+    const an = await Promise.all(tables.map((t) => anon.from(t).select("*").limit(1)));
+    const anIns = await anon.from("kitchen_items").insert({ household_id: H1, name: "x", expire_date: shift(1) });
+    record("kitchen-rls", "-", "anonymous clients are denied on all 4 tables (read and write)", an.every((r) => !!r.error || (r.data ?? []).length === 0) && an.every((r) => r.error?.code === "42501") && anIns.error?.code === "42501", an.map((r) => r.error?.code ?? "OK").join(",") + ` ins=${anIns.error?.code}`);
+
+    // ---- kitchen_profiles specifics
+    const pUp = await stranger.from("kitchen_profiles").update({ pet_type: "dog", rescued_count: 3, discarded_count: 1, saved_money: 45000, human_monthly_budget: 400000 }).eq("household_id", H2).select("*").single();
+    record("kitchen-rls", "-", "profile: owner household can update stats and budget", !pUp.error && pUp.data.pet_type === "dog" && pUp.data.rescued_count === 3 && Number(pUp.data.saved_money) === 45000 && pUp.data.human_monthly_budget === 400000, pUp.error?.message);
+    const pDel = await stranger.from("kitchen_profiles").delete().eq("household_id", H2).select("household_id");
+    const stillThere = await svc.from("kitchen_profiles").select("household_id").eq("household_id", H2);
+    record("kitchen-rls", "-", "profile: DELETE is not allowed even for its own household (row survives)", (pDel.error?.code === "42501" || (pDel.data ?? []).length === 0) && (stillThere.data ?? []).length === 1, `${pDel.error?.code ?? "no-error"} rows=${pDel.data?.length}`);
+    const pDup = await stranger.from("kitchen_profiles").insert({ household_id: H2 });
+    record("kitchen-rls", "-", "profile: only one row per household (primary key)", pDup.error?.code === "23505", pDup.error?.code);
+    const pCross = await sb.from("kitchen_profiles").update({ rescued_count: 999 }).eq("household_id", H2).select("household_id");
+    const pAfter = await svc.from("kitchen_profiles").select("rescued_count").eq("household_id", H2).single();
+    record("kitchen-rls", "-", "profile: another household cannot change this household's stats", !pCross.error && pCross.data.length === 0 && pAfter.data.rescued_count === 3);
+
+    // ---- CHECK constraints through the API
+    const code = (r) => r.error?.code ?? "OK";
+    const checks = await Promise.all([
+      stranger.from("kitchen_profiles").update({ pet_type: "bird" }).eq("household_id", H2),
+      stranger.from("kitchen_profiles").update({ human_monthly_budget: -1 }).eq("household_id", H2),
+      stranger.from("kitchen_items").insert({ household_id: H2, name: "x", expire_date: shift(1), storage_type: "GARAGE" }),
+      stranger.from("kitchen_items").insert({ household_id: H2, name: "   ", expire_date: shift(1) }),
+      stranger.from("kitchen_items").insert({ household_id: H2, name: "a".repeat(101), expire_date: shift(1) }),
+      stranger.from("kitchen_items").insert({ household_id: H2, name: "x" }),
+      stranger.from("kitchen_expenses").insert({ household_id: H2, category: "snacks", amount: 1000 }),
+      stranger.from("kitchen_expenses").insert({ household_id: H2, category: "pet_care", amount: -5 }),
+      stranger.from("kitchen_shopping_items").insert({ household_id: H2, name: "" }),
+    ]);
+    record("kitchen-rls", "-", "constraints enforced live: bad pet_type / negative budget / bad storage_type / blank + over-long name / missing expire_date / bad category / negative amount / blank shopping name", checks.every((r) => /^23/.test(code(r))), checks.map(code).join(","));
+
+    // ---- cascade
+    const before = (await svc.from("kitchen_items").select("id").eq("household_id", H2)).data.length;
+    await svc.from("profiles").delete().eq("household_id", H2);
+    await svc.auth.admin.deleteUser(strangerId);
+    strangerId = null;
+    await svc.from("households").delete().eq("id", H2);
+    const after = await Promise.all(tables.map((t) => svc.from(t).select("household_id", { count: "exact", head: true }).eq("household_id", H2)));
+    record("kitchen-rls", "-", "deleting a household cascades to all its kitchen rows (4 tables)", before >= 1 && after.every((r) => !r.error && r.count === 0), after.map((r) => r.count).join(","));
+    H2 = null;
+  } catch (err) {
+    if (!/kitchen tables missing/.test(String(err))) record("kitchen-rls", "-", "live kitchen RLS suite ran to completion", false, String(err?.message ?? err));
+  } finally {
+    if (mine.items.length) await svc.from("kitchen_items").delete().in("id", mine.items);
+    if (mine.shop.length) await svc.from("kitchen_shopping_items").delete().in("id", mine.shop);
+    if (mine.exp.length) await svc.from("kitchen_expenses").delete().in("id", mine.exp);
+    if (H2) {
+      for (const t of tables) await svc.from(t).delete().eq("household_id", H2);
+      await svc.from("profiles").delete().eq("household_id", H2);
+      await svc.from("households").delete().eq("id", H2);
+    }
+    if (strangerId) await svc.auth.admin.deleteUser(strangerId);
+  }
+}
+
+// ---------------------------------------------------------------- Smart Kitchen OS: /kitchen dashboard (UI + server actions, real Supabase)
+// Runs entirely inside a throw-away second household so the E2E account's own data is never touched.
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  let strangerId = null, H2 = null;
+  const lum = (rgb) => { const [r, g, b] = (rgb.match(/[\d.]+/g) ?? [255, 255, 255]).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const until = async (fn, tries = 40) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+  try {
+    const strangerEmail = `mylife.e2e.kui+${rand}@example.com`;
+    const strangerPw = `Pw-${rand}-${Date.now()}`;
+    const { data: su, error: suErr } = await svc.auth.admin.createUser({ email: strangerEmail, password: strangerPw, email_confirm: true, user_metadata: { display_name: "E2E 키친UI" } });
+    if (suErr) throw new Error(`kitchen-ui createUser failed: ${suErr.message}`);
+    strangerId = su.user.id;
+    const cl = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await cl.auth.signInWithPassword({ email: strangerEmail, password: strangerPw });
+    await cl.rpc("create_household", { p_name: "E2E 키친UI", p_display_name: "E2E 키친UI" });
+    H2 = (await svc.from("profiles").select("household_id").eq("id", strangerId).single()).data.household_id;
+
+    const probe = await cl.from("kitchen_items").select("id").limit(1);
+    if (probe.error) throw new Error("kitchen tables missing");
+
+    // every column explicit: a bulk insert sends NULL for keys that only some rows carry (defaults would not apply)
+    const seed = (name, storage_type, expire, extra = {}) => ({ household_id: H2, name, storage_type, expire_date: expire, amount: "1개", spot: null, added_at: today, is_pet: false, memo: null, ...extra });
+    const leakName = `E2E누출확인${rand}`;
+    const seedRows = [
+      seed("지난요거트", "FRIDGE", shift(-2)),
+      seed("두부", "FRIDGE", shift(1), { amount: "1모", spot: "선반 앞" }),
+      seed("경계2", "FRIDGE", shift(2)),
+      seed("경계3", "FRIDGE", shift(3)),
+      seed("우유", "FRIDGE", shift(6)),
+      seed("경계7", "FRIDGE", shift(7)),
+      seed("경계8", "FRIDGE", shift(8)),
+      seed("계란", "FRIDGE", shift(20)),
+      seed("냉동삼겹살", "FREEZER", shift(60), { added_at: shift(-35) }),
+      seed("냉동만두", "FREEZER", shift(60), { added_at: shift(-5) }),
+      seed("라면", "ROOM_TEMP", shift(100)),
+      seed("양파", "ROOM_TEMP", shift(20), { memo: "망 하나" }),
+      seed(leakName, "FRIDGE", shift(15)),
+    ];
+    const ins = await svc.from("kitchen_items").insert(seedRows);
+    if (ins.error) throw new Error(`kitchen-ui seed failed: ${ins.error.message}`);
+    const rows = async () => (await svc.from("kitchen_items").select("*").eq("household_id", H2)).data ?? [];
+    const prof = async () => (await svc.from("kitchen_profiles").select("*").eq("household_id", H2).maybeSingle()).data;
+    const rowOf = async (name) => (await rows()).find((r) => r.name === name);
+
+    // ---- sign in once, reuse the session
+    let state;
+    {
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.fill('input[name="email"]', strangerEmail);
+      await p.fill('input[name="password"]', strangerPw);
+      await p.click('button[type="submit"]');
+      await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20_000 });
+      state = await c.storageState();
+      await c.close();
+    }
+
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: "light" });
+    await ctx.addInitScript(() => { try { localStorage.setItem("theme", "light"); } catch {} });
+    const p = await ctx.newPage();
+    const errs = [];
+    p.on("pageerror", (e) => errs.push(`pageerror: ${e.message}`));
+    p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && errs.push(`console: ${m.text()}`));
+    const open = async () => {
+      await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      await p.getByTestId("kitchen-pulse").waitFor();
+    };
+    const card = (n) => p.locator(`[data-testid="kitchen-card"][data-name="${n}"]`);
+    const pulse = async (id) => (await p.locator(`[data-pulse="${id}"] [data-testid="pulse-value"]`).innerText()).trim();
+    const sub = async (id) => (await p.locator(`[data-pulse="${id}"]`).innerText()).replace(/\s+/g, " ");
+
+    await open();
+    record("kitchen-ui", "desktop", "page renders: title 키친, KPI tiles, storage tabs, 13 seeded cards", (await p.getByRole("heading", { name: "키친", level: 1 }).count()) === 1 && (await p.getByTestId("pulse-card").count()) === 4 && (await p.getByTestId("storage-tabs").count()) === 1 && (await p.getByTestId("kitchen-card").count()) === 13);
+    const nav = p.locator('header nav[aria-label="주요 메뉴"]');
+    const cur = await nav.locator('a[aria-current="page"]').allInnerTexts();
+    record("kitchen-ui", "desktop", "nav: [키친] tab is present and marked aria-current on /kitchen", (await nav.locator("a").allInnerTexts()).some((t) => t.includes("키친")) && cur.length === 1 && cur[0].includes("키친"), cur.join("|"));
+
+    // ---- Pulse numbers
+    record("kitchen-ui", "desktop", "pulse: 13개 in the kitchen · 4개 expiring (D-3 or sooner, expired included) with 기한 지남 1건 · 1개 fossil · 0원 saved", (await pulse("total")) === "13개" && (await pulse("urgent")) === "4개" && /기한 지남 1건/.test(await sub("urgent")) && (await pulse("fossil")) === "1개" && (await pulse("saved")) === "0원", [await pulse("total"), await pulse("urgent"), await pulse("fossil"), await pulse("saved")].join(" "));
+
+    // ---- D-Day traffic light (boundaries 2 / 3 / 7 / 8 + expired)
+    const light = async (n) => card(n).getAttribute("data-light");
+    const got = { 지난요거트: await light("지난요거트"), 두부: await light("두부"), 경계2: await light("경계2"), 경계3: await light("경계3"), 우유: await light("우유"), 경계7: await light("경계7"), 경계8: await light("경계8"), 계란: await light("계란") };
+    record("kitchen-ui", "desktop", "D-Day badge colours: past=alert, D-1/D-2=red(rose), D-3/D-6/D-7=yellow(amber), D-8/D-20=green(emerald)", got.지난요거트 === "alert" && got.두부 === "red" && got.경계2 === "red" && got.경계3 === "yellow" && got.우유 === "yellow" && got.경계7 === "yellow" && got.경계8 === "green" && got.계란 === "green", JSON.stringify(got));
+    const label = async (n) => (await card(n).getByTestId("dday-badge").innerText()).trim();
+    record("kitchen-ui", "desktop", "badge text: ‘D+2 지남’ for the past date, ‘D-1’, ‘D-7’ and ‘D-20’ otherwise", (await label("지난요거트")) === "D+2 지남" && (await label("두부")) === "D-1" && (await label("경계7")) === "D-7" && (await label("계란")) === "D-20", [await label("지난요거트"), await label("두부"), await label("경계7"), await label("계란")].join(" "));
+    const bg = async (n) => card(n).getByTestId("dday-badge").evaluate((el) => getComputedStyle(el).backgroundColor);
+    const [bAlert, bRed, bYellow, bGreen] = [await bg("지난요거트"), await bg("경계2"), await bg("경계3"), await bg("경계8")];
+    record("kitchen-ui", "desktop", "badge fills: alert = solid rose-600, red = rose-50 tint, yellow = amber-50 tint, green = emerald-50 tint", bAlert === "rgb(225, 29, 72)" && bRed === "rgb(255, 241, 242)" && bYellow === "rgb(255, 251, 235)" && bGreen === "rgb(236, 253, 245)", JSON.stringify({ bAlert, bRed, bYellow, bGreen }));
+    const order = await p.getByTestId("kitchen-card-name").allInnerTexts();
+    record("kitchen-ui", "desktop", "cards are ordered soonest-expiry first (past date on top)", order[0] === "지난요거트" && order[1] === "두부", order.slice(0, 4).join(","));
+    record("kitchen-ui", "desktop", "card shows name, amount and the spot memo", (await card("두부").getByTestId("kitchen-card-amount").innerText()) === "1모" && (await card("두부").getByTestId("kitchen-card-spot").innerText()).includes("선반 앞"));
+
+    // ---- fossil badge + defrost guide
+    record("kitchen-ui", "desktop", "fossil badge ‘30일+ 냉동’ only on the item frozen ≥30 days (35d yes, 5d no, fridge no)", (await p.getByTestId("fossil-badge").count()) === 1 && (await card("냉동삼겹살").getByTestId("fossil-badge").count()) === 1 && (await card("냉동만두").getByTestId("fossil-badge").count()) === 0 && (await card("두부").getByTestId("fossil-badge").count()) === 0);
+    await card("냉동삼겹살").getByTestId("fossil-badge").click();
+    const dd = p.getByTestId("defrost-dialog");
+    await dd.waitFor();
+    record("kitchen-ui", "desktop", "fossil click → microwave guide for meat (200W thaw mode 3~4 min + odor tip)", (await dd.getByTestId("defrost-group").innerText()) === "육류/가금류" && /전자레인지 200W/.test(await dd.getByTestId("defrost-method").innerText()) && /청주/.test(await dd.getByTestId("defrost-odor").innerText()), (await dd.innerText()).replace(/\s+/g, " ").slice(0, 120));
+    await p.keyboard.press("Escape");
+    await dd.waitFor({ state: "detached" });
+
+    // ---- storage tabs
+    const tabCount = async (k) => Number((await p.locator(`[data-testid="storage-tab"][data-tab="${k}"] span`).innerText()).trim());
+    record("kitchen-ui", "desktop", "storage tabs show counts: 전체 13 · 냉장 9 · 냉동 2 · 실온 2", (await tabCount("ALL")) === 13 && (await tabCount("FRIDGE")) === 9 && (await tabCount("FREEZER")) === 2 && (await tabCount("ROOM_TEMP")) === 2);
+    await p.locator('[data-testid="storage-tab"][data-tab="FREEZER"]').click();
+    record("kitchen-ui", "desktop", "냉동 tab filters the list to the 2 frozen items (aria-checked)", (await p.getByTestId("kitchen-card").count()) === 2 && (await p.locator('[data-tab="FREEZER"]').getAttribute("aria-checked")) === "true" && (await p.locator('[data-tab="ALL"]').getAttribute("aria-checked")) === "false");
+    await p.locator('[data-testid="storage-tab"][data-tab="ROOM_TEMP"]').click();
+    record("kitchen-ui", "desktop", "실온 tab → 라면 + 양파 only", (await p.getByTestId("kitchen-card").count()) === 2 && (await card("라면").count()) === 1);
+    await p.locator('[data-testid="storage-tab"][data-tab="ALL"]').click();
+
+    // ---- pet household: banner appears only with a pet AND a toxic item
+    record("kitchen-ui", "desktop", "no pet set → NO toxic banner and no per-card warning even though 양파 is in the kitchen", (await p.getByTestId("pet-toxic-banner").count()) === 0 && (await card("양파").locator('[data-kind="toxic"]').count()) === 0);
+    await p.locator('[data-testid="pet-setting"] [data-pet="dog"]').click();
+    await p.getByTestId("pet-toxic-banner").waitFor();
+    const banner = p.getByTestId("pet-toxic-banner");
+    record("kitchen-ui", "desktop", "dog set → rose alert banner (role=alert) names the toxic item 양파", (await banner.getAttribute("role")) === "alert" && /양파/.test(await p.getByTestId("pet-toxic-names").innerText()) && /강아지/.test(await banner.innerText()), (await banner.innerText()).replace(/\s+/g, " "));
+    record("kitchen-ui", "desktop", "pet household: toxic card gets the ‘반려동물 위험’ badge; safe items do not", (await card("양파").locator('[data-kind="toxic"]').count()) === 1 && (await card("두부").locator('[data-kind="toxic"]').count()) === 0);
+    const bb = await banner.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, bd: getComputedStyle(el).borderTopColor, c: getComputedStyle(el).color }));
+    record("kitchen-ui", "desktop", "banner is high-contrast rose (light tint background, dark rose text ≥ 7:1)", /^rgb\(25[0-9], 2[0-4][0-9], 2[0-4][0-9]\)/.test(bb.bg) && lum(bb.bg) / 1 > 0.85 && (lum(bb.bg) + 0.05) / (lum(bb.c) + 0.05) >= 7, JSON.stringify(bb));
+    await p.screenshot({ path: `${OUT}/kitchen-pet-banner-light-desktop.png`, fullPage: true });
+    record("kitchen-ui", "desktop", "pet type is persisted on the household profile", (await prof())?.pet_type === "dog");
+    await p.getByTestId("pet-emergency-open").click();
+    const em = p.getByTestId("pet-emergency-dialog");
+    await em.waitFor();
+    const vet = await em.getByTestId("vet-search-link").getAttribute("href");
+    record("kitchen-ui", "desktop", "banner → 24시 emergency dialog: numbered steps, household's toxic foods, 24시 동물병원 search link (new tab, noopener), medical disclaimer", /24시 응급 대처법/.test(await em.innerText()) && /양파/.test(await em.innerText()) && vet === `https://map.naver.com/p/search/${encodeURIComponent("24시 동물병원")}` && (await em.getByTestId("vet-search-link").getAttribute("target")) === "_blank" && /noopener/.test((await em.getByTestId("vet-search-link").getAttribute("rel")) ?? "") && /수의학적 진단/.test(await em.innerText()), vet);
+    await p.screenshot({ path: `${OUT}/kitchen-emergency-light-desktop.png` });
+    await p.keyboard.press("Escape");
+    await em.waitFor({ state: "detached" });
+    await p.locator('[data-testid="pet-setting"] [data-pet="none"]').click();
+    await p.getByTestId("pet-toxic-banner").waitFor({ state: "detached" });
+    record("kitchen-ui", "desktop", "pet set back to 없음 → banner disappears again", (await prof())?.pet_type === "none");
+
+    // ---- add dialog: dictionary suggestion
+    await p.getByTestId("add-item").click();
+    const fd = p.getByRole("dialog");
+    await fd.getByLabel("재료 이름").fill("계란");
+    const sg = fd.getByTestId("shelf-suggestion");
+    await sg.waitFor();
+    const exp21 = await fd.getByLabel("소비기한").inputValue();
+    record("kitchen-ui", "desktop", "typing 계란 suggests 냉장 21일 and pre-fills the expiry (today + 21)", /냉장 21일/.test(await sg.innerText()) && (await sg.getAttribute("data-source")) === "dictionary" && exp21 === shift(21) && (await fd.locator('[data-testid="form-storage"][data-storage="FRIDGE"]').getAttribute("aria-checked")) === "true", `${exp21} ${await sg.innerText()}`);
+    await fd.getByLabel("재료 이름").fill("냉동 삼겹살");
+    await p.waitForTimeout(150);
+    record("kitchen-ui", "desktop", "typing ‘냉동 삼겹살’ switches the storage to 냉동 with 90 days", (await fd.locator('[data-testid="form-storage"][data-storage="FREEZER"]').getAttribute("aria-checked")) === "true" && (await fd.getByLabel("소비기한").inputValue()) === shift(90) && /냉동 90일/.test(await sg.innerText()), await sg.innerText());
+    await fd.getByLabel("재료 이름").fill("초코파이");
+    await p.waitForTimeout(150);
+    record("kitchen-ui", "desktop", "unknown ingredient → default suggestion (냉장 5일, source=default)", (await sg.getAttribute("data-source")) === "default" && /냉장 5일/.test(await sg.innerText()) && (await fd.getByLabel("소비기한").inputValue()) === shift(5));
+    await fd.getByLabel("재료 이름").fill("");
+    await fd.getByRole("button", { name: "재료 추가" }).click();
+    await fd.getByRole("alert").waitFor();
+    record("kitchen-ui", "desktop", "empty name → clear validation message, nothing created", /재료 이름/.test(await fd.getByRole("alert").innerText()) && (await rows()).length === 13);
+
+    // create 계란 with the suggested date
+    await fd.getByLabel("재료 이름").fill("당근");
+    await fd.getByLabel("수량").fill("3개");
+    await fd.getByLabel("위치 메모").fill("야채칸");
+    await fd.getByRole("button", { name: "재료 추가" }).click();
+    await fd.waitFor({ state: "detached" });
+    const carrot = await until(async () => rowOf("당근"));
+    record("kitchen-ui", "desktop", "create (suggested date): 당근 → FRIDGE, today + 14 (dictionary), amount 3개, spot 야채칸, added_at today", !!carrot && carrot.storage_type === "FRIDGE" && carrot.expire_date === shift(14) && carrot.amount === "3개" && carrot.spot === "야채칸" && carrot.added_at === today && carrot.is_pet === false, JSON.stringify(carrot));
+    await card("당근").waitFor();
+    record("kitchen-ui", "desktop", "the new card appears in the list without a manual reload and the totals update (14개)", (await card("당근").getByTestId("dday-badge").innerText()).trim() === "D-14" && (await pulse("total")) === "14개");
+
+    // create with a manual date + pet item
+    await p.getByTestId("add-item").click();
+    const fd2 = p.getByRole("dialog");
+    await fd2.getByLabel("재료 이름").fill("강아지간식");
+    await fd2.getByLabel("소비기한").fill(shift(40));
+    await fd2.getByLabel("반려동물 전용").check();
+    await fd2.getByRole("button", { name: "재료 추가" }).click();
+    await fd2.waitFor({ state: "detached" });
+    const treat = await until(async () => rowOf("강아지간식"));
+    record("kitchen-ui", "desktop", "create (manual date + pet-only): the typed date wins over the suggestion, is_pet=true, default amount ‘1개’", !!treat && treat.expire_date === shift(40) && treat.is_pet === true && treat.amount === "1개", JSON.stringify(treat));
+    await card("강아지간식").waitFor();
+    record("kitchen-ui", "desktop", "pet-only item shows the neutral ‘펫 전용’ badge", (await card("강아지간식").locator('[data-kind="pet"]').count()) === 1);
+
+    // ---- edit
+    await card("계란").getByTestId("edit-btn").click();
+    const ed = p.getByRole("dialog");
+    await ed.getByLabel("수량").fill("30구");
+    await ed.getByLabel("위치 메모").fill("문 쪽");
+    await ed.getByLabel("소비기한").fill(shift(25));
+    await ed.getByRole("button", { name: "저장" }).click();
+    await ed.waitFor({ state: "detached" });
+    const egg = await until(async () => { const r = await rowOf("계란"); return r?.amount === "30구" ? r : null; });
+    record("kitchen-ui", "desktop", "edit: amount, spot and expiry saved; storage untouched", !!egg && egg.spot === "문 쪽" && egg.expire_date === shift(25) && egg.storage_type === "FRIDGE", JSON.stringify(egg));
+    await p.waitForFunction(() => document.querySelector('[data-name="계란"] [data-testid="dday-badge"]')?.textContent?.trim() === "D-25");
+    record("kitchen-ui", "desktop", "edited card re-renders with the new badge (D-25)", (await card("계란").getByTestId("kitchen-card-amount").innerText()) === "30구");
+
+    // ---- move storage
+    await card("두부").getByTestId("move-btn").click();
+    record("kitchen-ui", "desktop", "move menu offers only the OTHER two places", (await p.getByTestId("move-option").count()) === 2 && (await p.locator('[data-testid="move-option"][data-to="FRIDGE"]').count()) === 0);
+    await p.locator('[data-testid="move-option"][data-to="FREEZER"]').click();
+    const tofu = await until(async () => { const r = await rowOf("두부"); return r?.storage_type === "FREEZER" ? r : null; });
+    record("kitchen-ui", "desktop", "fridge → freezer: storage changed, expiry extended to today + 30 (no freezer entry → default), added_at = today", !!tofu && tofu.expire_date === shift(30) && tofu.added_at === today, JSON.stringify(tofu));
+    await p.waitForFunction(() => document.querySelector('[data-name="두부"]')?.getAttribute("data-storage") === "FREEZER");
+    await p.locator('[data-testid="storage-tab"][data-tab="FREEZER"]').click();
+    record("kitchen-ui", "desktop", "the moved card now lives under the 냉동 tab", (await card("두부").count()) === 1 && (await card("두부").getByTestId("fossil-badge").count()) === 0);
+    await p.locator('[data-testid="storage-tab"][data-tab="ALL"]').click();
+    await card("지난요거트").getByTestId("move-btn").click();
+    await p.locator('[data-testid="move-option"][data-to="FREEZER"]').click();
+    const yog = await until(async () => { const r = await rowOf("지난요거트"); return r?.storage_type === "FREEZER" ? r : null; });
+    record("kitchen-ui", "desktop", "an already-expired item is NOT rescued by freezing: its past expiry date is kept", !!yog && yog.expire_date === shift(-2), JSON.stringify(yog));
+    await card("냉동삼겹살").getByTestId("move-btn").click();
+    await p.locator('[data-testid="move-option"][data-to="FRIDGE"]').click();
+    const pork = await until(async () => { const r = await rowOf("냉동삼겹살"); return r?.storage_type === "FRIDGE" ? r : null; });
+    record("kitchen-ui", "desktop", "thawing (freezer → fridge) never extends the life: expiry is the earlier of the old date and today + 3 (dictionary: 삼겹살 fridge 3 days); the fossil badge disappears", !!pork && pork.expire_date === shift(3) && pork.added_at === today, JSON.stringify(pork));
+    await p.waitForFunction(() => !document.querySelector('[data-name="냉동삼겹살"] [data-testid="fossil-badge"]'));
+    record("kitchen-ui", "desktop", "pulse recounts fossils after the move (0개)", (await pulse("fossil")) === "0개");
+
+    // ---- consume → rescued_count + 1, saved_money + 3000, item deleted
+    const beforeRows = (await rows()).length;
+    await card("경계8").getByTestId("consume-btn").click();
+    const p1 = await until(async () => { const r = await prof(); return r && r.rescued_count === 1 ? r : null; });
+    record("kitchen-ui", "desktop", "consume: profile row created with rescued_count 1 and saved_money 3000, item deleted", !!p1 && Number(p1.saved_money) === 3000 && !(await rowOf("경계8")) && (await rows()).length === beforeRows - 1, JSON.stringify(p1));
+    await p.getByTestId("kitchen-notice").waitFor();
+    await p.waitForFunction(() => document.querySelector('[data-pulse="saved"] [data-testid="pulse-value"]')?.textContent?.trim() === "3,000원"); // the list refresh follows the action result
+    record("kitchen-ui", "desktop", "success notice mentions the 3,000원 saved; the pulse tile shows 3,000원 and ‘구출 1번’", /3,000원/.test(await p.getByTestId("kitchen-notice").innerText()) && (await pulse("saved")) === "3,000원" && /구출 1번/.test(await sub("saved")), await pulse("saved"));
+    await card("경계7").getByTestId("consume-btn").click();
+    const p2 = await until(async () => { const r = await prof(); return r && r.rescued_count === 2 ? r : null; });
+    record("kitchen-ui", "desktop", "consume again accumulates (2 rescued, 6,000원 saved)", !!p2 && Number(p2.saved_money) === 6000 && p2.discarded_count === 0, JSON.stringify(p2));
+    await p.waitForFunction(() => document.querySelector('[data-pulse="saved"] [data-testid="pulse-value"]')?.textContent?.trim() === "6,000원");
+
+    // ---- plain delete: two-step, no stats change
+    await card("라면").getByTestId("delete-btn").click();
+    await card("라면").getByTestId("delete-confirm").waitFor();
+    await card("라면").getByRole("button", { name: "취소" }).click();
+    record("kitchen-ui", "desktop", "delete asks for confirmation first; cancel keeps the item", (await card("라면").count()) === 1 && !!(await rowOf("라면")));
+    await card("라면").getByTestId("delete-btn").click();
+    await card("라면").getByTestId("delete-confirm").click();
+    await card("라면").waitFor({ state: "detached" });
+    const p3 = await prof();
+    record("kitchen-ui", "desktop", "confirmed delete removes the row WITHOUT touching rescued_count / saved_money", !(await rowOf("라면")) && p3.rescued_count === 2 && Number(p3.saved_money) === 6000);
+
+    // ---- cross-household isolation as seen by the E2E account
+    {
+      const c = await newContext(VIEWPORTS[0], storageState);
+      const mp = await c.newPage();
+      await mp.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      const html = await mp.content();
+      record("kitchen-ui", "desktop", "another household (the E2E account) never sees this kitchen's items", !html.includes(leakName) && !html.includes("지난요거트") && !html.includes("강아지간식"));
+      await c.close();
+    }
+    // ---- signed-out access
+    {
+      const c = await newContext(VIEWPORTS[0]);
+      const ap = await c.newPage();
+      await ap.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      record("kitchen-ui", "desktop", "signed-out visit to /kitchen redirects to /login", new URL(ap.url()).pathname.startsWith("/login") && (await ap.getByTestId("kitchen-pulse").count()) === 0, ap.url());
+      await c.close();
+    }
+
+    record("kitchen-ui", "desktop", "no console/page errors across the whole flow", errs.length === 0, errs.slice(0, 2).join(" | "));
+    await ctx.close();
+
+    // ---- light/dark × desktop/mobile captures (pet household so the banner is part of the picture)
+    await svc.from("kitchen_profiles").update({ pet_type: "cat" }).eq("household_id", H2);
+    for (const scheme of ["light", "dark"]) {
+      for (const vp of VIEWPORTS) {
+        const c2 = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+        await c2.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+        const q = await c2.newPage();
+        const e2 = [];
+        q.on("pageerror", (e) => e2.push(e.message));
+        await q.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        await q.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+        await q.getByTestId("kitchen-pulse").waitFor();
+        await q.waitForTimeout(400);
+        await q.screenshot({ path: `${OUT}/kitchen-${scheme}-${vp.name}.png`, fullPage: true });
+        const tag = `${scheme}/${vp.name}`;
+        record("kitchen-ui", vp.name, `${tag}: no horizontal scroll and every card fits its column`, await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth) && (await q.getByTestId("kitchen-card").evaluateAll((els) => els.every((el) => el.scrollWidth <= el.clientWidth + 1))));
+        const cbg = await q.getByTestId("kitchen-card").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+        record("kitchen-ui", vp.name, `${tag}: theme applied (html.dark=${scheme === "dark"}), cards follow it`, (await q.evaluate(() => document.documentElement.classList.contains("dark"))) === (scheme === "dark") && (scheme === "dark" ? lum(cbg) < 0.1 : lum(cbg) > 0.8), cbg);
+        const bn = await q.getByTestId("pet-toxic-banner").evaluate((el) => getComputedStyle(el).backgroundColor);
+        record("kitchen-ui", vp.name, `${tag}: pet banner is visible and themed (cat household, 양파 present)`, (await q.getByTestId("pet-toxic-banner").isVisible()) && (scheme === "dark" ? lum(bn) < 0.2 : lum(bn) > 0.85), bn);
+        if (vp.name === "mobile") {
+          const bottom = q.locator('nav[aria-label="주요 메뉴"]').last();
+          record("kitchen-ui", vp.name, `${tag}: 4-tab bottom bar with 키친 active`, (await bottom.locator("a").count()) === 4 && (await bottom.locator('a[aria-current="page"]').innerText()).includes("키친"));
+          const cols = await q.getByTestId("kitchen-list").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+          record("kitchen-ui", vp.name, `${tag}: one-column card grid at 375px, 2×2 KPI tiles`, cols === 1 && (await q.getByTestId("kitchen-pulse").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length)) === 2);
+        } else {
+          record("kitchen-ui", vp.name, `${tag}: 3-column card grid and 4-up KPI tiles on desktop`, (await q.getByTestId("kitchen-list").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length)) === 3 && (await q.getByTestId("kitchen-pulse").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length)) === 4);
+        }
+        record("kitchen-ui", vp.name, `${tag}: no page errors`, e2.length === 0, e2.slice(0, 2).join(" | "));
+        await c2.close();
+      }
+    }
+
+    // ---- zero state
+    await svc.from("kitchen_items").delete().eq("household_id", H2);
+    {
+      const c3 = await browser.newContext({ viewport: { width: 1280, height: 900 }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul" });
+      const q = await c3.newPage();
+      await q.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      await q.getByTestId("kitchen-pulse").waitFor();
+      const pv = async (id) => (await q.locator(`[data-pulse="${id}"] [data-testid="pulse-value"]`).innerText()).trim();
+      record("kitchen-ui", "desktop", "zero state: friendly empty state, 0개 tiles, banner gone, the saved total survives (6,000원)", (await q.getByTestId("kitchen-empty").count()) === 1 && (await pv("total")) === "0개" && (await pv("urgent")) === "0개" && (await pv("fossil")) === "0개" && (await pv("saved")) === "6,000원" && (await q.getByTestId("pet-toxic-banner").count()) === 0);
+      await q.screenshot({ path: `${OUT}/kitchen-empty-desktop.png`, fullPage: true });
+      await c3.close();
+    }
+  } catch (err) {
+    if (!/kitchen tables missing/.test(String(err))) record("kitchen-ui", "-", "kitchen UI suite ran to completion", false, String(err?.stack ?? err).slice(0, 400));
+    else record("kitchen-ui", "-", "kitchen tables available (migration 14)", false, "tables missing");
+  } finally {
+    if (H2) {
+      for (const t of ["kitchen_items", "kitchen_shopping_items", "kitchen_expenses", "kitchen_profiles"]) await svc.from(t).delete().eq("household_id", H2);
+      await svc.from("profiles").delete().eq("household_id", H2);
+      await svc.from("households").delete().eq("id", H2);
+    }
+    if (strangerId) await svc.auth.admin.deleteUser(strangerId);
   }
 }
 

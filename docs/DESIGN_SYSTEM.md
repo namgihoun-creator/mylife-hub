@@ -227,6 +227,18 @@
 - **표시 조건:** 설치 경로가 있을 때만 — 캡처한 `beforeinstallprompt`가 있거나 iOS. **독립 실행(standalone) 모드·`appinstalled` 이후·설치 경로 없는 브라우저에서는 DOM에 렌더링하지 않는다.**
 - **동작:** Android / 데스크톱 Chrome·Edge → 브라우저 네이티브 설치 대화상자(문구는 브라우저가 정함, 앱이 바꿀 수 없음). iOS → 네이티브 프롬프트가 없으므로 `Popover`(`w-72 rounded-xl p-4`)에 2단계 안내(공유 `Share` 아이콘 → `홈 화면에 추가`).
 
+### N. 키친 OS (`/kitchen`, 헤더·하단 탭 "키친")
+- **내비게이션:** `ChefHat` 아이콘, 활성 규칙은 기존 탭과 동일. 모바일 하단 탭은 4칸.
+- **페이지 골격:** 제목 `키친` + 보조 한 줄 + 우측 `재료 추가`(Primary) → (조건부) 펫 경보 배너 → `KitchenPulse` → 보관 탭 + 목록. 카드·배너는 평평한 1px 보더(§0), 그림자 없음.
+- **KitchenPulse:** 4열(모바일 2×2) 메트릭 타일 — 보관 중 · 소비 임박(D-3 이하, 지난 것 포함) · 냉동 화석(30일+) · 누적 절약액. 숫자는 `text-2xl font-semibold tabular-nums`, 임박이 있으면 값만 amber, 지난 재료가 있으면 rose + 보조 줄 `기한 지남 N건`.
+- **D-Day 신호등 배지(알약, `rounded-full px-2 py-0.5 text-[11px] font-semibold`):** `≤2일` Rose(`border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300`) · `≤7일` Amber(`border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300`) · 그 외 Emerald(`border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300`). 날짜가 지났으면 **Rose Alert**: 진한 채움(`bg-rose-600 text-white dark:bg-rose-500 dark:text-black`) + 라벨 `D+n 지남`. 색만으로 구분하지 않고 항상 `D-n` 텍스트를 함께 쓴다.
+- **화석 배지(Cyan):** `Snowflake` + `30일+ 냉동`, `border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-300`. 버튼이며 누르면 전자레인지 해동 가이드 모달.
+- **댕냥이 경보 배지:** 가구에 펫이 있고 재료 이름이 `PET_TOXIC`이면 `PawPrint` + `반려동물 위험`(Rose 알약). `is_pet` 재료는 중립 `펫 전용` 알약.
+- **PetToxicAlertBanner:** 고대비 경보 — `rounded-xl border border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100`, 좌측 `ShieldAlert`, 위험 재료 이름 나열, 우측 `응급 대처법`(Rose 채움 버튼). `role="alert"`. 펫이 없거나 위험 재료가 없으면 렌더링하지 않는다. 버튼은 `24시 응급 모달`(§E)을 연다: 단계 안내 + 24시 동물병원 검색 링크 + "수의학적 진단이 아니에요" 고지.
+- **StorageTabs:** `[전체 | 냉장 | 냉동 | 실온]` 세그먼트 — 1px 보더 컨테이너 안의 `role="radiogroup"` 칩, 활성은 Primary(`bg-black text-white dark:bg-white dark:text-black`), 각 탭에 개수를 `tabular-nums`로 병기.
+- **KitchenItemCard:** `rounded-xl border` 평평한 행/카드. 1줄 이름(`text-sm font-semibold truncate`) + D-Day 배지, 2줄 `수량 · 보관 장소(spot) · 소비기한`(보조색), 3줄 배지들(화석·펫), 하단 액션: `소진`(Outline, 주 동작) · `이동`(드롭다운: 냉장/냉동/실온) · `수정` · `삭제`(2단계 확인 `삭제 확인` rose). 만료된 카드는 보더 `border-rose-300 dark:border-rose-900`.
+- **그리드(375px 반응형):** 모바일 1열, `sm` 2열, `lg` 3열; 모든 행은 `min-w-0`, 액션 줄은 `flex-wrap`. 가로 스크롤 없음.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

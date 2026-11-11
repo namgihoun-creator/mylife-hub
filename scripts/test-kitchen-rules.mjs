@@ -375,3 +375,30 @@ print(json.dumps(out))
     assert.deepEqual(got.totals, r.totals, `totals ${tag}`);
   });
 });
+
+// ------------------------------------------------------------------------------------------------ storage move
+test("storage-move: expiry + storage-start date after moving between fridge / freezer / room", () => {
+  const T = "2026-11-10";
+  const it = (name, storage_type, expire_date) => ({ name, storage_type, expire_date });
+  assert.equal(R.SAVED_WON_PER_RESCUE, 3000);
+  assert.equal(R.moveStorage(it("삼겹살", "FRIDGE", "2026-11-11"), "FRIDGE", T), null); // same place: nothing to do
+  // freezing extends the life (dictionary: 삼겹살 90 days frozen)
+  assert.deepEqual(R.moveStorage(it("삼겹살", "FRIDGE", "2026-11-11"), "FREEZER", T), { storage_type: "FREEZER", expire_date: "2027-02-08", added_at: T });
+  // not in the dictionary for the freezer -> 30-day default
+  assert.equal(R.moveStorage(it("두부", "FRIDGE", "2026-11-12"), "FREEZER", T).expire_date, "2026-12-10");
+  // already expired: freezing does NOT extend it
+  assert.equal(R.moveStorage(it("삼겹살", "FRIDGE", "2026-11-08"), "FREEZER", T).expire_date, "2026-11-08");
+  // expiring today is still extendable (not yet expired)
+  assert.equal(R.moveStorage(it("삼겹살", "FRIDGE", "2026-11-10"), "FREEZER", T).expire_date, "2027-02-08");
+  // thawing: frozen for 90 days left -> fridge keeps it only 3 days (dictionary) — never extends
+  assert.equal(R.moveStorage(it("삼겹살", "FREEZER", "2027-02-08"), "FRIDGE", T).expire_date, "2026-11-13");
+  // fridge -> room: never extends beyond the old date
+  assert.equal(R.moveStorage(it("라면", "FRIDGE", "2026-11-15"), "ROOM_TEMP", T).expire_date, "2026-11-15");
+  // room (long) -> fridge (default 5 days) shortens
+  assert.equal(R.moveStorage(it("양파", "ROOM_TEMP", "2026-12-10"), "FRIDGE", T).expire_date, "2026-11-15");
+  // leap year arithmetic: 30-day default from Feb 10, 2028 lands on Mar 11
+  assert.equal(R.moveStorage(it("두부", "FRIDGE", "2028-02-15"), "FREEZER", "2028-02-10").expire_date, "2028-03-11");
+  // storage start restarts on every move (restarts the fossil clock)
+  assert.equal(R.moveStorage(it("두부", "FREEZER", "2026-12-10"), "FRIDGE", T).added_at, T);
+  assert.equal(R.isFossil({ storage_type: "FREEZER", added_at: R.moveStorage(it("두부", "FRIDGE", "2026-11-12"), "FREEZER", T).added_at }, T), false);
+});
