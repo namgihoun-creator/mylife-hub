@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Home } from "lucide-react";
 import { getSessionProfile } from "@/features/auth/server/session";
 import { InviteAcceptForm } from "@/features/household/components/InviteAcceptForm";
+import { RememberInvite } from "@/features/household/components/RememberInvite";
 import { getInvitePreview } from "@/features/household/server/household.queries";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { isPlausibleToken } from "@/shared/lib/token";
@@ -64,6 +65,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
 
             {!user && (
               <>
+                <RememberInvite code={code} />
                 <p className="text-center text-xs font-normal text-slate-500 dark:text-zinc-400">
                   로그인하거나 계정을 만들면 구성원으로 참여할 수 있어요.
                 </p>

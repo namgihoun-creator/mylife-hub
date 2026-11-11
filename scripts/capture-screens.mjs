@@ -4165,6 +4165,77 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
   }
 }
 
+// ---------------------------------------------------------------- invite flow safeguards: remembered invite + "don't create a second household" warning
+{
+  const { createHash, randomBytes } = await import("node:crypto");
+  const code = randomBytes(32).toString("base64url"); // 43 chars, same shape as real codes
+  const hash = createHash("sha256").update(code).digest("hex");
+  let inviteId = null;
+  try {
+    const ins = await svc.from("household_invites").insert({ household_id: myProfile.household_id, code_hash: hash, created_by: me.user.id, expires_at: new Date(Date.now() + 7 * 86400_000).toISOString() }).select("id").single();
+    if (ins.error) throw new Error(`invite fixture failed: ${ins.error.message}`);
+    inviteId = ins.data.id;
+
+    for (const vp of VIEWPORTS) {
+      const c = await newContext(vp);
+      const p = await c.newPage();
+      const errs = [];
+      p.on("pageerror", (e) => errs.push(e.message));
+      // a visitor who never opened an invite: plain /login has no banner; the sign-up tab warns before ‘새 가구 만들기’
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      record("invite-guard", vp.name, "plain /login without an opened invite: no ‘초대받은 가구’ banner", (await p.getByTestId("pending-invite").count()) === 0);
+      await p.getByRole("button", { name: /새 가구 만들기/ }).click();
+      const warn = p.getByTestId("new-household-warning");
+      await warn.waitFor();
+      record("invite-guard", vp.name, "sign-up (new household) warns: invited? don't sign up here — it creates a SEPARATE household; open the invite link instead", /초대받으셨다면 이 화면에서 가입하지 마세요/.test(await warn.innerText()) && /따로 쓰는 새 가구/.test(await warn.innerText()) && (await p.locator('input[name="householdName"]').count()) === 1);
+
+      // opening the invite link remembers it (ACTIVE invite, logged out)
+      await p.goto(`${BASE}/invite/${code}`, { waitUntil: "networkidle" });
+      record("invite-guard", vp.name, "invite link page is ACTIVE for a logged-out visitor", (await p.getByRole("link", { name: /로그인 \/ 가입하고 참여하기/ }).count()) === 1);
+      const stored = await p.evaluate(() => { try { return JSON.parse(localStorage.getItem("mylife.pendingInvite") ?? "null"); } catch { return "bad"; } });
+      record("invite-guard", vp.name, "…and remembers the code in this browser (localStorage, with a timestamp)", stored?.code === code && typeof stored.at === "number" && Math.abs(Date.now() - stored.at) < 60_000, JSON.stringify(stored)?.slice(0, 60));
+
+      // later the same person lands on plain /login → offered the invite instead of a new household
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      const banner = p.getByTestId("pending-invite");
+      await banner.waitFor();
+      const href = await p.getByTestId("pending-invite-link").getAttribute("href");
+      record("invite-guard", vp.name, "plain /login now offers ‘초대받은 가구에 참여하기’ linking to /login?invite=<code>", href === `/login?invite=${code}` && /새 가구를 만들지 말고/.test(await banner.innerText()), href);
+      await p.screenshot({ path: `${OUT}/invite-pending-banner-${vp.name}.png` });
+      await p.getByTestId("pending-invite-link").click();
+      await p.waitForURL(/\/login\?invite=/);
+      await p.getByRole("button", { name: /계정 만들기/ }).click();
+      record("invite-guard", vp.name, "following it switches to the invite flow: no household-name field, no ‘new household’ warning, button ‘가입하고 계속하기’, and no banner", (await p.locator('input[name="householdName"]').count()) === 0 && (await p.getByTestId("new-household-warning").count()) === 0 && (await p.getByRole("button", { name: "가입하고 계속하기" }).count()) === 1 && (await p.getByTestId("pending-invite").count()) === 0);
+
+      // stale / tampered memory is ignored and cleaned up
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.evaluate((c2) => localStorage.setItem("mylife.pendingInvite", JSON.stringify({ code: c2, at: Date.now() - 8 * 86400_000 })), code);
+      await p.reload({ waitUntil: "networkidle" });
+      record("invite-guard", vp.name, "an entry older than the 7-day invite lifetime is ignored (no banner) and removed", (await p.getByTestId("pending-invite").count()) === 0 && (await p.evaluate(() => localStorage.getItem("mylife.pendingInvite"))) === null);
+      await p.evaluate(() => localStorage.setItem("mylife.pendingInvite", JSON.stringify({ code: "<script>alert(1)</script>0123456789", at: Date.now() })));
+      await p.reload({ waitUntil: "networkidle" });
+      record("invite-guard", vp.name, "a tampered stored value never reaches the page (no banner, no injected markup)", (await p.getByTestId("pending-invite").count()) === 0 && !(await p.content()).includes("<script>alert(1)</script>0123456789"));
+      record("invite-guard", vp.name, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+      await c.close();
+    }
+
+    // an INVALID / used invite link does not get remembered
+    const c2 = await newContext(VIEWPORTS[0]);
+    const p2 = await c2.newPage();
+    await p2.goto(`${BASE}/invite/${randomBytes(32).toString("base64url")}`, { waitUntil: "networkidle" });
+    record("invite-guard", "desktop", "an unknown/expired invite link is NOT remembered", (await p2.evaluate(() => localStorage.getItem("mylife.pendingInvite"))) === null);
+    await c2.close();
+
+    // the real accept path itself keeps working (the 11 existing invite checks cover the full sign-up → join flow)
+    const pv = await svc.rpc("get_invite_preview", { p_code_hash: hash });
+    record("invite-guard", "-", "the invite is still unconsumed by all of this (read-only preview = ACTIVE)", pv.data?.status === "ACTIVE", JSON.stringify(pv.data));
+  } catch (err) {
+    record("invite-guard", "-", "invite-guard suite ran to completion", false, String(err?.stack ?? err).slice(0, 400));
+  } finally {
+    if (inviteId) await svc.from("household_invites").delete().eq("id", inviteId);
+  }
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report

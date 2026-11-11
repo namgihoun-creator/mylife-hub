@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/shared/lib/supabase/client";
 import { Button } from "@/shared/components/ui/button";
@@ -15,6 +16,7 @@ import {
 } from "@/shared/components/ui/card";
 import { inviteSignupSchema, loginSchema, signupSchema } from "../schemas/auth.schema";
 import { bootstrapHousehold } from "../utils/household";
+import { readPendingInvite } from "@/features/household/utils/pending-invite";
 
 type Mode = "login" | "signup";
 
@@ -30,6 +32,12 @@ export function AuthForm({ inviteCode }: { inviteCode?: string }) {
   const [pending, startTransition] = useTransition();
 
   const afterAuth = inviteCode ? `/invite/${inviteCode}` : "/assets";
+
+  // An invite link opened earlier in this browser: offer to continue with it instead of starting a second household.
+  const [pendingInvite, setPendingInvite] = useState<string | null>(null);
+  useEffect(() => {
+    if (!inviteCode) setPendingInvite(readPendingInvite());
+  }, [inviteCode]);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -111,6 +119,20 @@ export function AuthForm({ inviteCode }: { inviteCode?: string }) {
       </CardHeader>
       <form onSubmit={onSubmit} noValidate>
         <CardContent className="space-y-4">
+          {!inviteCode && pendingInvite && (
+            <div data-testid="pending-invite" className="space-y-2 rounded-2xl bg-sky-50 p-4 dark:bg-sky-950/30">
+              <p className="text-sm font-bold text-sky-800 dark:text-sky-200">초대받은 가구가 있어요</p>
+              <p className="text-xs font-medium text-sky-700 dark:text-sky-300">새 가구를 만들지 말고, 받은 초대로 가족 가구에 참여하세요.</p>
+              <Link data-testid="pending-invite-link" href={`/login?invite=${pendingInvite}`} className="inline-flex min-h-10 items-center rounded-xl bg-sky-600 px-4 text-sm font-bold text-white hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-400">
+                초대받은 가구에 참여하기
+              </Link>
+            </div>
+          )}
+          {isSignup && !inviteCode && (
+            <p data-testid="new-household-warning" className="rounded-2xl bg-amber-50 p-3 text-xs font-medium leading-relaxed text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              가족에게 초대받으셨다면 이 화면에서 가입하지 마세요. ‘새 가구 만들기’는 가족과 <strong className="font-extrabold">따로 쓰는 새 가구</strong>를 만들어요. 받은 초대 링크를 열어 가입해 주세요.
+            </p>
+          )}
           {isSignup && (
             <>
               {!inviteCode && (

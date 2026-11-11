@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { clearPendingInvite } from "../utils/pending-invite";
 import { Loader2, UserPlus } from "lucide-react";
 import { Input } from "@/shared/components/ui/input";
 import { acceptInvite } from "../server/household.actions";
@@ -19,6 +20,7 @@ export function InviteAcceptForm({ code, defaultName }: { code: string; defaultN
     startTransition(async () => {
       const res = await acceptInvite(code, name);
       if (!res.ok) return setError(res.error);
+      clearPendingInvite();
       router.replace("/assets");
       router.refresh();
     });
