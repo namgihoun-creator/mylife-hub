@@ -9,6 +9,7 @@ import { inviteCodeSchema } from "@/features/household/schemas/household.schema"
 import { getMembers } from "@/features/household/server/household.queries";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { getUnreadNotificationCount } from "@/features/notifications/server/notification.actions";
+import { Footer } from "@/shared/components/layout/Footer";
 import { MainNav } from "@/shared/components/layout/MainNav";
 import { PwaInstallButton } from "@/shared/components/pwa-install-button";
 import { AmbientBackground } from "@/shared/components/ui/ambient-background";
@@ -82,7 +83,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-6 pb-24 sm:px-6 md:pb-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">{children}</main>
+      <Footer />
       <MainNav variant="bottom" />
     </div>
   );

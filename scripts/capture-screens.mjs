@@ -2169,7 +2169,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
             const bad = await p.evaluate(() => {
               const L = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
               const parse = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
-              const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const v = parse(getComputedStyle(e).backgroundColor); if (v.length >= 3 && (v[3] === undefined || v[3] > 0.9)) return v; } return [255, 255, 255]; };
+              const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { if (/gradient/.test(getComputedStyle(e).backgroundImage)) return [37, 99, 235]; const v = parse(getComputedStyle(e).backgroundColor); if (v.length >= 3 && (v[3] === undefined || v[3] > 0.9)) return v; } return [255, 255, 255]; };
               const out = [];
               const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
               for (let n = walker.nextNode(); n; n = walker.nextNode()) {
@@ -4050,6 +4050,99 @@ const CRON_SECRET = process.env.CRON_SECRET;
 }
 // helper used above: resolves with the next popup page opened from any page of the context
 function ctxPopup(context) { return new Promise((resolve) => { const t = setTimeout(() => resolve(null), 8000); context.once("page", (pg) => { clearTimeout(t); resolve(pg); }); }); }
+
+// ---------------------------------------------------------------- global footer (CookSaver heritage) + legal pages
+{
+  const pages = ["/assets", "/timeline", "/kitchen", "/analytics"];
+  for (const vp of VIEWPORTS) {
+    const ctx = await newContext(vp, storageState);
+    const p = await ctx.newPage();
+    const errs = [];
+    p.on("pageerror", (e) => errs.push(e.message));
+    p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && errs.push(m.text()));
+    const present = [];
+    for (const path of pages) {
+      await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      present.push([path, await p.getByTestId("app-footer").count()]);
+    }
+    record("footer", vp.name, "the footer renders exactly once on every main page (/assets, /timeline, /kitchen, /analytics)", present.every(([, n]) => n === 1), JSON.stringify(present));
+
+    await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+    await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    const f = p.getByTestId("app-footer");
+    const txt = (await f.innerText()).replace(/\s+/g, " ");
+    record("footer", vp.name, "content: ‘MyLife Hub × CookSaver’ + slogan ‘우리 집 스마트 키친 & 가전 자산 케어 OS’", txt.includes("MyLife Hub × CookSaver") && txt.includes("우리 집 스마트 키친 & 가전 자산 케어 OS"), txt.slice(0, 80));
+    record("footer", vp.name, "pet-safety notice: reference only, go to a 24-hour animal hospital in an emergency", /반려동물 독성 및 레시피 정보는 참고용이며, 응급 상황 시 즉시 24시 동물병원을 방문하세요/.test(await f.getByTestId("footer-pet-notice").innerText()));
+    record("footer", vp.name, "household isolation (RLS) notice, privacy + terms links, ‘© 2026 MyLife Hub. All rights reserved.’ and the version", /가구 단위로 격리\(RLS\)/.test(txt) && (await f.getByTestId("footer-privacy").getAttribute("href")) === "/privacy" && (await f.getByTestId("footer-terms").getAttribute("href")) === "/terms" && /© 2026 MyLife Hub\. All rights reserved\. · v\d+\.\d+\.\d+/.test(txt), txt.slice(-70));
+
+    const style = await f.evaluate((el) => {
+      const link = el.querySelector('[data-testid="footer-privacy"]');
+      const brand = el.querySelector("p");
+      const cs = getComputedStyle(el);
+      return { bt: cs.borderTopWidth, bc: cs.borderTopColor, linkColor: getComputedStyle(link).color, brandColor: getComputedStyle(brand).color };
+    });
+    record("footer", vp.name, "tone: quiet slate-500 text/links (AA contrast) on the off-white page, a soft slate-100 hairline on top (not a hard black rule)", style.linkColor === "rgb(100, 116, 139)" && style.bt === "1px" && style.bc === "rgb(241, 245, 249)", JSON.stringify(style));
+    await f.getByTestId("footer-privacy").hover();
+    await p.waitForTimeout(250);
+    record("footer", vp.name, "link hover turns slate-700", (await f.getByTestId("footer-privacy").evaluate((el) => getComputedStyle(el).color)) === "rgb(51, 65, 85)");
+
+    if (vp.name === "mobile") {
+      await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await p.waitForTimeout(300);
+      const geo = await p.evaluate(() => {
+        const f = document.querySelector('[data-testid="app-footer"]');
+        const nav = [...document.querySelectorAll('nav[aria-label="주요 메뉴"]')].find((n) => getComputedStyle(n).position === "fixed");
+        const last = f.querySelector("p:last-of-type").getBoundingClientRect();
+        const n = nav.getBoundingClientRect();
+        return { lastBottom: last.bottom, navTop: n.top, pb: parseFloat(getComputedStyle(f).paddingBottom), scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth };
+      });
+      record("footer", vp.name, "at the very bottom of the page the footer's last line sits ABOVE the fixed 4-tab bar (not hidden behind it)", geo.lastBottom <= geo.navTop, JSON.stringify(geo));
+      record("footer", vp.name, "mobile bottom padding clears the tab bar (≥ 96px = pb-24) and there is no horizontal scroll", geo.pb >= 96 && geo.scrollW <= geo.innerW, JSON.stringify(geo));
+      // tapping a tab while scrolled to the bottom still works (the footer never intercepts the bar)
+      const tab = p.locator('nav[aria-label="주요 메뉴"]').last().getByRole("link", { name: "리포트" });
+      await tab.click();
+      await p.waitForURL(/\/analytics/, { timeout: 15_000 });
+      record("footer", vp.name, "tapping the 리포트 tab from the bottom of /assets navigates normally (no overlap / blocked tap)", new URL(p.url()).pathname === "/analytics");
+      const fp = await p.getByTestId("app-footer").boundingBox();
+      await p.evaluate(() => window.scrollTo(0, 0));
+      record("footer", vp.name, "the footer follows the page content (below the main content, not floating over it)", !!fp);
+    } else {
+      const geo = await f.evaluate((el) => ({ pb: parseFloat(getComputedStyle(el).paddingBottom), top: el.getBoundingClientRect().top + window.scrollY, doc: document.documentElement.scrollHeight }));
+      record("footer", vp.name, "desktop: compact 32px bottom padding (md:pb-8), footer sits at the end of the document", geo.pb === 32 && Math.abs(geo.top + (await f.evaluate((el) => el.getBoundingClientRect().height)) - geo.doc) <= 2, JSON.stringify(geo));
+    }
+    await p.screenshot({ path: `${OUT}/footer-light-${vp.name}.png`, fullPage: true });
+    record("footer", vp.name, "no console/page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+    await ctx.close();
+  }
+
+  // dark mode
+  {
+    const c = await browser.newContext({ viewport: { width: 375, height: 812 }, storageState, locale: "ko-KR", colorScheme: "dark" });
+    await c.addInitScript(() => { try { localStorage.setItem("theme", "dark"); } catch {} });
+    const p = await c.newPage();
+    await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+    await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    const col = await p.getByTestId("footer-privacy").evaluate((el) => getComputedStyle(el).color);
+    record("footer", "mobile", "dark theme: footer links stay quiet but readable (zinc-500 on the dark page)", col === "rgb(113, 113, 122)", col);
+    await p.screenshot({ path: `${OUT}/footer-dark-mobile.png`, fullPage: true });
+    await c.close();
+  }
+
+  // legal pages are public and readable
+  {
+    const c = await newContext(VIEWPORTS[0]);
+    const p = await c.newPage();
+    for (const [path, title] of [["/privacy", "개인정보 처리방침"], ["/terms", "이용약관"]]) {
+      const r = await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      record("footer", "desktop", `${path} opens WITHOUT login (200, no redirect) with its title and a way back`, r.status() === 200 && new URL(p.url()).pathname === path && (await p.getByTestId("legal-title").innerText()) === title && (await p.getByRole("link", { name: /앱으로 돌아가기/ }).count()) === 1 && (await p.title()).includes(title), `${r.status()} ${p.url()}`);
+    }
+    await p.goto(`${BASE}/privacy`, { waitUntil: "networkidle" });
+    const body = await p.locator("main").innerText();
+    record("footer", "desktop", "privacy page states the real behaviour: household isolation, Gemini photo transfer (not stored), no location use", /가구 단위로 격리/.test(body) && /Google Gemini/.test(body) && /저장하지 않아요/.test(body) && /위치를 묻거나 저장하지 않아요/.test(body));
+    await c.close();
+  }
+}
 
 await browser.close();
 
