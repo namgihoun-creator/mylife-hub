@@ -68,7 +68,7 @@ export function KitchenBudgetCard({ data, onNotice }: { data: KitchenBudgetData;
             data-testid="today-budget"
             data-state={overspent ? "over" : "ok"}
             className={cn(
-              "inline-flex max-w-full items-center gap-2.5 rounded-3xl px-4 py-2.5 text-base font-extrabold leading-tight shadow-md sm:rounded-full",
+              "flex w-full items-center justify-center gap-2.5 rounded-3xl px-4 py-2.5 text-base font-extrabold leading-tight shadow-md sm:rounded-full",
               overspent ? "bg-rose-100 text-rose-600 shadow-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:shadow-none" : "bg-gradient-to-r from-sky-500 to-teal-400 text-white shadow-sky-200 dark:from-sky-500 dark:to-teal-500 dark:shadow-none",
             )}
           >
@@ -89,7 +89,7 @@ export function KitchenBudgetCard({ data, onNotice }: { data: KitchenBudgetData;
         type="button"
         data-testid="expense-open"
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-sky-50 px-4 text-sm font-bold text-sky-700 transition-all hover:bg-sky-100 active:scale-[0.99] dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/70 sm:w-auto"
+        className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-sky-50 px-4 text-sm font-bold text-sky-700 transition-all hover:bg-sky-100 active:scale-[0.99] dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/70"
       >
         <Plus className="h-4 w-4" aria-hidden /> 지출 등록 · 전체 보기
       </button>
