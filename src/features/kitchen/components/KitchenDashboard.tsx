@@ -5,8 +5,10 @@ import { Camera, PawPrint, Plus, Refrigerator } from "lucide-react";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { cn } from "@/shared/lib/utils";
 import { PET_TYPES, PET_TYPE_LABEL, type KitchenDashboardData, type KitchenItem, type PetType } from "../schemas/kitchen.schema";
+import type { KitchenBudgetData } from "../server/kitchen-budget.actions";
 import { setKitchenPetType } from "../server/kitchen.actions";
 import { DefrostGuideDialog } from "./DefrostGuideDialog";
+import { KitchenBudgetCard } from "./KitchenBudgetCard";
 import { KitchenItemCard } from "./KitchenItemCard";
 import { KitchenItemFormDialog, type KitchenFormTarget } from "./KitchenItemFormDialog";
 import { KitchenPulse } from "./KitchenPulse";
@@ -49,7 +51,7 @@ function PetTypeSelect({ value }: { value: PetType }) {
   );
 }
 
-export function KitchenDashboard({ data }: { data: KitchenDashboardData }) {
+export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData; budget: KitchenBudgetData | null }) {
   const { today, profile, items, stats, toxicItems } = data;
   const [tab, setTab] = useState<StorageFilter>("ALL");
   const [form, setForm] = useState<KitchenFormTarget | null>(null);
@@ -102,6 +104,7 @@ export function KitchenDashboard({ data }: { data: KitchenDashboardData }) {
 
       <PetToxicAlertBanner petType={profile.pet_type} toxicItems={toxicItems} />
       <KitchenPulse stats={stats} profile={profile} />
+      {budget && <KitchenBudgetCard data={budget} onNotice={showNotice} />}
 
       {notice && (
         <p role="status" data-testid="kitchen-notice" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">

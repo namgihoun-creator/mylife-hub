@@ -145,3 +145,30 @@ export const executeCheckoutSchema = z.object({
 
 export type BatchCreateInput = z.input<typeof batchCreateSchema>;
 export type CheckoutRowInput = z.input<typeof checkoutRowSchema>;
+
+// ---------------------------------------------------------------- money log (Phase 4)
+export type KitchenExpense = {
+  id: string;
+  expense_date: string; // 'YYYY-MM-DD'
+  category: "human_groceries" | "human_delivery" | "pet_care";
+  amount: number;
+  memo: string | null;
+  created_at: string;
+};
+export const EXPENSE_CATEGORY_LABEL: Record<KitchenExpense["category"], string> = { human_groceries: "장보기", human_delivery: "배달·외식", pet_care: "댕냥이 케어" };
+
+export const addExpenseSchema = z.object({
+  amount: z.number("금액을 숫자로 입력해 주세요.").int("금액은 정수(원)로 입력해 주세요.").min(1, "금액은 1원 이상이에요.").max(MAX_WON, "금액이 너무 커요."),
+  category: z.enum(EXPENSE_CATEGORIES, "지출 분류를 골라 주세요."),
+  memo: trimmedOrNull(40, "메모는 40자 이하예요."),
+  expenseDate: dateField.optional(),
+});
+
+export const budgetSettingsSchema = z
+  .object({
+    humanMonthly: z.number("금액을 숫자로 입력해 주세요.").int("예산은 정수(원)로 입력해 주세요.").min(0, "예산은 0원 이상이에요.").max(MAX_WON, "예산이 너무 커요.").optional(),
+    petMonthly: z.number("금액을 숫자로 입력해 주세요.").int("예산은 정수(원)로 입력해 주세요.").min(0, "예산은 0원 이상이에요.").max(MAX_WON, "예산이 너무 커요.").optional(),
+  })
+  .refine((v) => v.humanMonthly !== undefined || v.petMonthly !== undefined, { message: "바꿀 예산 금액이 없어요." });
+
+export type AddExpenseInput = z.input<typeof addExpenseSchema>;

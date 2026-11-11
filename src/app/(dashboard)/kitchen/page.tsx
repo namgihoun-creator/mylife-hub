@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { KitchenDashboard } from "@/features/kitchen/components/KitchenDashboard";
+import { getKitchenBudgetData } from "@/features/kitchen/server/kitchen-budget.actions";
 import { getKitchenDashboardData } from "@/features/kitchen/server/kitchen.actions";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { AlertTriangle } from "lucide-react";
@@ -8,7 +9,7 @@ export const metadata: Metadata = { title: "키친" };
 
 // Auth is enforced by (dashboard)/layout.tsx and the middleware; RLS limits every query to this household.
 export default async function KitchenPage() {
-  const res = await getKitchenDashboardData();
+  const [res, budget] = await Promise.all([getKitchenDashboardData(), getKitchenBudgetData()]);
   if (!res.ok) {
     return (
       <div className="space-y-6">
@@ -17,5 +18,5 @@ export default async function KitchenPage() {
       </div>
     );
   }
-  return <KitchenDashboard data={res.data} />;
+  return <KitchenDashboard data={res.data} budget={budget.ok ? budget.data : null} />;
 }

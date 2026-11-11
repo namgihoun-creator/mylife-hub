@@ -245,6 +245,13 @@
 - **SmartCheckoutDialog:** 읽은 문장을 따옴표로 보여 주고, 동작 카드(체크박스 + 동작 아이콘 박스 + 문장)를 나열 — 소진(emerald `Check`) · 이동(cyan `ArrowRightLeft`) · 폐기(rose `Trash2`) · 지출(violet `Wallet`). 냉장고에서 못 찾은 항목은 점선 카드 + 비활성 체크. 출처 한 줄(`AI가 읽었어요` / `글자 규칙으로 읽었어요 (사유)`), 하단 `N건 일괄 실행`. 일부 실패 시 결과 목록(✓/✗)을 보여 준다.
 - **원칙:** AI는 제안만 하고 아무것도 쓰지 않는다. 확인 후 서버가 모든 효과(차감 수량·새 소비기한)를 다시 계산한다.
 
+### P. 키친 머니로그 · 가계 종합 리포트
+- **KitchenBudgetCard**(`/kitchen`, `KitchenPulse` 바로 아래): 평평한 `rounded-xl border` 카드. 상단 `오늘의 권장 식비 N원` 알약 — 정상은 고대비 `bg-black text-white dark:bg-white dark:text-black`, 식비 예산 100% 이상이면 Rose 경고(`border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300`, `TriangleAlert`, `예산 초과 · 오늘 권장 식비 0원`) + 보조 한 줄(남은 식비 ÷ 오늘 포함 남은 일수 / 초과액). 우측 `지출 등록 · 전체 보기`(Outline).
+- **게이지 바**(사람 식비 · 댕냥이 케어비): `h-2 rounded-full` 트랙(`bg-zinc-100 dark:bg-zinc-900`) + 채움 — **80% 미만 Emerald · 80%+ Amber · 100%+ Rose**(너비는 100%로 캡), 오른쪽에 `n%`(`tabular-nums`), 아래 `지출 / 예산` + `N원 남음` 또는 Rose `N원 초과`. `role="progressbar"`. 예산 0원이면 `예산 미설정`.
+- **방어액 뱃지:** Emerald 알약 `냉파 누적 방어액 N원` + `구출 N번`. **최근 지출 3건:** `날짜 · 분류 칩(장보기 Emerald / 배달·외식 Amber / 댕냥이 Cyan) · 메모 · 금액` 행.
+- **ExpenseDialog(머니로그):** 분류 3칸 라디오 → 금액·날짜·메모 → `지출 등록`(Primary) · 이번 달 전체 내역(행마다 2단계 삭제) · 접이식 `월 예산 설정`. 오류는 `role="alert"` Rose.
+- **KitchenExpenseStrip**(`/analytics`, KPI 그리드 아래, 모든 색은 §K 메트릭 카드 규격): 이번 달 식비 · 양육비 · 냉파로 아낀 금액(Emerald) 3타일 + **가계 종합 캐시플로우 요약** — `렌탈 고정 + 식비·양육비 변동 = 합계` 3열, 비중 스택 바(렌탈 violet · 식비 zinc · 양육비 cyan, `role="img"` + 퍼센트 라벨), 방어액 한 줄(누적값임을 명시). 방어액은 이번 달 값이 아니라 누적이므로 합계에서 빼지 않는다.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

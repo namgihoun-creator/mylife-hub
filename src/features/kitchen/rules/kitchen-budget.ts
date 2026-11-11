@@ -109,3 +109,25 @@ export function guessExpenseCategory(text: string): ExpenseCategory {
   if (DELIVERY_WORDS.some((w) => text.includes(w))) return "human_delivery";
   return "human_groceries";
 }
+
+// ---------------------------------------------------------------------------------------------- ledger helpers
+/** First and last calendar day of `today`'s month ('2028-02-10' -> 2028-02-01 .. 2028-02-29); null for an invalid date. */
+export function monthBounds(today: string): { start: string; end: string } | null {
+  const days = daysLeftInMonth(today);
+  if (days === null) return null;
+  const [y, m] = today.split("-").map(Number);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-${pad(daysInMonth(y, m))}` };
+}
+
+/** The newest `n` rows: newest expense date first, then the most recently entered (same day: later entry on top). */
+export function recentExpenses<T extends { expense_date: string; created_at: string }>(rows: readonly T[], n = 3): T[] {
+  return [...rows].sort((a, b) => b.expense_date.localeCompare(a.expense_date) || b.created_at.localeCompare(a.created_at)).slice(0, Math.max(0, n));
+}
+
+/** Gauge percentage for display: 0 when nothing is spent, 100+ when over budget (a 0-won budget with spending reads 100). */
+export function usedPercent(spent: number, monthly: number): number {
+  if (spent <= 0) return 0;
+  if (monthly <= 0) return 100;
+  return Math.round((spent / monthly) * 100);
+}

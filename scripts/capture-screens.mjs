@@ -3525,6 +3525,237 @@ const CRON_SECRET = process.env.CRON_SECRET;
   }
 }
 
+// ---------------------------------------------------------------- Smart Kitchen OS Phase 4: dual money log on /kitchen + combined cash-flow on /analytics (real Supabase)
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  let strangerId = null, H2 = null;
+  const lum = (rgb) => { const [r, g, b] = (rgb.match(/[\d.]+/g) ?? [255, 255, 255]).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const until = async (fn, tries = 40) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+  const [ty, tm, td] = today.split("-").map(Number);
+  const daysLeft = new Date(Date.UTC(ty, tm, 0)).getUTCDate() - td + 1;
+  try {
+    const email = `mylife.e2e.kbud+${rand}@example.com`;
+    const pw = `Pw-${rand}-${Date.now()}`;
+    const { data: su, error: suErr } = await svc.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: "E2E 머니로그" } });
+    if (suErr) throw new Error(`kitchen-budget createUser failed: ${suErr.message}`);
+    strangerId = su.user.id;
+    const cl = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await cl.auth.signInWithPassword({ email, password: pw });
+    await cl.rpc("create_household", { p_name: "E2E 머니로그", p_display_name: "E2E 머니로그" });
+    H2 = (await svc.from("profiles").select("household_id").eq("id", strangerId).single()).data.household_id;
+    if ((await cl.from("kitchen_expenses").select("id").limit(1)).error) throw new Error("kitchen tables missing");
+
+    // budgets 100,000 / 50,000, saved 6,000 (2 rescues); this month: groceries 40,000 + delivery 45,000 (human 85% = warn), pet 52,000 (104% = danger); last month: 999,999 (must be ignored)
+    await svc.from("kitchen_profiles").insert({ household_id: H2, human_monthly_budget: 100_000, pet_monthly_budget: 50_000, rescued_count: 2, saved_money: 6000 });
+    const exp = (d, category, amount, memo, createdAt) => ({ household_id: H2, expense_date: d, category, amount, memo, created_at: createdAt });
+    const base = Date.now();
+    const iso = (n) => new Date(base + n * 1000).toISOString();
+    const lastMonth = new Date(Date.UTC(ty, tm - 2, 15)).toISOString().slice(0, 10);
+    await svc.from("kitchen_expenses").insert([
+      exp(today, "human_groceries", 40_000, `장보기${rand}`, iso(1)),
+      exp(today, "human_delivery", 45_000, `치킨${rand}`, iso(2)),
+      exp(today, "pet_care", 52_000, `사료${rand}`, iso(3)),
+      exp(lastMonth, "human_groceries", 999_999, `지난달${rand}`, iso(0)),
+    ]);
+    const exps = async () => (await svc.from("kitchen_expenses").select("*").eq("household_id", H2)).data ?? [];
+    const prof = async () => (await svc.from("kitchen_profiles").select("*").eq("household_id", H2).single()).data;
+
+    let state;
+    {
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.fill('input[name="email"]', email);
+      await p.fill('input[name="password"]', pw);
+      await p.click('button[type="submit"]');
+      await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20_000 });
+      state = await c.storageState();
+      await c.close();
+    }
+    const mk = async (vp, path = "/kitchen", scheme = "light") => {
+      const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+      await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+      const p = await c.newPage();
+      p.__errors = [];
+      p.on("pageerror", (e) => p.__errors.push(`pageerror: ${e.message}`));
+      p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && p.__errors.push(`console: ${m.text()}`));
+      await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      await p.getByTestId(path === "/kitchen" ? "budget-card" : "kitchen-strip").waitFor();
+      return { c, p };
+    };
+
+    // ================================================================ /kitchen budget card
+    const { c, p } = await mk(VIEWPORTS[0]);
+    const card = p.getByTestId("budget-card");
+    const nextTo = await p.evaluate(() => { const pulse = document.querySelector('[data-testid="kitchen-pulse"]'); return pulse?.nextElementSibling?.getAttribute("data-testid") ?? pulse?.nextElementSibling?.querySelector?.("[data-testid]")?.getAttribute("data-testid"); });
+    record("kitchen-budget", "desktop", "budget card sits directly below the KitchenPulse tiles", nextTo === "budget-card", String(nextTo));
+    const gauge = (id) => card.locator(`[data-gauge="${id}"]`);
+    record("kitchen-budget", "desktop", "human gauge: 85,000 / 100,000원 = 85% → warn (orange, 80%+); 15,000원 남음", (await gauge("human").getAttribute("data-level")) === "warn" && (await gauge("human").getByTestId("gauge-pct").innerText()) === "85%" && /85,000원 \/ 100,000원/.test(await gauge("human").getByTestId("gauge-amounts").innerText()) && /15,000원 남음/.test(await gauge("human").getByTestId("gauge-note").innerText()));
+    record("kitchen-budget", "desktop", "pet gauge: 52,000 / 50,000원 = 104% → danger (red); ‘2,000원 초과’; bar capped at 100% width", (await gauge("pet").getAttribute("data-level")) === "danger" && (await gauge("pet").getByTestId("gauge-pct").innerText()) === "104%" && /2,000원 초과/.test(await gauge("pet").getByTestId("gauge-note").innerText()) && (await gauge("pet").getByTestId("gauge-fill").evaluate((el) => el.style.width)) === "100%");
+    const fill = (id) => gauge(id).getByTestId("gauge-fill").evaluate((el) => getComputedStyle(el).backgroundColor);
+    record("kitchen-budget", "desktop", "gauge colours: warn = amber-500, danger = rose-500", (await fill("human")) === "rgb(245, 158, 11)" && (await fill("pet")) === "rgb(244, 63, 94)", `${await fill("human")} ${await fill("pet")}`);
+    const bar = await gauge("human").getByRole("progressbar").evaluate((el) => ({ now: el.getAttribute("aria-valuenow"), text: el.getAttribute("aria-valuetext") }));
+    record("kitchen-budget", "desktop", "gauges are accessible progress bars (aria-valuenow, readable valuetext)", bar.now === "85" && /85,000원 \/ 100,000원 \(85%\)/.test(bar.text), JSON.stringify(bar));
+    const expectedToday = Math.floor(15_000 / daysLeft);
+    const tb = card.getByTestId("today-budget");
+    record("kitchen-budget", "desktop", `‘오늘의 권장 식비’ badge = floor(15,000 ÷ ${daysLeft} days left incl. today) = ${expectedToday.toLocaleString("ko-KR")}원, high-contrast black pill`, (await tb.getAttribute("data-state")) === "ok" && /오늘의 권장 식비/.test(await tb.innerText()) && (await card.getByTestId("today-budget-value").innerText()).trim() === `${expectedToday.toLocaleString("ko-KR")}원` && lum(await tb.evaluate((el) => getComputedStyle(el).backgroundColor)) < 0.05, await tb.innerText());
+    record("kitchen-budget", "desktop", "saved badge: 냉파 누적 방어액 6,000원 · 구출 2번", /6,000원/.test(await card.getByTestId("saved-badge").innerText()) && /구출 2번/.test(await card.innerText()));
+    const recent = await card.getByTestId("recent-row").allInnerTexts();
+    record("kitchen-budget", "desktop", "recent expenses: exactly the 3 newest of this month (last month's 999,999원 excluded), newest first", recent.length === 3 && /사료/.test(recent[0]) && /치킨/.test(recent[1]) && /장보기/.test(recent[2]) && !(await card.innerText()).includes("지난달"), recent.join(" | ").replace(/\s+/g, " "));
+    await p.screenshot({ path: `${OUT}/kitchen-budget-light-desktop.png`, fullPage: true });
+
+    // ---- dialog: list, add, validation, delete, settings
+    await card.getByTestId("expense-open").click();
+    const dlg = p.getByTestId("expense-dialog");
+    await dlg.waitFor();
+    record("kitchen-budget", "desktop", "ledger dialog lists all 3 of this month's expenses (count 3건), not last month's", (await dlg.getByTestId("expense-row").count()) === 3 && /3건/.test(await dlg.getByTestId("expense-count").innerText()) && !(await dlg.innerText()).includes("지난달"));
+    const submit = dlg.getByTestId("expense-submit");
+    const err = dlg.getByTestId("expense-error");
+    for (const [val, re, label] of [["", /숫자/, "empty"], ["abc", /숫자/, "text"], ["0", /1원 이상/, "zero"], ["-500", /숫자/, "negative"], ["1.5", /숫자/, "decimal"], ["999999999", /너무 커요/, "over the cap"]]) {
+      await dlg.getByLabel("금액 (원)").fill(val);
+      await submit.click();
+      await err.waitFor();
+      record("kitchen-budget", "desktop", `validation (${label}): ‘${val}’ is rejected with a clear message, nothing written`, re.test(await err.innerText()) && (await exps()).length === 4, await err.innerText());
+    }
+    await dlg.getByLabel("금액 (원)").fill("5000");
+    await dlg.getByLabel("날짜").evaluate((el) => { el.removeAttribute("max"); });
+    await dlg.getByLabel("날짜").fill(shift(2));
+    await submit.click();
+    await err.waitFor();
+    record("kitchen-budget", "desktop", "a future date is refused by the server (‘미래 날짜’)", /미래 날짜/.test(await err.innerText()) && (await exps()).length === 4, await err.innerText());
+    await dlg.getByLabel("날짜").fill(today);
+
+    await dlg.locator('[data-testid="expense-cat-option"][data-category="human_delivery"]').click();
+    await dlg.getByLabel("금액 (원)").fill("20,000");
+    await dlg.getByLabel("메모 (선택)").fill(`피자${rand}`);
+    await submit.click();
+    const pizza = await until(async () => (await exps()).find((e) => e.memo === `피자${rand}`));
+    record("kitchen-budget", "desktop", "add: 20,000원 배달·외식 ‘피자’ saved with today's date (commas in the amount accepted)", !!pizza && pizza.amount === 20_000 && pizza.category === "human_delivery" && pizza.expense_date === today, JSON.stringify(pizza));
+    await p.waitForFunction(() => document.querySelector('[data-testid="expense-count"]')?.textContent?.includes("4건"));
+    record("kitchen-budget", "desktop", "the dialog list and the card refresh without reload (4건; human now 105% → danger)", (await dlg.getByTestId("expense-row").count()) === 4 && (await gauge("human").getAttribute("data-level")) === "danger" && (await gauge("human").getByTestId("gauge-pct").innerText()) === "105%");
+    record("kitchen-budget", "desktop", "overspent: the badge switches to the rose warning style with ‘예산 초과’ and recommends 0원", (await tb.getAttribute("data-state")) === "over" && /예산 초과/.test(await tb.innerText()) && (await card.getByTestId("today-budget-value").innerText()).trim() === "0원" && /5,000원 넘겼어요/.test(await card.getByTestId("today-budget-hint").innerText()), await tb.innerText());
+    const overBg = await tb.evaluate((el) => getComputedStyle(el).backgroundColor);
+    record("kitchen-budget", "desktop", "warning badge uses the rose tint (not the black pill)", lum(overBg) > 0.85 && overBg !== "rgb(0, 0, 0)", overBg);
+    await p.screenshot({ path: `${OUT}/kitchen-budget-overspent-light-desktop.png` });
+
+    // delete: two steps
+    const row = dlg.locator(`[data-testid="expense-row"]`).filter({ hasText: `피자${rand}` });
+    await row.getByTestId("expense-delete").click();
+    await row.getByTestId("expense-delete-confirm").waitFor();
+    await row.getByRole("button", { name: "취소" }).click();
+    record("kitchen-budget", "desktop", "delete asks for confirmation; cancel keeps the row", (await row.count()) === 1 && (await exps()).length === 5);
+    await row.getByTestId("expense-delete").click();
+    await row.getByTestId("expense-delete-confirm").click();
+    await row.waitFor({ state: "detached" });
+    record("kitchen-budget", "desktop", "confirmed delete removes the ledger row (back to 4 rows) and the gauge returns to 85%", (await exps()).length === 4 && !(await exps()).some((e) => e.memo === `피자${rand}`) && (await until(async () => (await gauge("human").getByTestId("gauge-pct").innerText()) === "85%")) === true);
+
+    // settings
+    await dlg.getByTestId("budget-settings-toggle").click();
+    await dlg.getByLabel("사람 식비 (월)").fill("-1");
+    await dlg.getByTestId("budget-save").click();
+    await dlg.getByTestId("budget-error").waitFor();
+    record("kitchen-budget", "desktop", "budget settings: a negative budget is rejected, DB unchanged", /숫자|0원 이상/.test(await dlg.getByTestId("budget-error").innerText()) && (await prof()).human_monthly_budget === 100_000);
+    await dlg.getByLabel("사람 식비 (월)").fill("200000");
+    await dlg.getByLabel("댕냥이 케어비 (월)").fill("60,000");
+    await dlg.getByTestId("budget-save").click();
+    const p2 = await until(async () => { const r = await prof(); return r.human_monthly_budget === 200_000 ? r : null; });
+    record("kitchen-budget", "desktop", "budget settings saved (200,000 / 60,000); stats counters untouched (rescued 2, saved 6,000)", !!p2 && p2.pet_monthly_budget === 60_000 && p2.rescued_count === 2 && Number(p2.saved_money) === 6000, JSON.stringify(p2));
+    await p.waitForFunction(() => document.querySelector('[data-gauge="human"] [data-testid="gauge-pct"]')?.textContent === "43%");
+    record("kitchen-budget", "desktop", "gauges recompute against the new budgets: human 85,000/200,000 = 43% (ok, green), pet 52,000/60,000 = 87% (warn)", (await gauge("human").getAttribute("data-level")) === "ok" && (await gauge("pet").getByTestId("gauge-pct").innerText()) === "87%" && (await gauge("pet").getAttribute("data-level")) === "warn");
+    await p.keyboard.press("Escape");
+    await dlg.waitFor({ state: "detached" });
+
+    // exact 100% boundary & 0-won budget
+    await svc.from("kitchen_profiles").update({ human_monthly_budget: 85_000 }).eq("household_id", H2);
+    await p.reload({ waitUntil: "networkidle" });
+    await card.waitFor();
+    record("kitchen-budget", "desktop", "spent == budget (85,000 / 85,000) is already ‘danger’ (100%), with ‘0원 남음’ and a 0원 recommendation", (await gauge("human").getAttribute("data-level")) === "danger" && (await gauge("human").getByTestId("gauge-pct").innerText()) === "100%" && /0원 남음/.test(await gauge("human").getByTestId("gauge-note").innerText()) && (await card.getByTestId("today-budget-value").innerText()).trim() === "0원");
+    await svc.from("kitchen_profiles").update({ human_monthly_budget: 0, pet_monthly_budget: 0 }).eq("household_id", H2);
+    await p.reload({ waitUntil: "networkidle" });
+    await card.waitFor();
+    record("kitchen-budget", "desktop", "a 0-won budget with spending: ‘예산 미설정’, gauge full/red, no division by zero, no NaN anywhere", /예산 미설정/.test(await card.innerText()) && (await gauge("human").getAttribute("data-level")) === "danger" && !/NaN|Infinity/.test(await card.innerText()));
+
+    record("kitchen-budget", "desktop", "no console/page errors in the /kitchen money-log flow", p.__errors.length === 0, p.__errors.slice(0, 2).join(" | "));
+    await c.close();
+
+    // isolation: the E2E household's kitchen page never shows this ledger
+    {
+      const cx = await newContext(VIEWPORTS[0], storageState);
+      const px = await cx.newPage();
+      await px.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      const html = await px.content();
+      record("kitchen-budget", "desktop", "another household never sees this ledger (no memos, no 6,000원 saved leak)", !html.includes(`치킨${rand}`) && !html.includes(`사료${rand}`) && !html.includes("999,999"));
+      await cx.close();
+    }
+
+    // ================================================================ /analytics integration
+    await svc.from("kitchen_profiles").update({ human_monthly_budget: 100_000, pet_monthly_budget: 50_000 }).eq("household_id", H2);
+    // zero-asset household WITH kitchen data: the report is not the empty state any more
+    const a0 = await mk(VIEWPORTS[0], "/analytics");
+    record("kitchen-budget", "desktop", "analytics: a household with kitchen spending but 0 assets still gets a report (no empty state), with the kitchen strip", (await a0.p.getByTestId("analytics-empty").count()) === 0 && (await a0.p.getByTestId("kitchen-strip").count()) === 1);
+    await a0.c.close();
+
+    // add a rental (30,000 / month) so fixed + variable can be checked
+    const ownerId = strangerId;
+    const ins = await svc.from("assets").insert({ household_id: H2, owner_id: ownerId, visibility: "FAMILY", name: `E2E렌탈${rand}`, space: "거실", category: "정수기", ownership_type: "RENTAL", rental_provider: "코웨이", monthly_fee: 30_000, billing_day: 15 }).select("id").single();
+    if (ins.error) throw new Error(`rental fixture failed: ${ins.error.message}`);
+    for (const vp of VIEWPORTS) {
+      for (const scheme of ["light", "dark"]) {
+        const { c: ac, p: ap } = await mk(vp, "/analytics", scheme);
+        const tag = `${scheme}/${vp.name}`;
+        const strip = ap.getByTestId("kitchen-strip");
+        const tile = (id) => strip.locator(`[data-tile="${id}"] [data-testid="kitchen-tile-value"]`).innerText();
+        if (scheme === "light" && vp.name === "desktop") {
+          record("kitchen-budget", vp.name, "analytics strip: 식비 85,000원 · 양육비 52,000원 (this month only) · 냉파로 아낀 금액 6,000원", (await tile("human")).trim() === "85,000원" && (await tile("pet")).trim() === "52,000원" && (await tile("defended")).trim() === "6,000원", `${await tile("human")} ${await tile("pet")} ${await tile("defended")}`);
+          const t = (id) => strip.getByTestId(id).innerText();
+          record("kitchen-budget", vp.name, "종합 캐시플로우: 렌탈 고정 30,000원 + 식비·양육비 변동 137,000원 = 합계 167,000원", (await t("cash-fixed")).trim() === "30,000원" && (await t("cash-variable")).trim() === "137,000원" && (await t("cash-total")).trim() === "167,000원", `${await t("cash-fixed")} ${await t("cash-variable")} ${await t("cash-total")}`);
+          const segs = await strip.getByTestId("cash-bar").locator("[data-seg]").evaluateAll((els) => els.map((e) => [e.getAttribute("data-seg"), Math.round(parseFloat(e.style.width))]));
+          record("kitchen-budget", vp.name, "stacked bar: 렌탈 18% · 식비 51% · 양육비 31% of the total, labelled for screen readers", JSON.stringify(segs) === JSON.stringify([["fixed", 18], ["human", 51], ["pet", 31]]) && /렌탈 18%, 식비 51%, 양육비 31%/.test((await strip.getByTestId("cash-bar").getAttribute("aria-label")) ?? ""), JSON.stringify(segs));
+          record("kitchen-budget", vp.name, "defended line: ‘냉파로 지금까지 6,000원을 지켰어요 (… 4%)’ — cumulative defended vs. variable spending", /6,000원을 지켰어요/.test(await t("cash-defended")) && /4%/.test(await t("cash-defended")), await t("cash-defended"));
+          record("kitchen-budget", vp.name, "the rental sections of the report are still there (KPI grid, billing strip, savings card)", (await ap.getByTestId("kpi-grid").count()) === 1 && (await ap.getByTestId("billing-strip").count()) === 1 && (await ap.getByTestId("savings-card").count()) === 1);
+          const kv = await ap.getByTestId("kpi-value").first().innerText();
+          record("kitchen-budget", vp.name, "the rental KPI still shows only the rental total (30,000원) — kitchen money does not leak into it", kv.trim() === "30,000원", kv);
+        }
+        record("kitchen-budget", vp.name, `${tag}: analytics page has no horizontal scroll; strip tiles and summary fit`, await ap.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth) && (await strip.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)));
+        const sbg = await strip.evaluate((el) => getComputedStyle(el).backgroundColor);
+        record("kitchen-budget", vp.name, `${tag}: strip follows the theme`, scheme === "dark" ? lum(sbg) < 0.1 : lum(sbg) > 0.8, sbg);
+        await ap.screenshot({ path: `${OUT}/analytics-kitchen-${scheme}-${vp.name}.png`, fullPage: true });
+        record("kitchen-budget", vp.name, `${tag}: no console/page errors`, ap.__errors.length === 0, ap.__errors.slice(0, 2).join(" | "));
+        await ac.close();
+      }
+    }
+
+    // kitchen card on mobile / dark
+    for (const [vp, scheme] of [[VIEWPORTS[1], "light"], [VIEWPORTS[1], "dark"], [VIEWPORTS[0], "dark"]]) {
+      const { c: kc, p: kp } = await mk(vp, "/kitchen", scheme);
+      const tag = `${scheme}/${vp.name}`;
+      const kcard = kp.getByTestId("budget-card");
+      record("kitchen-budget", vp.name, `${tag}: money-log card fits (no horizontal scroll, gauges stack on mobile)`, await kp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth) && (await kcard.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)) && (vp.name !== "mobile" || (await kcard.locator('[data-gauge="human"]').evaluate((a, ) => { const b = document.querySelector('[data-gauge="pet"]'); return b.getBoundingClientRect().top > a.getBoundingClientRect().bottom - 1; }))));
+      const kbg = await kcard.evaluate((el) => getComputedStyle(el).backgroundColor);
+      record("kitchen-budget", vp.name, `${tag}: card follows the theme`, scheme === "dark" ? lum(kbg) < 0.1 : lum(kbg) > 0.8, kbg);
+      await kcard.getByTestId("expense-open").click();
+      const d2 = kp.getByTestId("expense-dialog");
+      await d2.waitFor();
+      await kp.waitForTimeout(450);
+      record("kitchen-budget", vp.name, `${tag}: ledger dialog fits the viewport`, await d2.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1; }));
+      await kp.screenshot({ path: `${OUT}/kitchen-ledger-${scheme}-${vp.name}.png` });
+      await kc.close();
+    }
+  } catch (err) {
+    if (/kitchen tables missing/.test(String(err))) record("kitchen-budget", "-", "kitchen tables available (migration 14)", false, "tables missing");
+    else record("kitchen-budget", "-", "money-log suite ran to completion", false, String(err?.stack ?? err).slice(0, 500));
+  } finally {
+    if (H2) {
+      await svc.from("assets").delete().eq("household_id", H2);
+      for (const t of ["kitchen_items", "kitchen_shopping_items", "kitchen_expenses", "kitchen_profiles"]) await svc.from(t).delete().eq("household_id", H2);
+      await svc.from("profiles").delete().eq("household_id", H2);
+      await svc.from("households").delete().eq("id", H2);
+    }
+    if (strangerId) await svc.auth.admin.deleteUser(strangerId);
+  }
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report
