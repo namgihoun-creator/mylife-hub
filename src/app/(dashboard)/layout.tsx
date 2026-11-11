@@ -10,6 +10,7 @@ import { getMembers } from "@/features/household/server/household.queries";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { getUnreadNotificationCount } from "@/features/notifications/server/notification.actions";
 import { MainNav } from "@/shared/components/layout/MainNav";
+import { PwaInstallButton } from "@/shared/components/pwa-install-button";
 import { AmbientBackground } from "@/shared/components/ui/ambient-background";
 import { ThemeToggle } from "@/shared/components/ui/theme-toggle";
 
@@ -57,6 +58,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <PwaInstallButton />
             <ThemeToggle />
             <NotificationBell initialCount={unreadCount} />
             <HouseholdSettingsModal members={members} role={profile.role} householdName={profile.householdName} />

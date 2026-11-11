@@ -221,6 +221,12 @@
 - **재생성:** `node scripts/generate-brand-assets.mjs` (HTML → Playwright 캡처). 브랜드가 바뀔 때만 실행하고 결과물을 커밋한다.
 - **메타데이터 규칙:** 기본 문구·URL은 `src/shared/lib/seo.ts`(`shareMetadata`)에서만 정의. `openGraph`를 덮어쓰는 페이지는 helper를 써서 이미지·siteName·locale을 유지한다. 토큰 페이지(`/m/*`, `/invite/*`)는 `noindex, nofollow` + `no-referrer`이며 공유 카드에 토큰·가구·과업 정보를 싣지 않는다.
 
+### M. 앱 설치 버튼 (PWA Install)
+- **위치·형태:** 헤더 우측 클러스터의 `ThemeToggle` 바로 앞. `h-8 w-8 rounded-lg` 고스트 아이콘 버튼(`Download` 라인 아이콘 `h-4 w-4`), 기본은 투명 보더, 호버 시 `border-zinc-200 bg-zinc-100`(다크 `border-zinc-800 bg-zinc-900`). `ThemeToggle`과 같은 규격·포커스 링.
+- **툴팁:** 호버/키보드 포커스 시 버튼 아래 `앱 설치하기` 라벨(`rounded-lg border bg-white text-xs font-medium`, 오버레이이므로 `shadow-lg`, 다크 `bg-zinc-900`). 순수 CSS(`group-hover` / `group-focus-visible`), `role="tooltip"`.
+- **표시 조건:** 설치 경로가 있을 때만 — 캡처한 `beforeinstallprompt`가 있거나 iOS. **독립 실행(standalone) 모드·`appinstalled` 이후·설치 경로 없는 브라우저에서는 DOM에 렌더링하지 않는다.**
+- **동작:** Android / 데스크톱 Chrome·Edge → 브라우저 네이티브 설치 대화상자(문구는 브라우저가 정함, 앱이 바꿀 수 없음). iOS → 네이티브 프롬프트가 없으므로 `Popover`(`w-72 rounded-xl p-4`)에 2단계 안내(공유 `Share` 아이콘 → `홈 화면에 추가`).
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

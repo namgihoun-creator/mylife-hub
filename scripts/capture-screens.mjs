@@ -1373,7 +1373,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
   record("push", "-", "sw.js: public JS, no-cache, push + notificationclick handlers", sw.status === 200 && /javascript/.test(sw.headers.get("content-type") ?? "") && /no-cache|no-store/.test(sw.headers.get("cache-control") ?? "") && /addEventListener\("push"/.test(swText) && /addEventListener\("notificationclick"/.test(swText), `status=${sw.status} cc=${sw.headers.get("cache-control")}`);
   const mf = await fetch(`${BASE}/manifest.json`, { redirect: "manual" });
   const manifest = await mf.json().catch(() => null);
-  record("push", "-", "manifest.json: name, standalone, start_url, 192/512 icons", mf.status === 200 && manifest?.display === "standalone" && manifest?.start_url === "/assets" && manifest?.icons?.some((i) => i.sizes === "512x512"), `status=${mf.status}`);
+  record("push", "-", "manifest.json: name, standalone, start_url, 192/512 icons", mf.status === 200 && manifest?.display === "standalone" && manifest?.start_url === "/" && manifest?.icons?.some((i) => i.sizes === "512x512"), `status=${mf.status}`);
   const iconStatuses = await Promise.all(["/icons/icon-192.png", "/icons/icon-512.png", "/icons/badge-72.png"].map(async (p) => (await fetch(`${BASE}${p}`, { redirect: "manual" })).status));
   record("push", "-", "icons served (192 / 512 / badge)", iconStatuses.every((s) => s === 200), iconStatuses.join(","));
 
@@ -2511,6 +2511,189 @@ const CRON_SECRET = process.env.CRON_SECRET;
   record("share", "-", "PWA manifest icons (192/512) are valid PNGs of the right size, theme colour matches the dark brand", pngSize(i192.buf)?.w === 192 && pngSize(i512.buf)?.w === 512 && mf.theme_color === "#09090b" && mf.background_color === "#09090b");
   const unauth = await fetch(`${BASE}/analytics`, { redirect: "manual" });
   record("share", "-", "regression: protected /analytics still redirects anonymous visitors to /login (middleware + layout)", unauth.status >= 300 && unauth.status < 400 && /\/login/.test(unauth.headers.get("location") ?? ""), `${unauth.status} ${unauth.headers.get("location")}`);
+}
+
+// ---------------------------------------------------------------- PWA install button (header) + installability checks
+{
+  // ---- pure: iOS detection
+  const pi = await import("../src/shared/hooks/use-pwa-install.ts");
+  const UA = {
+    iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+    ipad: "Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+    mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    android: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    win: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  };
+  record("pwa", "-", "iOS detection: iPhone and iPad UAs → true; iPadOS in desktop mode (MacIntel + touch) → true; real Mac / Android / Windows → false",
+    pi.detectIOS(UA.iphone, "iPhone", 5) && pi.detectIOS(UA.ipad, "iPad", 5) && pi.detectIOS(UA.mac, "MacIntel", 5) && !pi.detectIOS(UA.mac, "MacIntel", 0) && !pi.detectIOS(UA.android, "Linux armv81", 5) && !pi.detectIOS(UA.win, "Win32", 0));
+
+  const ctxFor = async (vp, { scheme = "light", ua, touch, init } = {}) => {
+    const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme, ...(ua ? { userAgent: ua } : {}), ...(touch ? { hasTouch: true, isMobile: true } : {}) });
+    await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+    if (init) await c.addInitScript(init);
+    return c;
+  };
+  const open = async (c, path = "/assets") => {
+    const p = await c.newPage();
+    p.__errors = [];
+    p.on("pageerror", (e) => p.__errors.push(`pageerror: ${e.message}`));
+    p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && p.__errors.push(`console: ${m.text()}`));
+    await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+    await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    await p.getByTestId("theme-toggle").waitFor();
+    await p.waitForTimeout(300);
+    return p;
+  };
+  const fire = (p, outcome = "accepted") =>
+    p.evaluate((o) => {
+      window.__installCalls = 0;
+      const e = new Event("beforeinstallprompt", { cancelable: true });
+      e.prompt = async () => { window.__installCalls++; };
+      e.userChoice = Promise.resolve({ outcome: o, platform: "web" });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    }, outcome);
+  const btn = (p) => p.getByTestId("pwa-install");
+
+  // ---- browser mode (no install path yet): nothing is rendered
+  for (const [vp, scheme] of [[VIEWPORTS[0], "light"], [VIEWPORTS[0], "dark"], [VIEWPORTS[1], "light"], [VIEWPORTS[1], "dark"]]) {
+    const c = await ctxFor(vp, { scheme });
+    const p = await open(c);
+    const tag = `${scheme}/${vp.name}`;
+    if (scheme === "light" && vp.name === "desktop") {
+      record("pwa", vp.name, "browser mode, no install event yet (desktop UA): no install button is rendered", (await btn(p).count()) === 0);
+      const prevented = await fire(p);
+      await btn(p).waitFor();
+      record("pwa", vp.name, "beforeinstallprompt is captured (default mini-infobar suppressed) → the button appears", prevented === true && (await btn(p).count()) === 1 && (await btn(p).getAttribute("data-mode")) === "native");
+      const place = await btn(p).evaluate((el) => ({ next: el.nextElementSibling?.getAttribute("data-testid"), inHeader: !!el.closest("header"), label: el.getAttribute("aria-label"), size: [el.getBoundingClientRect().width, el.getBoundingClientRect().height] }));
+      record("pwa", vp.name, "button sits in the header right cluster directly before the theme toggle, 32×32, labelled ‘앱 설치하기’", place.next === "theme-toggle" && place.inHeader && place.label === "앱 설치하기" && place.size[0] === 32 && place.size[1] === 32, JSON.stringify(place));
+      const tip = p.getByTestId("pwa-install-tip");
+      const o0 = await tip.evaluate((el) => getComputedStyle(el).opacity);
+      await btn(p).hover();
+      await p.waitForTimeout(350);
+      const o1 = await tip.evaluate((el) => getComputedStyle(el).opacity);
+      record("pwa", vp.name, "tooltip: hidden by default, ‘앱 설치하기’ fades in on hover", o0 === "0" && o1 === "1" && (await tip.innerText()).trim() === "앱 설치하기" && (await tip.getAttribute("role")) === "tooltip", `${o0}→${o1}`);
+      await p.screenshot({ path: `${OUT}/pwa-install-hover-${scheme}-${vp.name}.png`, clip: { x: VIEWPORTS[0].width - 340, y: 0, width: 340, height: 120 } });
+      const bdr = await btn(p).evaluate((el) => getComputedStyle(el).borderTopWidth);
+      record("pwa", vp.name, "button uses the 1px-border ghost style (same as the theme toggle)", bdr === "1px");
+      await btn(p).click();
+      await p.waitForFunction(() => window.__installCalls === 1);
+      await p.waitForTimeout(200);
+      record("pwa", vp.name, "click → the stored deferredPrompt.prompt() runs exactly once; the used prompt hides the button", (await p.evaluate(() => window.__installCalls)) === 1 && (await btn(p).count()) === 0);
+    } else {
+      await fire(p);
+      await btn(p).waitFor();
+      record("pwa", vp.name, `${tag}: button renders with a visible icon and no horizontal scroll`, (await btn(p).locator("svg").count()) === 1 && (await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)));
+      await btn(p).hover();
+      await p.waitForTimeout(300);
+      const colors = await btn(p).evaluate((el) => ({ c: getComputedStyle(el).color, bg: getComputedStyle(el).backgroundColor }));
+      const tipBg = await p.getByTestId("pwa-install-tip").evaluate((el) => getComputedStyle(el).backgroundColor);
+      const lum = (rgb) => { const [r, g, b] = (rgb.match(/[\d.]+/g) ?? [0, 0, 0]).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      record("pwa", vp.name, `${tag}: hover state and tooltip follow the theme`, scheme === "dark" ? lum(colors.c) > 0.5 && lum(tipBg) < 0.1 : lum(colors.c) < 0.2 && lum(tipBg) > 0.8, JSON.stringify({ colors, tipBg }));
+      await p.screenshot({ path: `${OUT}/pwa-install-header-${scheme}-${vp.name}.png`, clip: { x: 0, y: 0, width: vp.width, height: 110 } });
+    }
+    record("pwa", vp.name, `${tag}: no console/page errors`, p.__errors.length === 0, p.__errors.slice(0, 2).join(" | "));
+    await c.close();
+  }
+
+  // ---- appinstalled auto-hides the button
+  {
+    const c = await ctxFor(VIEWPORTS[0]);
+    const p = await open(c);
+    await fire(p);
+    await btn(p).waitFor();
+    await p.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+    await p.waitForTimeout(200);
+    record("pwa", "desktop", "appinstalled → the button disappears automatically", (await btn(p).count()) === 0);
+    await fire(p);
+    await p.waitForTimeout(200);
+    record("pwa", "desktop", "…and stays gone for the rest of the session even if another install event arrives", (await btn(p).count()) === 0);
+    await c.close();
+  }
+
+  // ---- standalone (installed app): never rendered, even when an install event arrives or on iOS
+  {
+    const mm = () => { const real = window.matchMedia.bind(window); window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q) ? real("all") : real(q)); };
+    const c = await ctxFor(VIEWPORTS[0], { init: mm });
+    const p = await open(c);
+    const isStandalone = await p.evaluate(() => matchMedia("(display-mode: standalone)").matches);
+    await fire(p);
+    await p.waitForTimeout(300);
+    record("pwa", "desktop", "standalone via display-mode media query: no button even after beforeinstallprompt", isStandalone && (await btn(p).count()) === 0);
+    await c.close();
+
+    const c2 = await ctxFor(VIEWPORTS[0], { init: () => Object.defineProperty(navigator, "standalone", { get: () => true }) });
+    const p2 = await open(c2);
+    await fire(p2);
+    await p2.waitForTimeout(300);
+    record("pwa", "desktop", "standalone via navigator.standalone === true: no button even after beforeinstallprompt", (await btn(p2).count()) === 0);
+    await c2.close();
+
+    const c3 = await ctxFor(VIEWPORTS[1], { ua: UA.iphone, touch: true, init: () => Object.defineProperty(navigator, "standalone", { get: () => true }) });
+    const p3 = await open(c3);
+    record("pwa", "mobile", "iOS home-screen app (navigator.standalone): no button, no guide", (await btn(p3).count()) === 0);
+    await c3.close();
+  }
+
+  // ---- iOS Safari: manual guide (no native prompt exists)
+  for (const scheme of ["light", "dark"]) {
+    const c = await ctxFor(VIEWPORTS[1], { scheme, ua: UA.iphone, touch: true });
+    const p = await open(c);
+    await btn(p).waitFor();
+    record("pwa", "mobile", `iOS ${scheme}: button is shown without any install event (data-mode=ios)`, (await btn(p).getAttribute("data-mode")) === "ios");
+    await btn(p).click();
+    const guide = p.getByTestId("pwa-install-ios-guide");
+    await guide.waitFor();
+    const txt = (await guide.innerText()).replace(/\s+/g, " ");
+    record("pwa", "mobile", `iOS ${scheme}: popover explains Share (⎋) → ‘홈 화면에 추가’, fits the 375px viewport`, /공유/.test(txt) && /⎋/.test(txt) && /홈 화면에 추가/.test(txt) && (await guide.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })), txt);
+    await p.waitForTimeout(400); // let the popover enter animation finish
+    record("pwa", "mobile", `iOS ${scheme}: the hover tooltip does not overlap the guide on touch devices`, (await p.getByTestId("pwa-install-tip").evaluate((el) => getComputedStyle(el).opacity)) === "0");
+    await p.screenshot({ path: `${OUT}/pwa-install-ios-${scheme}-mobile.png` });
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(200);
+    record("pwa", "mobile", `iOS ${scheme}: Escape closes the popover`, (await guide.count()) === 0);
+    record("pwa", "mobile", `iOS ${scheme}: no console/page errors`, p.__errors.length === 0, p.__errors.slice(0, 2).join(" | "));
+    await c.close();
+  }
+  {
+    // iPadOS reporting itself as a Mac (desktop-class Safari): detected through MacIntel + touch points
+    const c = await ctxFor(VIEWPORTS[0], { ua: UA.mac, init: () => { Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }); Object.defineProperty(navigator, "maxTouchPoints", { get: () => 5 }); } });
+    const p = await open(c);
+    record("pwa", "desktop", "iPadOS (Mac UA + touch points): treated as iOS → manual-guide button shown", (await btn(p).count()) === 1 && (await btn(p).getAttribute("data-mode")) === "ios");
+    await c.close();
+  }
+  {
+    const c = await newContext(VIEWPORTS[0]);
+    const p = await c.newPage();
+    await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+    await fire(p);
+    await p.waitForTimeout(250);
+    record("pwa", "desktop", "signed-out /login has no install button (header lives in the app shell only)", (await btn(p).count()) === 0);
+    await c.close();
+  }
+
+  // ---- installability: manifest + service worker + icons
+  {
+    const mfRes = await fetch(`${BASE}/manifest.json`, { redirect: "manual" });
+    const mf = await mfRes.json();
+    record("pwa", "-", "manifest: id ‘/’, start_url ‘/’, scope ‘/’, display standalone, name + short_name, lang ko", mfRes.status === 200 && mf.id === "/" && mf.start_url === "/" && mf.scope === "/" && mf.display === "standalone" && !!mf.name && !!mf.short_name && mf.lang === "ko", JSON.stringify([mf.id, mf.start_url, mf.display]));
+    const has = (size, purpose) => mf.icons?.some((i) => i.sizes === size && i.type === "image/png" && (i.purpose ?? "any").split(" ").includes(purpose));
+    record("pwa", "-", "manifest icons: PNG 192 + 512 (purpose any) and a 512 maskable", has("192x192", "any") && has("512x512", "any") && has("512x512", "maskable"));
+    const shot = async (src) => { const r = await fetch(`${BASE}${src}`, { redirect: "manual" }); const b = Buffer.from(await r.arrayBuffer()); return { s: r.status, w: b.readUInt32BE(16), h: b.readUInt32BE(20) }; };
+    const sizes = await Promise.all((mf.icons ?? []).map(async (i) => ({ i, r: await shot(i.src) })));
+    record("pwa", "-", "every manifest icon is served (200) and its real pixel size matches the declared size", sizes.length >= 3 && sizes.every(({ i, r }) => r.s === 200 && `${r.w}x${r.h}` === i.sizes), sizes.map(({ i, r }) => `${i.src}:${r.s}:${r.w}x${r.h}`).join(" "));
+    const home = await (await fetch(`${BASE}/login`)).text();
+    record("pwa", "-", "pages link the manifest (<link rel=manifest>) and declare theme-color", /<link rel="manifest" href="\/manifest\.json"/.test(home) && /<meta name="theme-color"/.test(home));
+    const startRes = await fetch(`${BASE}${mf.start_url}`, { redirect: "manual" });
+    record("pwa", "-", "start_url ‘/’ is inside scope and resolves (signed-out → redirect to /login, never an error page)", startRes.status >= 300 && startRes.status < 400 && /\/login$/.test(startRes.headers.get("location") ?? ""), `${startRes.status} ${startRes.headers.get("location")}`);
+    const sw = await fetch(`${BASE}/sw.js`, { redirect: "manual" });
+    record("pwa", "-", "service worker /sw.js: served from the root scope as JavaScript (no redirect); installability needs no fetch handler in current Chrome/Edge", sw.status === 200 && /javascript/.test(sw.headers.get("content-type") ?? ""));
+    const mfCtx = await newContext(VIEWPORTS[0], storageState);
+    const mp = await mfCtx.newPage();
+    const r = await mp.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    record("pwa", "desktop", "signed-in launch at start_url ‘/’ lands on /assets (the app opens straight into the shell)", new URL(mp.url()).pathname === "/assets" && !!r, mp.url());
+    await mfCtx.close();
+  }
 }
 
 await browser.close();
