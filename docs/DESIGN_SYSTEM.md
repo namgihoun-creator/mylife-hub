@@ -204,6 +204,17 @@
 - **알림 유형 `RENTAL_EXPIRING`:** 벨 목록 아이콘 `Repeat`(렌탈 환승), 톤 violet(§J 아이콘 박스 톤). 클릭/푸시 경로 `/assets?openAssetId=<자산ID>&tab=compare`.
 - **딥링크 동작(`/assets?openAssetId=…&tab=compare|info`):** 해당 자산의 상세 모달을 자동으로 열고 `tab=compare`(렌탈 자산일 때)면 `환승 & 비용 비교` 탭을 바로 보여 준다. 처리 후 주소의 쿼리는 즉시 제거(같은 알림을 다시 눌러도 다시 열리도록). 현재 필터 때문에 카드가 숨겨져 있으면 필터를 `전체`로 되돌린다. 자산을 찾을 수 없으면(삭제·권한 없음) 목록 상단에 `role="status"` 안내 박스(`rounded-xl border-amber-200 bg-amber-50 text-xs`)를 닫기 버튼과 함께 표시하고 모달은 열지 않는다. `openAssetId`가 UUID가 아니면 무시.
 
+### K. 리포트 (`/analytics`, 헤더 탭 "리포트")
+- **내비게이션:** 헤더·하단 탭에 `리포트`(`BarChart3`) 추가, 활성은 기존 탭과 동일(`aria-current="page"`). 모바일 하단 탭은 3칸.
+- **페이지 골격:** 제목 `리포트` + 보조 한 줄, 아래로 섹션 카드가 세로 스택(`space-y-6`). 모든 섹션은 평평한 `rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950` 카드(그림자·그라데이션 없음), 섹션 제목 `text-sm font-semibold` + 보조 설명 `text-xs`. 배경 오로라는 레이아웃 것을 그대로 사용.
+- **MetricKpiGrid:** 4열(모바일 2×2) 평평한 메트릭 카드(§0 메트릭 카드) — 라벨 → 큰 숫자 → 보조 한 줄. 값이 없으면 `—`. 아이콘은 `h-4 w-4` 모노톤, 액센트는 작은 점/보조색만.
+- **BillingScheduleStrip:** 1~31일 31칸 막대 타임라인(`grid-template-columns: repeat(31, minmax(0, 1fr))`). 결제 있는 날만 `bg-violet-500 dark:bg-violet-400` 막대(높이 = 그날 합계 / 최대값), 없는 날은 1px 눈금(`bg-zinc-200 dark:bg-zinc-800`). 축 라벨은 `1 · 8 · 15 · 22 · 29`(모바일은 `1 · 15 · 29`). 아래에 결제일 순 목록 행(날짜 칩 · 자산명 · 제휴카드 메모 보조 · 월 요금 `tabular-nums`).
+- **SavingsOpportunityCard:** 인텔리전스 배너 — `rounded-xl border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-950/20`(절약 = emerald). 소유권 이전 일정을 날짜순으로 `D-N · 자산명 · 이후 월 지출 X원`으로 나열하고 이전 후 월 지출 감소 예측을 한 줄로 요약. 약정 만료는 amber 보조 행(위약금 없이 환승 가능). 예측 대상이 없으면 `예정된 소유권 이전·약정 만료가 없어요` 중립 상태.
+- **ConsumableQuarterlyBar:** 향후 4개 분기(달력 분기) 순수 CSS 막대. 소모품 가격 데이터가 없으므로 **금액이 아닌 교체·점검 예정 횟수**. 막대 높이 = 분기 합계 / 최대값, 소모품 등록 규칙 분량은 `bg-violet-500 dark:bg-violet-400`, 그 외 점검은 `bg-zinc-300 dark:bg-zinc-700`로 스택. 각 막대 위에 합계(`tabular-nums`), 아래에 `2026 Q4` 라벨. 범례 2개.
+- **SpaceInventoryMatrix:** 공간(또는 카테고리) 한 줄 = 이름 · 총 개수 · 가로 스택 인디케이터(자가 `bg-zinc-900 dark:bg-zinc-100` / 렌탈 `bg-violet-500 dark:bg-violet-400`) + `렌탈 N · 자가 M`. 상단 세그먼트로 `공간별 / 카테고리별` 전환(소유 형태 칩과 같은 규격), 맨 위에 전체 소유 형태 비중 막대.
+- **제로 상태:** 자산 0개 → 엠프티 스테이트(§D) 하나만. 렌탈 0개 → 결제 타임라인·절약 카드는 `렌탈·구독 자산이 없어요` 중립 안내, 나머지 섹션은 정상 표시.
+- **접근성:** 막대마다 `role="img"` + `aria-label`(값 포함), 색만으로 구분하지 않고 숫자 병기. 모바일(375px)에서 가로 스크롤 없음.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

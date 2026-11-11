@@ -2225,6 +2225,209 @@ const CRON_SECRET = process.env.CRON_SECRET;
   }
 }
 
+// ---------------------------------------------------------------- 리포트 (/analytics): calculator, zero states, access, light/dark, mobile
+{
+  // ---- pure calculator (imported straight from the TypeScript source)
+  const ac = await import("../src/features/analytics/utils/analytics-calculator.ts");
+  const T = "2026-11-15";
+  const mk = (o) => ({ id: o.id, name: o.name, space: o.space ?? null, category: o.category ?? null, ownership_type: o.rental ? "RENTAL" : "OWNED", rental_provider: o.rental ? "코웨이" : null, monthly_fee: o.fee ?? null, billing_day: o.day ?? null, obligation_end_date: o.oblig ?? null, ownership_transfer_date: o.transfer ?? null, payment_card_note: o.card ?? null, task_rules: o.rules ?? [], tasks: o.tasks ?? [] });
+  const A = mk({ id: "a", name: "정수기", rental: true, fee: 30000, day: 25, card: "신한 테스트카드", transfer: "2027-01-10", oblig: "2026-11-20", space: "주방", category: "정수기" });
+  const B = mk({ id: "b", name: "공기청정기", rental: true, fee: 20000, day: 5, transfer: "2026-12-01", space: "거실", category: "공기청정기" });
+  const C = mk({ id: "c", name: "안마의자", rental: true, day: null, fee: null, transfer: "2026-10-01", space: "거실" });
+  const D = mk({ id: "d", name: "냉장고", space: "주방", category: "냉장고" });
+
+  const bs = ac.buildBillingSchedule([A, B, C, D]);
+  record("analytics", "-", "billing: monthly total sums only rentals with a fee (50,000), counts 3 rentals, flags 1 missing fee / 1 missing day", bs.monthlyTotal === 50000 && bs.rentalCount === 3 && bs.missingFee === 1 && bs.missingDay === 1, JSON.stringify({ t: bs.monthlyTotal, c: bs.rentalCount, mf: bs.missingFee, md: bs.missingDay }));
+  record("analytics", "-", "billing: list is sorted by billing day (5 → 25 → unknown last) and carries name, fee, day and card note", bs.items.map((i) => i.billingDay).join(",") === "5,25," && bs.items[1].fee === 30000 && bs.items[1].cardNote === "신한 테스트카드" && bs.items[0].cardNote === null, JSON.stringify(bs.items.map((i) => [i.name, i.billingDay])));
+  record("analytics", "-", "billing: 31-day strip (5th = 20,000, 25th = 30,000, max 30,000, other days empty)", bs.days.length === 31 && bs.days[4].total === 20000 && bs.days[24].total === 30000 && bs.maxDayTotal === 30000 && bs.days.filter((d) => d.items.length).length === 2);
+  const nb = (d, t) => ac.nextBillingDate(d, t);
+  record("analytics", "-", "next billing date: this month if not passed, else next month; day 31 clamps to month end; year rollover", nb(15, T) === "2026-11-15" && nb(5, T) === "2026-12-05" && nb(31, T) === "2026-11-30" && nb(31, "2026-12-31") === "2026-12-31" && nb(5, "2026-12-20") === "2027-01-05" && nb(30, "2027-02-10") === "2027-02-28", [nb(15, T), nb(5, T), nb(31, T), nb(5, "2026-12-20"), nb(30, "2027-02-10")].join(" "));
+  const nx = ac.nextBilling(bs, T);
+  record("analytics", "-", "next billing: soonest upcoming charge (11/25, D-10, 30,000) — merges same-day charges", nx?.date === "2026-11-25" && nx.daysUntil === 10 && nx.total === 30000 && nx.names[0] === "정수기", JSON.stringify(nx));
+
+  const sv = ac.buildSavingsForecast([A, B, C, D], T);
+  record("analytics", "-", "savings: upcoming transfers sorted by date with the running monthly total after each (50,000 → 30,000 → 0)", sv.transfers.map((x) => x.name).join(",") === "공기청정기,정수기" && sv.transfers[0].monthlyAfter === 30000 && sv.transfers[1].monthlyAfter === 0 && sv.currentMonthly === 50000 && sv.finalMonthly === 0, JSON.stringify(sv.transfers.map((x) => [x.name, x.daysUntil, x.monthlyAfter])));
+  record("analytics", "-", "savings: total monthly reduction 50,000 and yearly 600,000", sv.totalMonthlyReduction === 50000 && sv.yearlyReduction === 600000);
+  record("analytics", "-", "savings: a transfer date already in the past is reported separately and NOT projected; obligation end D-5 listed", sv.passedTransfers.length === 1 && sv.passedTransfers[0].name === "안마의자" && sv.obligations.length === 1 && sv.obligations[0].daysUntil === 5);
+  const svToday = ac.buildSavingsForecast([mk({ id: "e", name: "당일", rental: true, fee: 1000, transfer: T })], T);
+  record("analytics", "-", "savings: a transfer happening today still counts as upcoming (D-0)", svToday.transfers.length === 1 && svToday.transfers[0].daysUntil === 0 && svToday.finalMonthly === 0);
+
+  const rule = (id, type, n, name) => ({ id, title: id, recurring_type: type, interval_n: n, consumable_name: name ?? null, consumable_model: null });
+  const task = (rule_id, due) => ({ rule_id, due_date: due, status: "PENDING" });
+  const qa = mk({
+    id: "q", name: "분기 테스트",
+    rules: [rule("r1", "MONTHLY", 1, "필터"), rule("r2", "YEARLY", 1), rule("r3", "MONTHLY", 3), rule("r4", "NONE", 1, "무시"), rule("r5", "WEEKLY", 1, "미예정")],
+    tasks: [task("r1", "2026-12-01"), task("r2", "2026-10-01"), task("r3", "2026-11-30"), task("r4", "2026-12-15")],
+  });
+  const qo = ac.buildQuarterOutlook([qa], T);
+  const qt = qo.quarters.map((q) => q.total).join(",");
+  const qc = qo.quarters.map((q) => q.consumable).join(",");
+  record("analytics", "-", "quarters: next 4 calendar quarters labelled 2026 Q4 … 2027 Q3", qo.quarters.map((q) => q.label).join(",") === "2026 Q4,2027 Q1,2027 Q2,2027 Q3", qo.quarters.map((q) => q.label).join(","));
+  record("analytics", "-", "quarters: occurrences per interval (monthly ×1 from 12/1, yearly overdue counted once, every-3-months from 11/30 with 2/28 clamp) → totals 3,4,4,4", qt === "3,4,4,4" && qo.maxTotal === 4, `${qt} max=${qo.maxTotal}`);
+  record("analytics", "-", "quarters: consumable-registered rules are split from other maintenance (1,3,3,3); NONE rules ignored; rule without an open task is 'unscheduled'", qc === "1,3,3,3" && qo.unscheduledRules === 1, `${qc} unscheduled=${qo.unscheduledRules}`);
+  const ny = ac.buildQuarterOutlook([], "2026-12-31");
+  record("analytics", "-", "quarters: year rollover from Q4 (today 12/31 → 2026 Q4, 2027 Q1..Q3)", ny.quarters.map((q) => q.label).join(",") === "2026 Q4,2027 Q1,2027 Q2,2027 Q3" && ny.quarters[0].end === "2026-12-31");
+
+  const dist = ac.buildDistribution([A, B, C, D]);
+  const kitchen = dist.bySpace.find((r) => r.key === "주방"), living = dist.bySpace.find((r) => r.key === "거실");
+  record("analytics", "-", "distribution: per space totals with owned/rental split, overall share 75% rental, unassigned category bucket", dist.total === 4 && dist.rental === 3 && dist.owned === 1 && dist.rentalPct === 75 && kitchen.total === 2 && kitchen.rental === 1 && kitchen.owned === 1 && living.total === 2 && living.rental === 2 && dist.byCategory.some((r) => r.key === "미분류"), JSON.stringify(dist.bySpace));
+
+  // zero states: no assets, owned-only assets → no throw, sane empty shapes
+  const z0 = ac.buildAnalyticsReport([], T);
+  record("analytics", "-", "zero state: no assets → zeros, no next billing, 31 empty days, 4 empty quarters, 0% share", z0.billing.monthlyTotal === 0 && z0.billing.rentalCount === 0 && z0.nextBilling === null && z0.billing.days.length === 31 && z0.quarters.quarters.every((q) => q.total === 0) && z0.distribution.rentalPct === 0 && z0.savings.transfers.length === 0 && z0.savings.totalMonthlyReduction === 0);
+  const z1 = ac.buildAnalyticsReport([D], T);
+  record("analytics", "-", "zero state: owned assets only (no rentals) → rental figures 0, distribution still computed", z1.billing.rentalCount === 0 && z1.nextBilling === null && z1.savings.yearlyReduction === 0 && z1.distribution.total === 1 && z1.distribution.bySpace[0].key === "주방");
+}
+
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const SP = `E2E리포트${rand}`;
+  const created = [];
+  let strangerId = null;
+  const dayOf = 25;
+  try {
+    const base = { household_id: myProfile.household_id, owner_id: me.user.id, visibility: "FAMILY", space: SP, category: `분류${rand}` };
+    const ins = async (row) => {
+      const { data, error } = await sb.from("assets").insert({ ...base, ...row }).select("id").single();
+      if (error) throw new Error(`analytics fixture failed: ${error.message}`);
+      created.push(data.id);
+      return data.id;
+    };
+    const rentalId = await ins({ name: `E2E렌탈A${rand}`, ownership_type: "RENTAL", rental_provider: "코웨이", monthly_fee: 33000, billing_day: dayOf, contract_start_date: shift(-300), obligation_end_date: shift(12), ownership_transfer_date: shift(45), care_type: "NONE", payment_card_note: `카드메모${rand}` });
+    await ins({ name: `E2E렌탈B${rand}`, ownership_type: "RENTAL", rental_provider: "SK매직", monthly_fee: 17000, billing_day: 3, ownership_transfer_date: shift(200) });
+    await ins({ name: `E2E소유${rand}`, ownership_type: "OWNED" });
+    const { data: rl } = await sb.from("task_rules").insert({ household_id: myProfile.household_id, owner_id: me.user.id, visibility: "FAMILY", asset_id: rentalId, title: "E2E 리포트 규칙", recurring_type: "MONTHLY", interval_n: 1, anchor: "DUE_DATE", next_iteration_no: 2, consumable_name: "리포트필터" }).select("id").single();
+    await sb.from("tasks").insert({ household_id: myProfile.household_id, owner_id: me.user.id, visibility: "FAMILY", asset_id: rentalId, rule_id: rl.id, iteration_no: 1, title: "E2E 리포트 규칙", due_date: shift(3), consumable_name: "리포트필터" });
+
+    const themed = async (vp, scheme, state) => {
+      const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+      await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+      return c;
+    };
+    const lum = (rgb) => { const [r, g, b] = (rgb.match(/[\d.]+/g) ?? [255, 255, 255]).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+
+    for (const vp of VIEWPORTS) {
+      for (const scheme of ["light", "dark"]) {
+        const c = await themed(vp, scheme, storageState);
+        const p = await c.newPage();
+        const errs = [];
+        p.on("pageerror", (e) => errs.push(`pageerror: ${e.message}`));
+        p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && errs.push(`console: ${m.text()}`));
+        await p.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+        await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+        await p.getByTestId("kpi-grid").waitFor();
+        await p.waitForTimeout(500);
+        await p.screenshot({ path: `${OUT}/analytics-${scheme}-${vp.name}.png`, fullPage: true });
+        const tag = `${scheme}/${vp.name}`;
+
+        if (scheme === "light") {
+          record("analytics", vp.name, "page renders: title 리포트 and all 5 sections present", (await p.getByRole("heading", { name: "리포트", level: 1 }).count()) === 1 && (await p.getByTestId("kpi-grid").count()) === 1 && (await p.getByTestId("billing-strip").count()) === 1 && (await p.getByTestId("savings-card").count()) === 1 && (await p.getByTestId("quarter-bar").count()) === 1 && (await p.getByTestId("space-matrix").count()) === 1);
+          record("analytics", vp.name, "KPI grid: 4 cards, each with a value", (await p.getByTestId("kpi-card").count()) === 4 && (await p.getByTestId("kpi-value").allInnerTexts()).every((t) => t.trim().length > 0));
+          const nav = vp.name === "desktop" ? p.locator('header nav[aria-label="주요 메뉴"]') : p.locator('nav[aria-label="주요 메뉴"]').last();
+          const links = await nav.locator("a").allInnerTexts();
+          const cur = await nav.locator('a[aria-current="page"]').allInnerTexts();
+          record("analytics", vp.name, "nav: [리포트] tab present and marked aria-current on /analytics (others not)", links.some((t) => t.includes("리포트")) && cur.length === 1 && cur[0].includes("리포트"), `links=${links.join("|")} cur=${cur.join("|")}`);
+          if (vp.name === "mobile") record("analytics", vp.name, "mobile bottom tab bar has 3 tabs", (await nav.locator("a").count()) === 3);
+
+          const row = p.getByTestId("billing-row").filter({ hasText: `E2E렌탈A${rand}` });
+          const rowText = await row.innerText();
+          record("analytics", vp.name, "billing list: rental row shows 25일, fee 33,000원 and the card memo", rowText.includes("25일") && rowText.includes("33,000원") && rowText.includes(`카드메모${rand}`), rowText.replace(/\s+/g, " "));
+          const rowsAll = await p.getByTestId("billing-row").allInnerTexts();
+          const dayNums = rowsAll.map((t) => Number((t.match(/(\d+)일/) ?? [])[1] ?? 99));
+          record("analytics", vp.name, "billing list is ordered by billing day", dayNums.every((d, i) => i === 0 || d >= dayNums[i - 1]), dayNums.join(","));
+          const bar = p.locator('[data-testid="billing-bar"][data-day="25"]');
+          record("analytics", vp.name, "billing strip: a bar exists on day 25 with an accessible label", (await bar.count()) === 1 && /25일/.test((await bar.getAttribute("aria-label")) ?? "") && (await p.getByTestId("billing-timeline").locator(":scope > *").count()) === 31);
+          const tr = p.getByTestId("transfer-row").filter({ hasText: `E2E렌탈A${rand}` });
+          record("analytics", vp.name, "savings card: transfer row with D-45 and projected monthly total", (await tr.count()) === 1 && /D-45/.test(await tr.innerText()) && /월\s[\d,]+원/.test(await tr.innerText()), (await tr.innerText()).replace(/\s+/g, " "));
+          const ob = p.getByTestId("obligation-row").filter({ hasText: `E2E렌탈A${rand}` });
+          record("analytics", vp.name, "savings card: obligation end row with D-12", (await ob.count()) === 1 && /D-12/.test(await ob.innerText()));
+          record("analytics", vp.name, "quarter chart: 4 columns, current-quarter column counts the fixture's open task", (await p.getByTestId("quarter-col").count()) === 4 && Number(await p.getByTestId("quarter-col").first().getAttribute("data-total")) >= 1);
+          const mrow = p.getByTestId("matrix-row").filter({ hasText: SP });
+          const mtxt = await mrow.innerText();
+          record("analytics", vp.name, "space matrix: fixture space has 3개 · 자가 1 · 렌탈 2 with both bar segments", /3개/.test(mtxt) && /자가 1/.test(mtxt) && /렌탈 2/.test(mtxt) && (await mrow.locator('[data-seg="owned"]').count()) === 1 && (await mrow.locator('[data-seg="rental"]').count()) === 1, mtxt.replace(/\s+/g, " "));
+          await p.getByRole("radio", { name: "카테고리별" }).click();
+          record("analytics", vp.name, "space matrix: switching to 카테고리별 lists the category rows", (await p.getByTestId("matrix-row").filter({ hasText: `분류${rand}` }).count()) === 1 && (await p.getByRole("radio", { name: "카테고리별" }).getAttribute("aria-checked")) === "true");
+          await p.getByRole("radio", { name: "공간별" }).click();
+        }
+
+        record("analytics", vp.name, `${tag}: no horizontal scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+        const isDark = await p.evaluate(() => document.documentElement.classList.contains("dark"));
+        const kbg = await p.getByTestId("kpi-card").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+        const kb = await p.getByTestId("kpi-card").first().evaluate((el) => getComputedStyle(el).borderTopWidth);
+        record("analytics", vp.name, `${tag}: theme applied (html.dark=${scheme === "dark"}), KPI card is ${scheme === "dark" ? "dark" : "light"} with a 1px border`, isDark === (scheme === "dark") && (scheme === "dark" ? lum(kbg) < 0.1 : lum(kbg) > 0.8) && kb === "1px", `dark=${isDark} bg=${kbg} border=${kb}`);
+        const barColor = await p.locator('[data-testid="billing-bar"]').first().evaluate((el) => getComputedStyle(el).backgroundColor);
+        const savBg = await p.getByTestId("savings-card").evaluate((el) => getComputedStyle(el).backgroundColor);
+        record("analytics", vp.name, `${tag}: bars and savings banner use theme colours (violet bar, tinted emerald banner)`, barColor !== "rgba(0, 0, 0, 0)" && savBg !== "rgb(255, 255, 255)" && (scheme === "dark" ? lum(savBg) < 0.2 : lum(savBg) > 0.8), `bar=${barColor} savings=${savBg}`);
+        if (vp.name === "desktop") record("analytics", vp.name, `${tag}: ambient aurora layer present`, (await p.getByTestId("ambient-bg").count()) === 1);
+        record("analytics", vp.name, `${tag}: no console/page errors`, errs.length === 0, errs.slice(0, 2).join(" | "));
+        await c.close();
+      }
+    }
+
+    // ---- access: anonymous visitors are sent to /login
+    {
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+      record("analytics", "desktop", "access: signed-out visit to /analytics redirects to /login and shows no report", new URL(p.url()).pathname.startsWith("/login") && (await p.getByTestId("kpi-grid").count()) === 0, p.url());
+      await c.close();
+    }
+
+    // ---- a different household sees ONLY its own data (zero state first, then owned-only)
+    {
+      const strangerEmail = `mylife.e2e.report+${rand}@example.com`;
+      const strangerPw = `Pw-${rand}-${Date.now()}`;
+      const { data: su, error: suErr } = await svc.auth.admin.createUser({ email: strangerEmail, password: strangerPw, email_confirm: true, user_metadata: { display_name: "E2E 리포트타가구" } });
+      if (suErr) throw new Error(`report stranger createUser failed: ${suErr.message}`);
+      strangerId = su.user.id;
+      const stranger = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      await stranger.auth.signInWithPassword({ email: strangerEmail, password: strangerPw });
+      await stranger.rpc("create_household", { p_name: "E2E 리포트타가구", p_display_name: "E2E 리포트타가구" });
+
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      const errs = [];
+      p.on("pageerror", (e) => errs.push(e.message));
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.fill('input[name="email"]', strangerEmail);
+      await p.fill('input[name="password"]', strangerPw);
+      await p.click('button[type="submit"]');
+      await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20_000 });
+      await p.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      await p.getByTestId("analytics-empty").waitFor();
+      record("analytics", "desktop", "zero state (0 assets): friendly empty state, no sections, none of the other household's fixtures leak", (await p.getByTestId("kpi-grid").count()) === 0 && !(await p.content()).includes(`E2E렌탈A${rand}`) && !(await p.content()).includes(SP));
+      await p.screenshot({ path: `${OUT}/analytics-empty-desktop.png`, fullPage: true });
+
+      const { data: sp } = await stranger.from("profiles").select("household_id").eq("id", strangerId).single();
+      const { error: sErr } = await stranger.from("assets").insert({ household_id: sp.household_id, owner_id: strangerId, visibility: "FAMILY", name: "E2E 타가구 소유", space: "거실", category: "TV", ownership_type: "OWNED" });
+      if (sErr) throw new Error(`report stranger asset failed: ${sErr.message}`);
+      await p.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+      await p.getByTestId("kpi-grid").waitFor();
+      const kv = await p.getByTestId("kpi-value").allInnerTexts();
+      record("analytics", "desktop", "zero state (0 rentals): billing + savings show neutral notes, quarter chart renders empty, KPIs fall back to —", (await p.getByTestId("billing-empty").count()) === 1 && (await p.getByTestId("savings-summary").innerText()).includes("렌탈·구독 자산이 없어요") && (await p.getByTestId("quarter-empty").count()) === 1 && kv[0].trim() === "—" && kv[1].trim() === "—" && kv[2].trim() === "—" && kv[3].trim() === "0건", kv.join(" | "));
+      record("analytics", "desktop", "zero state (0 rentals): the owned asset still appears in the inventory matrix at 0% rental", (await p.getByTestId("matrix-row").filter({ hasText: "거실" }).count()) === 1 && (await p.getByTestId("ownership-share").innerText()).includes("(0%)"));
+      await p.screenshot({ path: `${OUT}/analytics-norental-desktop.png`, fullPage: true });
+      record("analytics", "desktop", "zero states: no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+      await c.close();
+    }
+  } finally {
+    for (const id of created) {
+      await svc.from("tasks").delete().eq("asset_id", id);
+      await svc.from("task_rules").delete().eq("asset_id", id);
+      await svc.from("assets").delete().eq("id", id);
+    }
+    if (strangerId) {
+      const hid = (await svc.from("profiles").select("household_id").eq("id", strangerId).maybeSingle()).data?.household_id;
+      if (hid) {
+        await svc.from("assets").delete().eq("household_id", hid);
+        await svc.from("households").delete().eq("id", hid);
+      }
+      await svc.auth.admin.deleteUser(strangerId);
+    }
+  }
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report
