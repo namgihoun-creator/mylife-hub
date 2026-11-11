@@ -14,7 +14,7 @@ type Row = { key: number; name: string; amount: string; storage: StorageType; is
 type Phase = { kind: "pick" } | { kind: "working"; step: string } | { kind: "unavailable"; note: string } | { kind: "review"; total: number };
 
 const PICK_BTN =
-  "flex h-24 flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-zinc-200 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-within:ring-1 focus-within:ring-zinc-900 dark:border-zinc-800 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:focus-within:ring-zinc-100";
+  "flex h-24 flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-50 focus-within:ring-1 focus-within:ring-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-700 dark:focus-within:ring-zinc-100 bg-slate-100 dark:bg-zinc-800";
 
 function SnapFlow({ today, onClose, onNotice }: { today: string; onClose: () => void; onNotice: (m: string) => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: "pick" });
@@ -93,7 +93,7 @@ function SnapFlow({ today, onClose, onNotice }: { today: string; onClose: () => 
       )}
 
       {phase.kind === "unavailable" && (
-        <div data-testid="snap-unavailable" role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+        <div data-testid="snap-unavailable" role="status" className="rounded-lg bg-amber-50 p-3 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
           {phase.note}
           <span className="mt-1 block font-normal text-amber-700 dark:text-amber-400">그동안은 ‘재료 추가’로 직접 넣거나 ‘말로 정리’를 써 보세요.</span>
         </div>
@@ -108,15 +108,15 @@ function SnapFlow({ today, onClose, onNotice }: { today: string; onClose: () => 
 
       {phase.kind === "review" && (
         <div className="space-y-3">
-          <ul data-testid="snap-list" className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul data-testid="snap-list" className="divide-y divide-zinc-200 rounded-xl dark:divide-zinc-800 bg-slate-100 dark:bg-zinc-800">
             {rows.map((r) => {
               const d = defaultExpireDate(r.name, today, r.storage);
               return (
                 <li key={r.key} data-testid="snap-row" data-name={r.name} className={cn("space-y-2 p-3", !r.on && "opacity-50")}>
                   <label className="flex min-w-0 cursor-pointer items-center gap-2.5">
-                    <input type="checkbox" data-testid="snap-row-check" checked={r.on} onChange={(e) => patch(r.key, { on: e.target.checked })} className="h-4 w-4 shrink-0 rounded border-zinc-300 accent-zinc-900 dark:accent-zinc-100" aria-label={`${r.name} 입고`} />
+                    <input type="checkbox" data-testid="snap-row-check" checked={r.on} onChange={(e) => patch(r.key, { on: e.target.checked })} className="h-4 w-4 shrink-0 rounded accent-zinc-900 dark:accent-zinc-100" aria-label={`${r.name} 입고`} />
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">{r.name}</span>
-                    {r.isPet && <span className="shrink-0 rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">펫 전용</span>}
+                    {r.isPet && <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800">펫 전용</span>}
                   </label>
                   <div className="grid grid-cols-[1fr_auto] items-center gap-2 pl-6 sm:grid-cols-[8rem_1fr_auto]">
                     <Input data-testid="snap-row-amount" value={r.amount} onChange={(e) => patch(r.key, { amount: e.target.value })} maxLength={50} aria-label={`${r.name} 수량`} disabled={!r.on} className="h-8 text-xs sm:col-start-1" />
@@ -133,7 +133,7 @@ function SnapFlow({ today, onClose, onNotice }: { today: string; onClose: () => 
                           onClick={() => patch(r.key, { storage: s })}
                           className={cn(
                             "h-8 rounded-lg border px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
-                            r.storage === s ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100" : "border-zinc-200 text-zinc-500 hover:border-zinc-300 dark:border-zinc-800 dark:text-zinc-400",
+                            r.storage === s ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100" : "text-zinc-500 dark:text-zinc-400",
                           )}
                         >
                           {STORAGE_LABEL[s]}
@@ -150,8 +150,8 @@ function SnapFlow({ today, onClose, onNotice }: { today: string; onClose: () => 
           </ul>
 
           {phase.total > 0 && (
-            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-zinc-200 p-3 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:text-zinc-200">
-              <input type="checkbox" data-testid="snap-total-check" checked={recordTotal} onChange={(e) => setRecordTotal(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-zinc-900 dark:accent-zinc-100" />
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl p-3 text-xs font-medium text-zinc-800 dark:text-zinc-200 bg-slate-100 dark:bg-zinc-800">
+              <input type="checkbox" data-testid="snap-total-check" checked={recordTotal} onChange={(e) => setRecordTotal(e.target.checked)} className="h-4 w-4 rounded accent-zinc-900 dark:accent-zinc-100" />
               <span className="min-w-0 flex-1">
                 결제 총액 <strong data-testid="snap-total" className="font-semibold tabular-nums">{formatWon(phase.total)}</strong> 지출 기록
               </span>
@@ -177,7 +177,7 @@ function SnapFlow({ today, onClose, onNotice }: { today: string; onClose: () => 
             data-testid="snap-submit"
             disabled={pending || picked.length === 0}
             onClick={submit}
-            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-sky-700 disabled:opacity-50 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
           >
             {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ScanLine className="h-4 w-4" aria-hidden />}
             {picked.length}개 품목 한 번에 입고

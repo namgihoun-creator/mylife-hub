@@ -12,12 +12,12 @@ import { addKitchenExpense, deleteKitchenExpense, updateKitchenBudgetSettings, t
 
 const LABEL = "text-xs font-medium text-zinc-700 dark:text-zinc-300";
 const TONE: Record<ExpenseCategory, string> = {
-  human_groceries: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
-  human_delivery: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
-  pet_care: "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-300",
+  human_groceries: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  human_delivery: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+  pet_care: "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
 };
 export const CategoryChip = ({ category }: { category: ExpenseCategory }) => (
-  <span data-testid="expense-category" data-category={category} className={cn("inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-tight", TONE[category])}>
+  <span data-testid="expense-category" data-category={category} className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight", TONE[category])}>
     {EXPENSE_CATEGORY_LABEL[category]}
   </span>
 );
@@ -63,7 +63,7 @@ function AddForm({ today, onDone }: { today: string; onDone: (m: string) => void
             onClick={() => setCategory(c)}
             className={cn(
               "h-9 rounded-lg border px-1 text-xs font-medium transition-colors",
-              category === c ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100" : "border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700",
+              category === c ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100" : "text-zinc-600 dark:text-zinc-400 dark:hover:border-zinc-700",
             )}
           >
             {EXPENSE_CATEGORY_LABEL[c]}
@@ -170,13 +170,13 @@ export function ExpenseDialog({ open, onClose, data, onNotice }: { open: boolean
           {data.expenses.length === 0 ? (
             <p data-testid="expense-empty" className="rounded-lg border border-dashed border-zinc-200 px-3 py-5 text-center text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">아직 이번 달 지출이 없어요.</p>
           ) : (
-            <ul data-testid="expense-list" className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 px-3 dark:divide-zinc-800 dark:border-zinc-800">
+            <ul data-testid="expense-list" className="divide-y divide-zinc-200 rounded-xl px-3 dark:divide-zinc-800 bg-slate-100 dark:bg-zinc-800">
               {data.expenses.map((e) => <ExpenseRow key={e.id} e={e} />)}
             </ul>
           )}
         </div>
 
-        <details className="group rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+        <details className="group rounded-xl p-3 bg-slate-100 dark:bg-zinc-800">
           <summary data-testid="budget-settings-toggle" className="cursor-pointer text-xs font-semibold text-zinc-900 dark:text-zinc-50">월 예산 설정</summary>
           <div className="mt-3">{open && <BudgetForm settings={data.settings} onDone={onNotice} />}</div>
         </details>

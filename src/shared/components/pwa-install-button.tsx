@@ -14,7 +14,7 @@ function Tip() {
     <span
       role="tooltip"
       data-testid="pwa-install-tip"
-      className="pointer-events-none absolute right-0 top-full z-50 mt-2 whitespace-nowrap rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-900 opacity-0 shadow-lg transition-opacity [@media(hover:hover)]:group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50"
+      className="pointer-events-none absolute right-0 top-full z-50 mt-2 whitespace-nowrap rounded-2xl bg-white px-2.5 py-1 text-xs font-medium text-zinc-900 opacity-0 shadow-lg transition-opacity [@media(hover:hover)]:group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none dark:bg-zinc-900 dark:text-zinc-50 shadow-sm"
     >
       앱 설치하기
     </span>
@@ -59,13 +59,13 @@ export function PwaInstallButton({ className }: { className?: string }) {
         <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">홈 화면에 앱 추가하기</p>
         <ol className="mt-2 space-y-2 text-xs font-normal text-zinc-600 dark:text-zinc-400">
           <li className="flex items-start gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-[11px] font-medium tabular-nums text-zinc-900 dark:border-zinc-800 dark:text-zinc-100">1</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-medium tabular-nums text-zinc-900 dark:text-zinc-100 bg-slate-100 dark:bg-zinc-800">1</span>
             <span>
               Safari 하단의 공유 버튼 <Share className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom text-zinc-900 dark:text-zinc-100" aria-label="공유" /> (⎋)을 누르세요.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-[11px] font-medium tabular-nums text-zinc-900 dark:border-zinc-800 dark:text-zinc-100">2</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-medium tabular-nums text-zinc-900 dark:text-zinc-100 bg-slate-100 dark:bg-zinc-800">2</span>
             <span>
               메뉴에서 <strong className="font-semibold text-zinc-900 dark:text-zinc-100">&lsquo;홈 화면에 추가&rsquo;</strong>를 선택해 주세요.
             </span>

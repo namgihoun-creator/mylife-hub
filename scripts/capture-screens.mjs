@@ -528,7 +528,7 @@ const { data: myProfile } = await sb.from("profiles").select("household_id").eq(
         await ddlg.getByTestId("rental-compare").waitFor({ timeout: 15_000 }).catch(() => {});
         await settle();
         await page.keyboard.press("Escape");
-        const allActive = await page.getByRole("group", { name: "필터" }).getByRole("button", { name: /^전체/ }).evaluate((el) => el.className.includes("bg-slate-900"));
+        const allActive = await page.getByRole("group", { name: "필터" }).getByRole("button", { name: /^전체/ }).evaluate((el) => el.className.includes("bg-sky-600"));
         const visibleAgain = (await page.locator("main li").filter({ has: page.getByTestId("rental-badge") }).count()) === 1;
         record("deeplink", vp.name, "bell on /assets: a hiding filter is reset to ‘전체’ and the card's comparison tab opens", hiddenByFilter && allActive && visibleAgain, `hidden=${hiddenByFilter} all=${allActive} visible=${visibleAgain}`);
         await clickItem();
@@ -2106,8 +2106,8 @@ const CRON_SECRET = process.env.CRON_SECRET;
         bg: getComputedStyle(document.body.firstElementChild.nextElementSibling ?? document.body).backgroundColor,
         wrap: getComputedStyle(document.querySelector('[data-testid="ambient-bg"]').parentElement).backgroundColor,
       }));
-      record("theme", "desktop", `system ${scheme}: html.dark=${scheme === "dark"} and page background is ${scheme === "dark" ? "pure black" : "white"}`, info.dark === (scheme === "dark") && info.wrap === (scheme === "dark" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)"), JSON.stringify(info));
-      record("theme", "desktop", `system ${scheme}: no hydration / console errors`, errs.length === 0, errs.join(" | ").slice(0, 200));
+      record("theme", "desktop", `OS ${scheme} preference: the app stays in its LIGHT default (html.dark=false) on the clean off-white page`, info.dark === false && info.wrap === "rgb(248, 250, 252)", JSON.stringify(info));
+      record("theme", "desktop", `OS ${scheme} preference: no hydration / console errors`, errs.length === 0, errs.join(" | ").slice(0, 200));
       await c.close();
     }
 
@@ -2119,7 +2119,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
       await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
       const toggle = p.getByTestId("theme-toggle");
       record("theme", "desktop", "ThemeToggle sits in the header (right cluster, before the bell)", (await toggle.count()) === 1 && (await p.locator("header").getByTestId("theme-toggle").count()) === 1);
-      record("theme", "desktop", "header is sticky glass (backdrop blur + translucent bg + 1px border)", await p.locator("header").evaluate((h) => { const s = getComputedStyle(h); return s.position === "sticky" && /blur/.test(s.backdropFilter) && s.borderBottomWidth === "1px" && /rgba/.test(s.backgroundColor); }));
+      record("theme", "desktop", "header is a sticky white glass bar (backdrop blur + translucent bg) floating on a soft shadow — no hard border line", await p.locator("header").evaluate((h) => { const s = getComputedStyle(h); return s.position === "sticky" && /blur/.test(s.backdropFilter) && s.borderBottomWidth === "0px" && /rgba/.test(s.backgroundColor) && s.boxShadow !== "none"; }));
       const ambient = p.getByTestId("ambient-bg");
       const ambBox = await ambient.boundingBox();
       record("theme", "desktop", "ambient aurora: 3 blurred circles at the page top, decorative (aria-hidden, no pointer events)", (await ambient.locator("div").count()) === 3 && (await ambient.getAttribute("aria-hidden")) === "true" && (await ambient.evaluate((e) => getComputedStyle(e).pointerEvents)) === "none" && ambBox !== null && ambBox.y <= 1, JSON.stringify(ambBox));
@@ -2354,7 +2354,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
         const isDark = await p.evaluate(() => document.documentElement.classList.contains("dark"));
         const kbg = await p.getByTestId("kpi-card").first().evaluate((el) => getComputedStyle(el).backgroundColor);
         const kb = await p.getByTestId("kpi-card").first().evaluate((el) => getComputedStyle(el).borderTopWidth);
-        record("analytics", vp.name, `${tag}: theme applied (html.dark=${scheme === "dark"}), KPI card is ${scheme === "dark" ? "dark" : "light"} with a 1px border`, isDark === (scheme === "dark") && (scheme === "dark" ? lum(kbg) < 0.1 : lum(kbg) > 0.8) && kb === "1px", `dark=${isDark} bg=${kbg} border=${kb}`);
+        record("analytics", vp.name, `${tag}: theme applied (html.dark=${scheme === "dark"}), KPI card is ${scheme === "dark" ? "dark" : "white"}, borderless, lifted by a soft shadow`, isDark === (scheme === "dark") && (scheme === "dark" ? lum(kbg) < 0.1 : lum(kbg) > 0.8) && kb === "0px" && (await p.getByTestId("kpi-card").first().evaluate((el) => getComputedStyle(el).boxShadow)) !== "none", `dark=${isDark} bg=${kbg} border=${kb}`);
         const barColor = await p.locator('[data-testid="billing-bar"]').first().evaluate((el) => getComputedStyle(el).backgroundColor);
         const savBg = await p.getByTestId("savings-card").evaluate((el) => getComputedStyle(el).backgroundColor);
         record("analytics", vp.name, `${tag}: bars and savings banner use theme colours (violet bar, tinted emerald banner)`, barColor !== "rgba(0, 0, 0, 0)" && savBg !== "rgb(255, 255, 255)" && (scheme === "dark" ? lum(savBg) < 0.2 : lum(savBg) > 0.8), `bar=${barColor} savings=${savBg}`);
@@ -3594,12 +3594,12 @@ const CRON_SECRET = process.env.CRON_SECRET;
     record("kitchen-budget", "desktop", "human gauge: 85,000 / 100,000원 = 85% → warn (orange, 80%+); 15,000원 남음", (await gauge("human").getAttribute("data-level")) === "warn" && (await gauge("human").getByTestId("gauge-pct").innerText()) === "85%" && /85,000원 \/ 100,000원/.test(await gauge("human").getByTestId("gauge-amounts").innerText()) && /15,000원 남음/.test(await gauge("human").getByTestId("gauge-note").innerText()));
     record("kitchen-budget", "desktop", "pet gauge: 52,000 / 50,000원 = 104% → danger (red); ‘2,000원 초과’; bar capped at 100% width", (await gauge("pet").getAttribute("data-level")) === "danger" && (await gauge("pet").getByTestId("gauge-pct").innerText()) === "104%" && /2,000원 초과/.test(await gauge("pet").getByTestId("gauge-note").innerText()) && (await gauge("pet").getByTestId("gauge-fill").evaluate((el) => el.style.width)) === "100%");
     const fill = (id) => gauge(id).getByTestId("gauge-fill").evaluate((el) => getComputedStyle(el).backgroundColor);
-    record("kitchen-budget", "desktop", "gauge colours: warn = amber-500, danger = rose-500", (await fill("human")) === "rgb(245, 158, 11)" && (await fill("pet")) === "rgb(244, 63, 94)", `${await fill("human")} ${await fill("pet")}`);
+    record("kitchen-budget", "desktop", "gauge colours: warn = sunny amber-400, danger = coral rose-400 (chunky 16px bars)", (await fill("human")) === "rgb(251, 191, 36)" && (await fill("pet")) === "rgb(251, 113, 133)" && (await gauge("human").getByRole("progressbar").evaluate((el) => el.getBoundingClientRect().height)) >= 15, `${await fill("human")} ${await fill("pet")}`);
     const bar = await gauge("human").getByRole("progressbar").evaluate((el) => ({ now: el.getAttribute("aria-valuenow"), text: el.getAttribute("aria-valuetext") }));
     record("kitchen-budget", "desktop", "gauges are accessible progress bars (aria-valuenow, readable valuetext)", bar.now === "85" && /85,000원 \/ 100,000원 \(85%\)/.test(bar.text), JSON.stringify(bar));
     const expectedToday = Math.floor(15_000 / daysLeft);
     const tb = card.getByTestId("today-budget");
-    record("kitchen-budget", "desktop", `‘오늘의 권장 식비’ badge = floor(15,000 ÷ ${daysLeft} days left incl. today) = ${expectedToday.toLocaleString("ko-KR")}원, high-contrast black pill`, (await tb.getAttribute("data-state")) === "ok" && /오늘의 권장 식비/.test(await tb.innerText()) && (await card.getByTestId("today-budget-value").innerText()).trim() === `${expectedToday.toLocaleString("ko-KR")}원` && lum(await tb.evaluate((el) => getComputedStyle(el).backgroundColor)) < 0.05, await tb.innerText());
+    record("kitchen-budget", "desktop", `‘오늘의 권장 식비’ badge = floor(15,000 ÷ ${daysLeft} days left incl. today) = ${expectedToday.toLocaleString("ko-KR")}원, shown in the sky→mint gradient pill`, (await tb.getAttribute("data-state")) === "ok" && /오늘의 권장 식비/.test(await tb.innerText()) && (await card.getByTestId("today-budget-value").innerText()).trim() === `${expectedToday.toLocaleString("ko-KR")}원` && /gradient/.test(await tb.evaluate((el) => getComputedStyle(el).backgroundImage)), await tb.innerText());
     record("kitchen-budget", "desktop", "saved badge: 냉파 누적 방어액 6,000원 · 구출 2번", /6,000원/.test(await card.getByTestId("saved-badge").innerText()) && /구출 2번/.test(await card.innerText()));
     const recent = await card.getByTestId("recent-row").allInnerTexts();
     record("kitchen-budget", "desktop", "recent expenses: exactly the 3 newest of this month (last month's 999,999원 excluded), newest first", recent.length === 3 && /사료/.test(recent[0]) && /치킨/.test(recent[1]) && /장보기/.test(recent[2]) && !(await card.innerText()).includes("지난달"), recent.join(" | ").replace(/\s+/g, " "));
@@ -3636,7 +3636,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
     record("kitchen-budget", "desktop", "the dialog list and the card refresh without reload (4건; human now 105% → danger)", (await dlg.getByTestId("expense-row").count()) === 4 && (await gauge("human").getAttribute("data-level")) === "danger" && (await gauge("human").getByTestId("gauge-pct").innerText()) === "105%");
     record("kitchen-budget", "desktop", "overspent: the badge switches to the rose warning style with ‘예산 초과’ and recommends 0원", (await tb.getAttribute("data-state")) === "over" && /예산 초과/.test(await tb.innerText()) && (await card.getByTestId("today-budget-value").innerText()).trim() === "0원" && /5,000원 넘겼어요/.test(await card.getByTestId("today-budget-hint").innerText()), await tb.innerText());
     const overBg = await tb.evaluate((el) => getComputedStyle(el).backgroundColor);
-    record("kitchen-budget", "desktop", "warning badge uses the rose tint (not the black pill)", lum(overBg) > 0.85 && overBg !== "rgb(0, 0, 0)", overBg);
+    record("kitchen-budget", "desktop", "warning badge switches to the soft coral tint (rose-100) — not the sky/mint gradient", lum(overBg) > 0.8 && overBg === "rgb(255, 228, 230)", overBg);
     await p.screenshot({ path: `${OUT}/kitchen-budget-overspent-light-desktop.png` });
 
     // delete: two steps

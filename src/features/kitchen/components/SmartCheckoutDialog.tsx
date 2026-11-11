@@ -65,7 +65,7 @@ function Flow({ text, onClose, onNotice }: { text: string; onClose: () => void; 
 
   return (
     <div data-testid="checkout-flow" className="space-y-4">
-      <p data-testid="checkout-sentence" className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-200">
+      <p data-testid="checkout-sentence" className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-200">
         “{text}”
       </p>
 
@@ -96,7 +96,7 @@ function Flow({ text, onClose, onNotice }: { text: string; onClose: () => void; 
                   data-testid="checkout-row"
                   data-action={r.action}
                   data-ok={pv.ok}
-                  className={cn("flex items-center gap-3 rounded-xl border p-3", pv.ok ? "border-zinc-200 dark:border-zinc-800" : "border-dashed border-zinc-300 opacity-70 dark:border-zinc-700")}
+                  className={cn("flex items-center gap-3 rounded-xl border p-3", pv.ok ? "" : "border-dashed border-zinc-300 opacity-70 dark:border-zinc-700")}
                 >
                   <input
                     type="checkbox"
@@ -105,7 +105,7 @@ function Flow({ text, onClose, onNotice }: { text: string; onClose: () => void; 
                     disabled={!pv.ok}
                     onChange={(e) => setPhase({ ...phase, on: phase.on.map((v, j) => (j === i ? e.target.checked : v)) })}
                     aria-label={`${pv.text} 반영`}
-                    className="h-4 w-4 shrink-0 rounded border-zinc-300 accent-zinc-900 dark:accent-zinc-100"
+                    className="h-4 w-4 shrink-0 rounded accent-zinc-900 dark:accent-zinc-100"
                   />
                   <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", pv.ok ? TONE[r.action] : "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400")}>
                     <Icon className="h-4 w-4" aria-hidden />
@@ -143,7 +143,7 @@ function Flow({ text, onClose, onNotice }: { text: string; onClose: () => void; 
             data-testid="checkout-run"
             disabled={pending || picked === 0}
             onClick={run}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-50 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
           >
             {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
             {picked}건 일괄 실행

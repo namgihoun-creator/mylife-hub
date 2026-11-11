@@ -6,7 +6,7 @@ export function RentalBadge({ provider, className }: { provider: string | null; 
     <span
       data-testid="rental-badge"
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 py-0.5 pl-0.5 pr-2.5 text-[11px] font-semibold text-violet-600 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400",
+        "inline-flex max-w-full items-center gap-1.5 rounded-full bg-violet-50 py-0.5 pl-0.5 pr-2.5 text-[11px] font-semibold text-violet-600 dark:bg-violet-950/40 dark:text-violet-400",
         className,
       )}
     >

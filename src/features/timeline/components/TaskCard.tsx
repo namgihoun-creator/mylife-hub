@@ -98,7 +98,7 @@ export function TaskCard({
 
         <div className="flex shrink-0 items-center gap-2.5">
           {isHistory ? (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-emerald-600 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
               {task.completed_at ? `${shortDate(toSeoulDate(task.completed_at))} 완료` : "완료"}
             </span>
           ) : (
@@ -137,7 +137,7 @@ export function TaskCard({
             <DropdownMenuTrigger
               disabled={busy || settled}
               aria-label={`${task.title} 더보기`}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 bg-slate-100 dark:bg-zinc-800"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
               더보기

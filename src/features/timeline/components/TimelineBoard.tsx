@@ -125,7 +125,7 @@ export function TimelineBoard({
       {error && (
         <p
           role="alert"
-          className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-medium text-rose-600 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400"
+          className="rounded-lg bg-rose-50 px-4 py-2.5 text-xs font-medium text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
         >
           {error}
         </p>
@@ -154,7 +154,7 @@ export function TimelineBoard({
           role="status"
           className={`fixed bottom-20 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-full px-4 py-2 text-center text-xs font-medium shadow-lg md:bottom-6 ${
             toast.tone === "ok"
-              ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+              ? "bg-sky-600 text-white dark:bg-sky-500 dark:text-white"
               : "bg-rose-600 text-white"
           }`}
         >

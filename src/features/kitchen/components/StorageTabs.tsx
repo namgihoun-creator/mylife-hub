@@ -5,11 +5,11 @@ import { STORAGE_LABEL, STORAGE_TYPES, type StorageType } from "../rules/shelf-l
 
 export type StorageFilter = "ALL" | StorageType;
 
-/** [전체 | 냉장 | 냉동 | 실온] 1px-border segmented control with per-tab counts. */
+/** [전체 | 냉장 | 냉동 | 실온] big round chips (44px touch targets) that swipe sideways on small screens. */
 export function StorageTabs({ value, onChange, counts }: { value: StorageFilter; onChange: (v: StorageFilter) => void; counts: Record<StorageFilter, number> }) {
   const tabs: { key: StorageFilter; label: string }[] = [{ key: "ALL", label: "전체" }, ...STORAGE_TYPES.map((s) => ({ key: s, label: STORAGE_LABEL[s] }))];
   return (
-    <div role="radiogroup" aria-label="보관 장소" data-testid="storage-tabs" className="inline-flex max-w-full rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-800 dark:bg-zinc-950">
+    <div role="radiogroup" aria-label="보관 장소" data-testid="storage-tabs" className="flex max-w-full snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => {
         const active = value === t.key;
         return (
@@ -22,14 +22,14 @@ export function StorageTabs({ value, onChange, counts }: { value: StorageFilter;
             data-tab={t.key}
             onClick={() => onChange(t.key)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100",
+              "inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full px-5 text-sm font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 motion-reduce:transform-none",
               active
-                ? "bg-black text-white dark:bg-white dark:text-black"
-                : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
+                ? "bg-sky-600 text-white shadow-md dark:bg-sky-500 dark:text-white"
+                : "bg-white text-slate-600 shadow-sm hover:bg-sky-50 hover:text-sky-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
             )}
           >
             {t.label}
-            <span className={cn("tabular-nums", active ? "text-white/70 dark:text-black/60" : "text-zinc-400 dark:text-zinc-500")}>{counts[t.key]}</span>
+            <span className={cn("rounded-full px-2 py-0.5 text-xs tabular-nums", active ? "bg-white/25 text-white" : "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400")}>{counts[t.key]}</span>
           </button>
         );
       })}

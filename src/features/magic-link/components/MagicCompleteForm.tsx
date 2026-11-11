@@ -79,7 +79,7 @@ export function MagicCompleteForm({ token, expiresLabel }: { token: string; expi
         type="button"
         onClick={complete}
         disabled={phase === "pending"}
-        className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-base font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.98] disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-sky-600 text-base font-semibold text-white transition-all hover:bg-sky-700 active:scale-[0.98] disabled:opacity-70 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
       >
         {phase === "pending" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" strokeWidth={3} />}
         {phase === "pending" ? "처리 중…" : "이 과업 완료하기"}

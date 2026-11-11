@@ -12,7 +12,7 @@ import { createTaskRule, updateRuleConsumable } from "../server/rule.actions";
 const LABEL = "text-xs font-medium text-zinc-700 dark:text-zinc-300";
 const HINT = "text-[11px] font-normal text-zinc-500 dark:text-zinc-400";
 const SELECT =
-  "h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:border-zinc-800 dark:bg-black dark:text-zinc-50 dark:focus-visible:border-zinc-100 dark:focus-visible:ring-zinc-100";
+  "h-10 w-full rounded-2xl bg-white px-3 text-sm text-zinc-900 focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:bg-black dark:text-zinc-50 dark:focus-visible:border-zinc-100 dark:focus-visible:ring-zinc-100 shadow-sm";
 
 export type RuleModalTarget = { mode: "create" } | { mode: "edit"; rule: AssetRule };
 
@@ -46,7 +46,7 @@ function RuleForm({ asset, target, onClose }: { asset: Asset; target: RuleModalT
       {editing ? (
         <div className="space-y-1">
           <span className={LABEL}>규칙</span>
-          <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-50">{editing.title}</p>
+          <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm font-medium text-zinc-900 dark:bg-zinc-800/60 dark:text-zinc-50">{editing.title}</p>
         </div>
       ) : (
         <>
@@ -82,7 +82,7 @@ function RuleForm({ asset, target, onClose }: { asset: Asset; target: RuleModalT
         </>
       )}
 
-      <fieldset className="space-y-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+      <fieldset className="space-y-3 rounded-xl p-3 bg-slate-100 dark:bg-zinc-800">
         <legend className="px-1 text-xs font-semibold text-zinc-800 dark:text-zinc-200">
           소모품 정보 <span className="font-normal text-zinc-500 dark:text-zinc-400">(선택)</span>
         </legend>
@@ -117,14 +117,14 @@ function RuleForm({ asset, target, onClose }: { asset: Asset; target: RuleModalT
         <button
           type="button"
           onClick={onClose}
-          className="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+          className="h-10 rounded-xl px-4 text-sm font-medium text-zinc-900 transition-colors hover:bg-slate-200 dark:text-zinc-100 dark:hover:bg-zinc-700 bg-slate-100 dark:bg-zinc-800"
         >
           취소
         </button>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-60 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
         >
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           {editing ? "저장" : "규칙 추가"}

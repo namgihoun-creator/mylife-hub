@@ -19,12 +19,12 @@ import { applyFilter, groupTasks, type TimelineFilter } from "../utils/timeline-
 import { TaskCard, type TaskCardProps, type TaskEmphasis } from "./TaskCard";
 
 const PILL_BASE = "shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900";
+const PILL_ACTIVE = "bg-sky-600 text-white dark:bg-sky-500 dark:text-white";
 const PILL_INACTIVE =
-  "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
+  "bg-white text-slate-600 hover:bg-slate-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
 const CTA =
-  "inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
+  "inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 
 type SectionKey = "overdue" | "today" | "upcoming" | "recent";
 

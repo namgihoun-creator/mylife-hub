@@ -176,8 +176,8 @@ export function RentalForm({ value, onChange }: { value: RentalFormState; onChan
                 className={cn(
                   "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
                   active
-                    ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
+                    ? "bg-sky-600 text-white dark:bg-sky-500 dark:text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
                 )}
               >
                 {CARE_LABEL[c]}

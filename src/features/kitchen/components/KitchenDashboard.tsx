@@ -77,17 +77,17 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">키친</h1>
-          <p className="text-xs font-normal text-zinc-500 dark:text-zinc-400">냉장고 속 재료를 기한 전에 먹고, 아낀 돈을 모아요.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-zinc-50">키친</h1>
+          <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">냉장고 속 재료를 기한 전에 먹고, 아낀 돈을 모아요.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             data-testid="snap-open"
             onClick={() => setSnapOpen(true)}
-            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-white px-4 text-sm font-bold text-slate-800 shadow-sm transition-all hover:bg-sky-50 hover:text-sky-700 active:scale-95 motion-reduce:transform-none dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
           >
             <Camera className="h-4 w-4" aria-hidden /> 찰칵 입고
           </button>
@@ -95,7 +95,7 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
             type="button"
             data-testid="add-item"
             onClick={() => setForm({ mode: "create" })}
-            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-sky-600 px-5 text-sm font-bold text-white shadow-md transition-all hover:bg-sky-700 active:scale-95 motion-reduce:transform-none dark:bg-sky-500 dark:hover:bg-sky-400"
           >
             <Plus className="h-4 w-4" aria-hidden /> 재료 추가
           </button>
@@ -110,7 +110,7 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
       <AiChefSection petType={profile.pet_type} itemCount={items.length} onNotice={showNotice} />
 
       {notice && (
-        <p role="status" data-testid="kitchen-notice" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+        <p role="status" data-testid="kitchen-notice" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
           {notice}
         </p>
       )}

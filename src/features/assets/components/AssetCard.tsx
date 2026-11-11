@@ -42,7 +42,7 @@ export function AssetCard({
     : "관리 규칙 없음";
 
   return (
-    <li className="rounded-xl border border-zinc-200 bg-white p-4 transition-all duration-200 motion-reduce:transform-none motion-reduce:transition-none dark:border-zinc-800 dark:bg-zinc-950">
+    <li className="rounded-3xl bg-white p-4 transition-all duration-200 motion-reduce:transform-none motion-reduce:transition-none dark:bg-zinc-900 shadow-sm">
       {isRentalAsset(asset) && <RentalBadge provider={asset.rental_provider} className="mb-2.5" />}
       <div className="flex items-center gap-3">
         <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", tone)}>

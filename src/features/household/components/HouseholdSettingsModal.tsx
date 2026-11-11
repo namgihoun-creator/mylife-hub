@@ -17,13 +17,13 @@ import { exportBackup, importBackup } from "../server/backup.actions";
 import { createInvite } from "../server/household.actions";
 import type { Member, RestoreSummary } from "../schemas/household.schema";
 
-const SECTION = "space-y-3 rounded-xl border border-zinc-200 bg-slate-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/50";
+const SECTION = "space-y-3 rounded-2xl bg-slate-50/60 p-4 dark:bg-zinc-800/60";
 const SECTION_TITLE = "flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-zinc-200";
 const HINT = "text-xs font-normal text-slate-500 dark:text-zinc-400";
 const PILL =
-  "inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
+  "inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
 const PRIMARY_PILL =
-  "inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
+  "inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-50 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 
 type Message = { text: string; tone: "ok" | "error" };
 
@@ -141,7 +141,7 @@ export function HouseholdSettingsModal({
         </button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">
             {householdName} 설정
@@ -221,7 +221,7 @@ export function HouseholdSettingsModal({
                 />
               </div>
               {pendingFile && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-900 dark:bg-amber-950/30">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs dark:bg-amber-950/30">
                   <span className="min-w-0 flex-1 truncate font-medium text-amber-700 dark:text-amber-400">
                     {pendingFile.name} 을(를) 복구할까요?
                   </span>

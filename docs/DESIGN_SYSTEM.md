@@ -5,7 +5,20 @@
 > **v3 (현재 규격) — Vercel / Supabase 대시보드 스타일의 모던 테크 미니멀리즘 + 완전한 라이트/다크.** 아래 "v3 토큰" 절이 v2 본문과 충돌하면 **v3가 우선**한다 (v2 본문의 `slate-*` 색은 `zinc` 스케일로 매핑되고, 컨테이너 `rounded-2xl`은 `rounded-xl`, 내부 요소 `rounded-xl`은 `rounded-lg`, 카드 그림자는 1px 보더로 대체).
 > v2 변경 요약: 와이드 컨테이너(`max-w-6xl`) · 블러 헤더 · 틴트/인셋 요약 배너 + 펄스 · 3열 그리드 + 소모품 게이지 · 섹션별 성격 분리(Overdue/Today/Upcoming) · 올 클리어 일러스트 · 스켈레톤.
 
-## 0. v3 토큰 (우선 적용)
+## 00. v4 — 밝고 친근한 에듀테크 톤 (최우선 · 아래 v3 및 §K~Q의 "1px 보더" 규칙을 대체)
+> 방향: 학습 앱처럼 **맑고 밝고 말랑한** 화면. 라이트가 기본이고, 다크는 헤더 토글로만 켠다(OS 설정을 따라가지 않는다). 아래 규칙이 v3 문서와 충돌하면 **이 절이 이긴다.** 상태 의미(D-Day 신호등·게이지 단계·댕냥이 경고 등)와 `data-testid`는 그대로다.
+
+- **무드·배경:** 페이지는 맑은 오프화이트 `bg-slate-50`(다크 `dark:bg-zinc-950`), 그 위에 흰 카드가 떠 있는(elevated) 느낌. `slate`는 Tailwind 기본(쿨 블루그레이)을 쓴다. 오로라 배경은 파스텔 그대로 유지한다.
+- **카드:** `rounded-3xl bg-white shadow-sm`(호버 `hover:shadow-md`), 다크 `dark:bg-zinc-900`. **하드한 1px 보더 금지** — 구분은 그림자·면색으로만 한다. 카드 안의 하위 패널은 보더 없이 `rounded-2xl bg-slate-50`(다크 `dark:bg-zinc-800/60`). 모달은 `rounded-3xl shadow-xl`, 하단 탭은 `rounded-t-3xl` + 위로 퍼지는 그림자.
+- **버튼·입력:** 기본(Primary)은 **Sky Blue** `bg-sky-600 text-white shadow-sm hover:bg-sky-700`(다크 `dark:bg-sky-500`), 보조는 `bg-sky-50 text-sky-700` 또는 `bg-white shadow-sm`, 위험은 코랄 `bg-rose-500`. 입력은 보더 없는 채움형 `bg-slate-100 rounded-2xl`, 포커스 시 흰 배경 + `ring-2 ring-sky-400`. 눌림 피드백 `active:scale-95`(`motion-reduce` 존중).
+- **터치:** 모든 주요 버튼·칩·입력은 **최소 높이 44px**(`min-h-11`), 칩 사이 간격 `gap-2` 이상. 가로로 넘치는 칩 줄은 `overflow-x-auto snap-x`로 스와이프하게 하고 스크롤바는 숨긴다.
+- **타이포:** 제목 `font-extrabold`(`text-3xl`/`text-base`), 숫자·강조 `font-extrabold tabular-nums`, 본문 보조 `text-slate-500 font-medium`(최소 12px, 읽는 글은 14px 이상). 라벨은 굵게(`font-bold`)해 모바일에서 또렷하게.
+- **컬러:** 네온 금지. 포인트는 **Sky Blue**(기본·선택) · **Mint**(`emerald-400/teal-400`, 성공·절약) · **Coral**(`rose-400/500`, 경고·초과) · Sunny(`amber-400`, 주의). 상태 칩은 보더 없는 `*-50` 면 + `*-600` 글자(다크 `*-950/40` + `*-300`). 의미 매핑은 불변: D-Day ≤2일 Rose / ≤7일 Amber / 그 외 Emerald / 지난 날짜 진한 Rose 채움, 화석 Cyan, 게이지 80% Amber·100% Rose·그 외 Mint.
+- **게이미피케이션:** `ProgressRing`(`ui/progress-ring.tsx`, 굵은 둥근 호 + 가운데 %, 100% 초과는 호를 가득 채우고 숫자는 실제 값) · 두툼한 진도율 바(`h-4 rounded-full`, 흰 트랙 `shadow-inner`) · 성취 뱃지(절약액 민트 그라데이션 알약, `구출 N번` 선샤인 알약) · 오늘의 권장 식비 팝 알약(Sky→Teal 그라데이션 + 그림자, 초과 시 코랄 틴트로 전환).
+- **키친 적용:** `KitchenPulse` = 컬러 아이콘 버블 + `text-3xl` 숫자 · `KitchenBudgetCard` = 링 + 팝 알약 + 두툼한 게이지 2개 + 둥근 최근 지출 행(구분선 없음) · `KitchenItemCard` = 여백 넉넉한 `rounded-3xl` 카드(지난 재료는 코랄 틴트 + `ring-2`), D-Day·화석·펫 칩은 보더 없는 둥근 칩, 액션은 `min-h-10` 소프트 버튼(`다 먹었어요`만 Sky) · `StorageTabs`·`LocalLifeRadar` = 큼직한 라운드 칩(`min-h-11/12`), 활성 칩은 Sky 채움 + 그림자.
+- **접근성:** 색만으로 상태를 구분하지 않고 항상 텍스트(`D-2`, `85%`, `초과`)를 병기한다. 본문 대비는 WCAG AA(4.5:1), 흰 글자 Sky 버튼은 `sky-600` 이상만 쓴다.
+
+## 0. v3 토큰 (우선 적용 → v4로 대체됨: 위 "00. v4" 참고)
 
 ### 테마
 - `next-themes`: `attribute="class"`, `defaultTheme="system"`, `enableSystem`, `<html suppressHydrationWarning>`. 사용자가 헤더의 **Sun/Moon 토글**로 라이트/다크를 고르면 localStorage(`theme`)에 저장, 선택 전에는 OS 설정을 따른다.

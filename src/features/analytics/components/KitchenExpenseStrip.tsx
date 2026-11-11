@@ -7,7 +7,7 @@ import { ReportSection } from "./ReportSection";
 
 function Tile({ id, icon: Icon, label, value, sub, tone }: { id: string; icon: LucideIcon; label: string; value: string; sub: string; tone?: "emerald" }) {
   return (
-    <div data-testid="kitchen-tile" data-tile={id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+    <div data-testid="kitchen-tile" data-tile={id} className="flex min-w-0 flex-col gap-2 rounded-2xl bg-slate-50 p-4 dark:bg-zinc-800/60">
       <div className="flex items-center gap-1.5 text-xs font-normal text-zinc-500 dark:text-zinc-400">
         <Icon className="h-4 w-4 shrink-0" aria-hidden />
         <span className="truncate">{label}</span>
@@ -30,7 +30,7 @@ export function KitchenExpenseStrip({ cash, month }: { cash: Cashflow; month: st
           <Tile id="defended" icon={PiggyBank} label="냉파로 아낀 금액" value={formatWon(cash.defended)} sub="지금까지 누적 · 순 방어 이익" tone={cash.defended > 0 ? "emerald" : undefined} />
         </div>
 
-        <div data-testid="cashflow-summary" className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+        <div data-testid="cashflow-summary" className="space-y-3 rounded-xl p-4 bg-slate-100 dark:bg-zinc-800">
           <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50">가계 종합 캐시플로우 요약</p>
           <dl className="grid grid-cols-3 gap-3 text-xs">
             <div className="min-w-0">

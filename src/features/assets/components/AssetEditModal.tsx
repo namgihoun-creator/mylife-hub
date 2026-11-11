@@ -140,14 +140,14 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
           type="button"
           onClick={onClose}
           disabled={pending}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 bg-slate-100 dark:bg-zinc-800"
         >
           취소
         </button>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex min-w-20 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex min-w-20 items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-70 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
         >
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           저장
@@ -160,7 +160,7 @@ function EditForm({ asset, onClose }: { asset: Asset; onClose: () => void }) {
 export function AssetEditModal({ asset, open, onOpenChange }: { asset: Asset; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900">
         <DialogHeader className="text-left">
           <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">자산 정보 수정</DialogTitle>
           <DialogDescription className="text-xs font-normal text-slate-500 dark:text-zinc-400">

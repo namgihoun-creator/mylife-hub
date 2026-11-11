@@ -164,7 +164,7 @@ export function AssetDetailDialog({
           </button>
         </DialogTrigger>
 
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-3xl bg-white dark:bg-zinc-950">
           <DialogHeader className="text-left">
             <div className="flex items-center gap-3">
               <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-lg", tone)}>
@@ -183,7 +183,7 @@ export function AssetDetailDialog({
                 <button
                   type="button"
                   onClick={startEdit}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:text-zinc-300 dark:hover:bg-zinc-800 bg-slate-100 dark:bg-zinc-800"
                 >
                   <Pencil className="h-3 w-3" />
                   수정
@@ -217,8 +217,8 @@ export function AssetDetailDialog({
                 className={cn(
                   "rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors",
                   tab === key
-                    ? "bg-black text-white dark:bg-white dark:text-black"
-                    : "border border-zinc-200 bg-transparent text-zinc-600 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900",
+                    ? "bg-sky-600 text-white dark:bg-sky-500 dark:text-white"
+                    : "bg-transparent text-zinc-600 hover:bg-slate-200 dark:text-zinc-300 dark:hover:bg-zinc-700",
                 )}
               >
                 {label}
@@ -252,7 +252,7 @@ export function AssetDetailDialog({
                     <button
                       type="button"
                       onClick={() => setRuleTarget({ mode: "create" })}
-                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                      className="inline-flex h-7 items-center gap-1 rounded-xl px-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-slate-200 dark:text-zinc-100 dark:hover:bg-zinc-700 bg-slate-100 dark:bg-zinc-800"
                     >
                       <Plus className="h-3 w-3" />
                       규칙 추가
@@ -264,7 +264,7 @@ export function AssetDetailDialog({
                 ) : (
                   <ul className="space-y-1.5">
                     {asset.task_rules.map((r) => (
-                      <li key={r.id} data-testid="asset-rule" className="space-y-2 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                      <li key={r.id} data-testid="asset-rule" className="space-y-2 rounded-xl px-3 py-2 bg-slate-100 dark:bg-zinc-800">
                         <div className="flex items-center justify-between gap-3">
                           <span className="truncate text-xs font-medium text-slate-800 dark:text-zinc-200">{r.title}</span>
                           <span className="shrink-0 text-[11px] font-normal text-slate-500 dark:text-zinc-400">

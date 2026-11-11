@@ -11,8 +11,6 @@ const config: Config = {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       colors: {
-        // v3: every legacy slate-* class renders as neutral zinc (Vercel/Supabase look).
-        slate: colors.zinc,
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

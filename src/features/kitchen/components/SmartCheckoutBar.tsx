@@ -55,7 +55,7 @@ export function SmartCheckoutBar({ onSubmit }: { onSubmit: (text: string) => voi
           type="submit"
           data-testid="checkout-submit"
           disabled={!text.trim()}
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:text-zinc-100 dark:hover:bg-zinc-700 bg-slate-100 dark:bg-zinc-800"
         >
           <MessageSquareText className="h-4 w-4" aria-hidden /> 말로 정리
         </button>

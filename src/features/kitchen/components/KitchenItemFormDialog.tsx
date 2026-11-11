@@ -56,7 +56,7 @@ function ItemForm({ target, today, petType, onClose, onNotice }: { target: Kitch
       {editing ? (
         <div className="space-y-1">
           <span className={LABEL}>재료</span>
-          <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-50">
+          <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm font-medium text-zinc-900 dark:bg-zinc-800/60 dark:text-zinc-50">
             {editing.name} <span className="font-normal text-zinc-500 dark:text-zinc-400">· {STORAGE_LABEL[editing.storage_type]}</span>
           </p>
           <p className={HINT}>보관 장소(냉장·냉동·실온)는 카드의 ‘이동’에서 바꿔요.</p>
@@ -92,7 +92,7 @@ function ItemForm({ target, today, petType, onClose, onNotice }: { target: Kitch
                   "h-9 rounded-lg border text-xs font-medium transition-colors",
                   storage === s
                     ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100"
-                    : "border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700",
+                    : "text-zinc-600 dark:text-zinc-400 dark:hover:border-zinc-700",
                 )}
               >
                 {STORAGE_LABEL[s]}
@@ -117,7 +117,7 @@ function ItemForm({ target, today, petType, onClose, onNotice }: { target: Kitch
         <label htmlFor="kitchen-expire" className={LABEL}>소비기한</label>
         <Input id="kitchen-expire" type="date" value={expire} onChange={(e) => setExpirePick(e.target.value || null)} />
         {!editing && suggestion && (
-          <div data-testid="shelf-suggestion" data-source={suggestion.source} className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 dark:border-zinc-800 dark:bg-zinc-900/50">
+          <div data-testid="shelf-suggestion" data-source={suggestion.source} className="flex items-center gap-2 rounded-2xl bg-slate-50 px-2.5 py-1.5 dark:bg-zinc-800/60">
             <Lightbulb className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
             <p className="min-w-0 flex-1 text-[11px] text-zinc-600 dark:text-zinc-400">
               {suggestion.source === "dictionary" ? "권장 소비기한" : "기본 소비기한"}{" "}
@@ -137,7 +137,7 @@ function ItemForm({ target, today, petType, onClose, onNotice }: { target: Kitch
 
       {!editing && (
         <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-zinc-700 dark:text-zinc-300">
-          <input type="checkbox" checked={isPet} onChange={(e) => setIsPet(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-zinc-900 dark:accent-zinc-100" />
+          <input type="checkbox" checked={isPet} onChange={(e) => setIsPet(e.target.checked)} className="h-4 w-4 rounded accent-zinc-900 dark:accent-zinc-100" />
           반려동물 전용 (간식·사료·캔)
         </label>
       )}
@@ -160,7 +160,7 @@ function ItemForm({ target, today, petType, onClose, onNotice }: { target: Kitch
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-60 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
         >
           {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
           {editing ? "저장" : "재료 추가"}

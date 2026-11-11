@@ -11,19 +11,19 @@ import { STORAGE_LABEL, STORAGE_TYPES, type StorageType } from "../rules/shelf-l
 import type { KitchenItem, PetType } from "../schemas/kitchen.schema";
 import { consumeKitchenItem, deleteKitchenItem, moveStorageKitchenItem } from "../server/kitchen.actions";
 
-const PILL = "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-tight";
+const PILL = "inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-extrabold leading-tight";
 const ACTION =
-  "inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-transparent px-2.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900 dark:focus-visible:ring-zinc-100";
+  "inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50 motion-reduce:transform-none dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700";
 
 /** D-Day traffic-light pill: <=2 Rose, <=7 Amber, else Emerald; a date in the past is a filled Rose alert. */
 export function DDayBadge({ info }: { info: ExpiryInfo }) {
   const tone = info.expired
-    ? "border-transparent bg-rose-600 text-white dark:bg-rose-500 dark:text-black"
+    ? "bg-rose-600 text-white shadow-sm dark:bg-rose-500 dark:text-white"
     : info.light === "red"
-      ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+      ? "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300"
       : info.light === "yellow"
-        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300";
+        ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300";
   return (
     <span data-testid="dday-badge" data-light={info.expired ? "alert" : info.light} className={cn(PILL, "tabular-nums", tone)}>
       {info.expired ? `${info.label} 지남` : info.label}
@@ -71,27 +71,27 @@ export function KitchenItemCard({
       data-light={info ? (info.expired ? "alert" : info.light) : "none"}
       aria-busy={pending}
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-xl border bg-white p-4 transition-colors dark:bg-zinc-950",
-        info?.expired ? "border-rose-300 dark:border-rose-900" : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700",
+        "flex min-w-0 flex-col gap-3.5 rounded-3xl p-5 shadow-sm transition-all hover:shadow-md motion-reduce:transition-none",
+        info?.expired ? "bg-rose-50/70 ring-2 ring-rose-200 dark:bg-rose-950/20 dark:ring-rose-900/60" : "bg-white dark:bg-zinc-900",
         pending && "opacity-60",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-0.5">
-          <h3 data-testid="kitchen-card-name" className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          <h3 data-testid="kitchen-card-name" className="truncate text-base font-extrabold text-slate-900 dark:text-zinc-50">
             {item.name}
           </h3>
-          <p className="truncate text-xs font-normal text-zinc-500 dark:text-zinc-400">
+          <p className="truncate text-sm font-medium text-slate-500 dark:text-zinc-400">
             <span data-testid="kitchen-card-amount">{item.amount}</span>
             <span aria-hidden> · </span>
             {STORAGE_LABEL[item.storage_type]}
             {item.spot && <span data-testid="kitchen-card-spot"> · {item.spot}</span>}
           </p>
         </div>
-        {info ? <DDayBadge info={info} /> : <span className={cn(PILL, "border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400")}>날짜 오류</span>}
+        {info ? <DDayBadge info={info} /> : <span className={cn(PILL, "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400")}>날짜 오류</span>}
       </div>
 
-      <p className="text-[11px] font-normal tabular-nums text-zinc-500 dark:text-zinc-400">소비기한 {formatDotDate(item.expire_date)}</p>
+      <p className="text-xs font-medium tabular-nums text-slate-500 dark:text-zinc-400">소비기한 {formatDotDate(item.expire_date)}</p>
 
       {(fossil || toxic || item.is_pet || item.memo) && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -101,18 +101,18 @@ export function KitchenItemCard({
               data-testid="fossil-badge"
               onClick={() => onFossil(item)}
               aria-label={`${item.name} 냉동 30일 이상, 해동 가이드 보기`}
-              className={cn(PILL, "border-cyan-200 bg-cyan-50 text-cyan-700 transition-colors hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-300 dark:hover:bg-cyan-950/70")}
+              className={cn(PILL, "bg-cyan-50 text-cyan-700 transition-all hover:bg-cyan-100 active:scale-95 dark:bg-cyan-950/40 dark:text-cyan-300 dark:hover:bg-cyan-950/70")}
             >
               <Snowflake className="h-3 w-3" aria-hidden /> 30일+ 냉동
             </button>
           )}
           {toxic && (
-            <span data-testid="pet-badge" data-kind="toxic" className={cn(PILL, "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300")}>
+            <span data-testid="pet-badge" data-kind="toxic" className={cn(PILL, "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300")}>
               <PawPrint className="h-3 w-3" aria-hidden /> 반려동물 위험
             </span>
           )}
           {item.is_pet && (
-            <span data-testid="pet-badge" data-kind="pet" className={cn(PILL, "border-zinc-200 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400")}>
+            <span data-testid="pet-badge" data-kind="pet" className={cn(PILL, "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400")}>
               <PawPrint className="h-3 w-3" aria-hidden /> 펫 전용
             </span>
           )}
@@ -137,7 +137,7 @@ export function KitchenItemCard({
               return r.ok ? { ok: true, message: r.savedWon > 0 ? `${item.name} 다 먹었어요! ${formatWon(r.savedWon)} 아꼈어요.` : `${item.name} 다 먹었어요!` } : r;
             })
           }
-          className={ACTION}
+          className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-sky-600 px-4 text-sm font-bold text-white shadow-sm transition-all hover:bg-sky-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50 motion-reduce:transform-none dark:bg-sky-500 dark:hover:bg-sky-400"
         >
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Check className="h-3.5 w-3.5" aria-hidden />} 다 먹었어요
         </button>
@@ -178,7 +178,7 @@ export function KitchenItemCard({
               data-testid="delete-confirm"
               disabled={pending}
               onClick={() => run(async () => { const r = await deleteKitchenItem({ id: item.id }); return r.ok ? { ok: true, message: `${item.name}을(를) 삭제했어요.` } : r; })}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:text-black dark:hover:bg-rose-400"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-rose-500 px-3 text-sm font-bold text-white hover:bg-rose-600 disabled:opacity-50 dark:bg-rose-500 dark:text-white dark:hover:bg-rose-400"
             >
               삭제 확인
             </button>
@@ -193,7 +193,7 @@ export function KitchenItemCard({
             disabled={pending}
             onClick={() => setConfirmDelete(true)}
             aria-label={`${item.name} 삭제`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:opacity-50 dark:text-zinc-500 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           </button>

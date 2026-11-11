@@ -38,7 +38,7 @@ function EmergencyDialog({ open, onOpenChange, foods, pet }: { open: boolean; on
             "수의사가 시키지 않았다면 억지로 토하게 하거나 사람 약·소금물을 먹이지 마세요.",
           ].map((t, i) => (
             <li key={i} className="flex items-start gap-2.5">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-rose-200 text-[11px] font-semibold tabular-nums text-rose-700 dark:border-rose-900 dark:text-rose-300">{i + 1}</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold tabular-nums text-rose-700 dark:text-rose-300">{i + 1}</span>
               <span>{t}</span>
             </li>
           ))}
@@ -55,7 +55,7 @@ function EmergencyDialog({ open, onOpenChange, foods, pet }: { open: boolean; on
         </a>
 
         {foods.length > 0 && (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/60 dark:bg-rose-950/30">
+          <div className="rounded-lg bg-rose-50 p-3 dark:bg-rose-950/30">
             <p className="text-xs font-semibold text-rose-800 dark:text-rose-200">지금 우리 집 냉장고에 있는 위험 재료</p>
             <p className="mt-1 text-xs text-rose-700 dark:text-rose-300">{foods.join(" · ")}</p>
           </div>
@@ -63,7 +63,7 @@ function EmergencyDialog({ open, onOpenChange, foods, pet }: { open: boolean; on
 
         <div className="space-y-1.5">
           <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50">대표적인 위험 음식</p>
-          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul className="divide-y divide-zinc-200 rounded-xl dark:divide-zinc-800 bg-slate-100 dark:bg-zinc-800">
             {TOXINS.map((t) => (
               <li key={t.foods} className="space-y-0.5 px-3 py-2">
                 <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100">{t.foods}</p>
@@ -95,7 +95,7 @@ export function PetToxicAlertBanner({ petType, toxicItems }: { petType: PetType;
       <div
         role="alert"
         data-testid="pet-toxic-banner"
-        className="flex flex-col gap-3 rounded-xl border border-rose-300 bg-rose-50 p-4 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100 sm:flex-row sm:items-center"
+        className="flex flex-col gap-3 rounded-3xl bg-rose-50 p-5 shadow-sm text-rose-900 dark:bg-rose-950/40 dark:text-rose-100 sm:flex-row sm:items-center"
       >
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white dark:bg-rose-500 dark:text-black">

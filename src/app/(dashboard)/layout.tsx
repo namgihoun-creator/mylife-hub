@@ -35,12 +35,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [members, unreadCount] = await Promise.all([getMembers(), getUnreadNotificationCount()]);
 
   return (
-    <div className="relative isolate min-h-screen overflow-x-clip bg-white dark:bg-black">
+    <div className="relative isolate min-h-screen overflow-x-clip bg-slate-50 dark:bg-zinc-950">
       <AmbientBackground />
-      <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-md dark:border-zinc-800/80 dark:bg-black/80">
+      <header className="sticky top-0 z-50 bg-white/85 shadow-sm backdrop-blur-md dark:bg-zinc-950/85">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
           <Link href="/assets" className="flex items-center gap-2" aria-label="MyLife Hub 홈">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-white dark:bg-white dark:text-black">
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-sm dark:bg-sky-500 dark:text-white">
               <Home className="h-4 w-4" />
             </span>
             <span className="hidden text-sm font-bold tracking-tight text-slate-900 dark:text-zinc-50 sm:inline">
@@ -48,7 +48,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </span>
           </Link>
 
-          <span className="inline-flex min-w-0 max-w-[40vw] items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-300">
+          <span className="inline-flex min-w-0 max-w-[40vw] items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:bg-zinc-800/60 dark:text-zinc-300">
             <Users className="h-3 w-3 shrink-0" />
             <span className="truncate">{profile.householdName}</span>
           </span>

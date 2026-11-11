@@ -10,7 +10,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   // Strictly validated: the code ends up in a redirect path (/invite/<code>).
   const parsed = inviteCodeSchema.safeParse((await searchParams).invite);
   return (
-    <main className="relative isolate flex min-h-screen items-center justify-center overflow-x-clip bg-white px-4 py-10 dark:bg-black">
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-x-clip bg-slate-50 px-4 py-10 dark:bg-zinc-950">
       <AmbientBackground />
       <ThemeToggle className="absolute right-4 top-4 z-10" />
       <AuthForm inviteCode={parsed.success ? parsed.data : undefined} />

@@ -6,7 +6,7 @@ import { cn } from "@/shared/lib/utils";
 import { copyableSpec, getPurchaseLinks, hasConsumable, type PurchaseLinkInput } from "../utils/purchase-link";
 
 const OUTLINE =
-  "inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-transparent px-2.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900 dark:focus-visible:ring-zinc-100";
+  "inline-flex h-8 items-center gap-1 rounded-xl bg-transparent px-2.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-700 dark:focus-visible:ring-zinc-100";
 
 /** name · model line with a one-click copy of the spec (model number, else name). */
 export function ConsumableStrip({ info, className }: { info: PurchaseLinkInput; className?: string }) {
@@ -45,7 +45,7 @@ export function ConsumableStrip({ info, className }: { info: PurchaseLinkInput; 
     <div
       data-testid="consumable-strip"
       className={cn(
-        "flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 dark:border-zinc-800 dark:bg-zinc-900/50",
+        "flex items-center gap-2 rounded-2xl bg-slate-50 px-2.5 py-1.5 dark:bg-zinc-800/60",
         className,
       )}
     >

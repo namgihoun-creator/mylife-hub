@@ -17,9 +17,9 @@ export type AssetDeepLink = { assetId: string; tab: "info" | "compare" };
 type Dimension = "space" | "category";
 
 const PILL_BASE = "shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900";
+const PILL_ACTIVE = "bg-sky-600 text-white dark:bg-sky-500 dark:text-white";
 const PILL_INACTIVE =
-  "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
+  "bg-white text-slate-600 hover:bg-slate-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
 const groupKey = (a: Asset, dim: Dimension) => (dim === "space" ? a.space : a.category) || "미분류";
 
@@ -97,7 +97,7 @@ export function AssetList({
   return (
     <div className="space-y-5">
       {notice && (
-        <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+        <div role="status" className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span className="flex-1">{notice}</span>
           <button type="button" aria-label="안내 닫기" onClick={() => setNotice(null)} className="shrink-0 rounded-full p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40">
@@ -130,7 +130,7 @@ export function AssetList({
         </div>
 
         <div
-          className="flex shrink-0 rounded-full border border-slate-200 bg-white p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
+          className="flex shrink-0 rounded-full bg-white p-0.5 dark:bg-zinc-900"
           role="group"
           aria-label="묶는 기준"
         >

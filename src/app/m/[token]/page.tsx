@@ -39,8 +39,8 @@ function formatKst(iso: string | null) {
 
 function HouseholdBanner({ name }: { name: string }) {
   return (
-    <header className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-slate-50 p-4 ring-1 ring-inset ring-white/60 dark:border-zinc-800 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+    <header className="flex items-center gap-3 rounded-xl bg-gradient-to-br from-white to-slate-50 p-4 ring-1 ring-inset ring-white/60 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-white">
         <Home className="h-5 w-5" />
       </span>
       <div className="min-w-0">
@@ -57,7 +57,7 @@ function TaskCard({ info, today, muted = false }: { info: MagicTaskInfo; today: 
     <section
       aria-label="과업 정보"
       className={cn(
-        "rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950",
+        "rounded-3xl bg-white p-5 dark:bg-zinc-900 shadow-sm",
         muted && "opacity-70",
       )}
     >
@@ -96,7 +96,7 @@ export default async function MagicLinkPage({ params }: { params: Promise<{ toke
   const today = toSeoulDate(new Date().toISOString());
 
   return (
-    <main className="relative isolate min-h-screen overflow-x-clip bg-white dark:bg-black">
+    <main className="relative isolate min-h-screen overflow-x-clip bg-slate-50 dark:bg-zinc-950">
       <AmbientBackground />
       <ThemeToggle className="absolute right-4 top-4 z-10" />
       <div className="mx-auto w-full max-w-md space-y-4 px-4 py-6">

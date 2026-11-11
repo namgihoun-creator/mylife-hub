@@ -69,7 +69,7 @@ export function SpaceInventoryMatrix({ distribution }: { distribution: Distribut
         <ReportEmpty testId="matrix-empty">등록된 가전이 없어요.</ReportEmpty>
       ) : (
         <div className="space-y-4">
-          <div data-testid="ownership-share" className="space-y-1.5 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+          <div data-testid="ownership-share" className="space-y-1.5 rounded-xl p-3 bg-slate-100 dark:bg-zinc-800">
             <div className="flex items-baseline justify-between text-xs font-normal text-zinc-500 dark:text-zinc-400">
               <span>전체 {distribution.total}개 · 소유 형태</span>
               <span className="tabular-nums">

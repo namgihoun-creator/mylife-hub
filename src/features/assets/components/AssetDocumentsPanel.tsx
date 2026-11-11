@@ -92,9 +92,9 @@ function DocumentRow({
     <li
       data-testid="asset-document"
       data-doc-id={doc.id}
-      className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 transition-colors hover:border-zinc-300 dark:border-zinc-800/80 dark:bg-zinc-950 dark:hover:border-zinc-700"
+      className="flex items-center gap-3 rounded-3xl bg-white p-3 transition-colors dark:bg-zinc-900 shadow-sm hover:shadow-md"
     >
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-50 dark:bg-zinc-900">
         {isImage && thumb ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not optimizable
           <img src={thumb} alt={`${doc.file_name} 미리보기`} className="h-full w-full object-cover" />
@@ -132,7 +132,7 @@ function DocumentRow({
             <button
               type="button"
               onClick={() => setConfirming(false)}
-              className="inline-flex h-8 items-center rounded-lg border border-zinc-200 px-2.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              className="inline-flex h-8 items-center rounded-xl px-2.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-slate-200 dark:text-zinc-300 dark:hover:bg-zinc-700 bg-slate-100 dark:bg-zinc-800"
             >
               취소
             </button>
@@ -281,7 +281,7 @@ export function AssetDocumentsPanel({ assetId }: { assetId: string }) {
             : "border-zinc-300 bg-white hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:border-zinc-600",
         )}
       >
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
           {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />}
         </span>
         <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
@@ -292,7 +292,7 @@ export function AssetDocumentsPanel({ assetId }: { assetId: string }) {
           type="button"
           disabled={uploading !== null}
           onClick={() => inputRef.current?.click()}
-          className="mt-1 inline-flex h-8 items-center rounded-lg border border-zinc-200 px-3 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+          className="mt-1 inline-flex h-8 items-center rounded-xl px-3 text-xs font-medium text-zinc-900 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:text-zinc-100 dark:hover:bg-zinc-700 bg-slate-100 dark:bg-zinc-800"
         >
           파일 선택
         </button>
@@ -318,7 +318,7 @@ export function AssetDocumentsPanel({ assetId }: { assetId: string }) {
         {loadError ? (
           <p className="text-xs font-medium text-rose-600 dark:text-rose-400">{loadError}</p>
         ) : docs === null ? (
-          <div className="h-[72px] animate-pulse rounded-xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900" />
+          <div className="h-[72px] animate-pulse rounded-xl bg-zinc-100 dark:bg-zinc-900" />
         ) : docs.length === 0 ? (
           <p data-testid="documents-empty" className="rounded-xl border border-dashed border-zinc-200 p-4 text-center text-xs font-normal text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
             아직 올린 문서가 없어요. 영수증이나 보증서를 올려 두면 필요할 때 바로 찾을 수 있어요.

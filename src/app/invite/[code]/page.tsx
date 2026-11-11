@@ -23,9 +23,9 @@ export const metadata: Metadata = {
 };
 
 const CTA =
-  "flex h-14 w-full items-center justify-center rounded-xl bg-slate-900 text-base font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.98] dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
+  "flex h-14 w-full items-center justify-center rounded-xl bg-sky-600 text-base font-semibold text-white transition-all hover:bg-sky-700 active:scale-[0.98] dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 const SMALL_CTA =
-  "inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
+  "inline-flex items-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 
 export default async function InvitePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
@@ -33,7 +33,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   const { user, profile } = await getSessionProfile();
 
   return (
-    <main className="relative isolate min-h-screen overflow-x-clip bg-white dark:bg-black">
+    <main className="relative isolate min-h-screen overflow-x-clip bg-slate-50 dark:bg-zinc-950">
       <AmbientBackground />
       <ThemeToggle className="absolute right-4 top-4 z-10" />
       <div className="mx-auto w-full max-w-md space-y-4 px-4 py-6">
@@ -52,8 +52,8 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
 
         {preview.status === "ACTIVE" && (
           <>
-            <header className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-slate-50 p-4 ring-1 ring-inset ring-white/60 dark:border-zinc-800 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+            <header className="flex items-center gap-3 rounded-xl bg-gradient-to-br from-white to-slate-50 p-4 ring-1 ring-inset ring-white/60 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-white">
                 <Home className="h-5 w-5" />
               </span>
               <div className="min-w-0">

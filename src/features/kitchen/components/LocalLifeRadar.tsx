@@ -18,7 +18,7 @@ export const PET_CHIPS: readonly Chip[] = [
   { id: "petshop", label: "펫용품점", query: "반려동물용품", icon: PawPrint },
 ];
 
-function ChipLink({ c }: { c: Chip }) {
+function ChipLink({ c, tone }: { c: Chip; tone: "mint" | "coral" }) {
   const Icon = c.icon;
   return (
     <a
@@ -28,14 +28,16 @@ function ChipLink({ c }: { c: Chip }) {
       data-testid="radar-chip"
       data-chip={c.id}
       className={cn(
-        "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100",
+        "inline-flex min-h-12 shrink-0 snap-start items-center gap-2 rounded-2xl px-4 text-sm font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 motion-reduce:transform-none",
         c.urgent
-          ? "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
-          : "border-zinc-200 text-zinc-900 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900",
+          ? "bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+          : tone === "coral"
+            ? "bg-orange-50 text-orange-600 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-300 dark:hover:bg-orange-950/70"
+            : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70",
       )}
     >
-      <Icon className="h-3.5 w-3.5" aria-hidden /> {c.label}
-      <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
+      <Icon className="h-5 w-5" aria-hidden /> {c.label}
+      <ExternalLink className="h-3.5 w-3.5 opacity-50" aria-hidden />
     </a>
   );
 }
@@ -43,18 +45,19 @@ function ChipLink({ c }: { c: Chip }) {
 /**
  * 동네 생활 레이더: one-tap Kakao Map searches (new tab). Plain links, so they work without JavaScript and the page never
  * asks for — or stores — the visitor's location: Kakao's own map page asks for it when it needs to centre the results.
- * Pet shortcuts appear only for households with a pet.
+ * Big round chips swipe sideways on phones. Pet shortcuts appear only for households with a pet.
  */
 export function LocalLifeRadar({ petType }: { petType: PetType }) {
+  const row = "flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden";
   return (
-    <section aria-label="동네 생활 레이더" data-testid="local-radar" className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 sm:p-5">
-      <div className="space-y-0.5">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">동네 생활 레이더</h2>
-        <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">카카오맵에서 내 주변을 바로 찾아봐요.</p>
+    <section aria-label="동네 생활 레이더" data-testid="local-radar" className="space-y-4 rounded-3xl bg-white p-5 shadow-sm dark:bg-zinc-900">
+      <div className="space-y-1">
+        <h2 className="text-base font-extrabold text-slate-900 dark:text-zinc-50">동네 생활 레이더</h2>
+        <p className="text-xs font-medium text-slate-500 dark:text-zinc-400">카카오맵에서 내 주변을 바로 찾아봐요.</p>
       </div>
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-2" data-testid="radar-human">{HUMAN_CHIPS.map((c) => <ChipLink key={c.id} c={c} />)}</div>
-        {petType !== "none" && <div className="flex flex-wrap gap-2" data-testid="radar-pet">{PET_CHIPS.map((c) => <ChipLink key={c.id} c={c} />)}</div>}
+      <div className="space-y-2.5">
+        <div className={row} data-testid="radar-human">{HUMAN_CHIPS.map((c) => <ChipLink key={c.id} c={c} tone="mint" />)}</div>
+        {petType !== "none" && <div className={row} data-testid="radar-pet">{PET_CHIPS.map((c) => <ChipLink key={c.id} c={c} tone="coral" />)}</div>}
       </div>
     </section>
   );

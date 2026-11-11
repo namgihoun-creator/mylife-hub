@@ -22,9 +22,9 @@ import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 export const OPEN_PRESET_MODAL_EVENT = "mylife:open-preset-modal";
 
 const PILL_BASE = "shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900";
+const PILL_ACTIVE = "bg-sky-600 text-white dark:bg-sky-500 dark:text-white";
 const PILL_INACTIVE =
-  "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
+  "bg-white text-slate-600 hover:bg-slate-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
 export function PresetAddModal({
   presets,
@@ -92,13 +92,13 @@ export function PresetAddModal({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
         >
           <Plus className="h-4 w-4" />
           {triggerLabel}
         </button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-xl border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">
             생활가전 프리셋으로 추가
@@ -142,7 +142,7 @@ export function PresetAddModal({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="가전 검색 (예: 정수기)"
                   aria-label="가전 검색"
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-zinc-800 dark:bg-zinc-900 dark:placeholder:text-zinc-500"
+                  className="h-10 w-full rounded-2xl bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:bg-zinc-900 dark:placeholder:text-zinc-500 shadow-sm"
                 />
               </div>
               <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -171,7 +171,7 @@ export function PresetAddModal({
                       onClick={() => add(p.preset_key)}
                       disabled={pendingKey !== null}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800",
+                        "flex w-full items-center gap-3 rounded-3xl bg-white p-3 text-left transition-colors hover:bg-slate-50 disabled:opacity-60 dark:bg-zinc-900 dark:hover:bg-zinc-800 shadow-sm",
                         count > 0 && "border-emerald-200 dark:border-emerald-900",
                       )}
                     >
@@ -196,7 +196,7 @@ export function PresetAddModal({
                         {busy ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : count > 0 ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
                             <Check className="h-3 w-3" />
                             {count}
                           </span>
