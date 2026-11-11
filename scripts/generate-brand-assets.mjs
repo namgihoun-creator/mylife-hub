@@ -5,35 +5,38 @@ import { mkdir, writeFile } from "node:fs/promises";
 
 const BG = "#09090b";
 const HOME_SVG = (size, stroke) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
 
 const FONT = `"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Noto Sans CJK KR",sans-serif`;
 
 const ogHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box;margin:0}
-body{width:1200px;height:630px;background:${BG};font-family:${FONT};color:#fafafa;position:relative;overflow:hidden}
-.glow{position:absolute;border-radius:9999px;filter:blur(110px)}
-.g1{width:520px;height:520px;left:-120px;top:-170px;background:rgba(139,92,246,.42)}
-.g2{width:560px;height:560px;right:-140px;top:-200px;background:rgba(16,185,129,.34)}
-.g3{width:640px;height:380px;left:280px;bottom:-260px;background:rgba(139,92,246,.20)}
-.frame{position:absolute;inset:28px;border:1px solid rgba(255,255,255,.10);border-radius:28px}
-.wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
-.badge{display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(255,255,255,.18);border-radius:9999px;padding:9px 20px;font-size:22px;color:#d4d4d8;background:rgba(255,255,255,.03)}
-.dot{width:9px;height:9px;border-radius:9999px;background:#34d399;box-shadow:0 0 12px #34d399}
-.logo{width:104px;height:104px;border:1px solid rgba(255,255,255,.22);border-radius:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.04);margin-top:34px}
-h1{font-size:128px;font-weight:800;letter-spacing:-4px;line-height:1.05;margin-top:22px}
-.sub{font-size:40px;color:#a1a1aa;margin-top:14px;font-weight:500}
+body{width:1200px;height:630px;background:#f8fafc;font-family:${FONT};color:#0f172a;position:relative;overflow:hidden}
+.glow{position:absolute;border-radius:9999px;filter:blur(90px)}
+.g1{width:520px;height:520px;left:-140px;top:-190px;background:rgba(56,189,248,.45)}
+.g2{width:560px;height:560px;right:-150px;top:-210px;background:rgba(52,211,153,.40)}
+.g3{width:700px;height:360px;left:250px;bottom:-250px;background:rgba(167,139,250,.28)}
+.card{position:absolute;inset:44px;border-radius:44px;background:rgba(255,255,255,.82);box-shadow:0 24px 60px rgba(15,23,42,.10)}
+.wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.logo{width:112px;height:112px;border-radius:32px;background:linear-gradient(135deg,#0ea5e9,#14b8a6);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 30px rgba(14,165,233,.35)}
+h1{font-size:82px;font-weight:800;letter-spacing:-2.5px;line-height:1.1;margin-top:26px;background:linear-gradient(90deg,#0284c7,#14b8a6);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font-size:38px;color:#475569;margin-top:14px;font-weight:600}
 .chips{display:flex;gap:14px;margin-top:40px}
-.chip{border:1px solid rgba(255,255,255,.14);border-radius:9999px;padding:8px 20px;font-size:22px;color:#a1a1aa}
+.chip{display:inline-flex;align-items:center;gap:10px;border-radius:9999px;background:#fff;box-shadow:0 6px 18px rgba(15,23,42,.08);padding:12px 24px;font-size:24px;font-weight:700;color:#334155}
+.dot{width:12px;height:12px;border-radius:9999px}
 </style></head><body>
 <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
-<div class="frame"></div>
+<div class="card"></div>
 <div class="wrap">
-  <div class="badge"><span class="dot"></span>가전 · 렌탈 능동형 라이프 매니저</div>
-  <div class="logo">${HOME_SVG(54, 1.8)}</div>
-  <h1>MyLife Hub</h1>
-  <div class="sub">스마트 가전·렌탈 통합 관리 플랫폼</div>
-  <div class="chips"><span class="chip">약정 만료 추적</span><span class="chip">3-Way 비용 비교</span><span class="chip">소모품 최저가</span><span class="chip">지출 리포트</span></div>
+  <div class="logo">${HOME_SVG(60, 2)}</div>
+  <h1>MyLife Hub × CookSaver</h1>
+  <div class="sub">우리 집 스마트 키친 &amp; 가전 케어 OS</div>
+  <div class="chips">
+    <span class="chip"><span class="dot" style="background:#0ea5e9"></span>식재료 유통기한</span>
+    <span class="chip"><span class="dot" style="background:#14b8a6"></span>AI 셰프 레시피</span>
+    <span class="chip"><span class="dot" style="background:#f59e0b"></span>식비 머니로그</span>
+    <span class="chip"><span class="dot" style="background:#fb7185"></span>가전 케어</span>
+  </div>
 </div>
 </body></html>`;
 
@@ -60,9 +63,14 @@ await mkdir("src/app", { recursive: true });
 const og = await shot(ogHtml, 1200, 630);
 await writeFile("src/app/opengraph-image.png", og);
 await writeFile("src/app/twitter-image.png", og);
-await writeFile("src/app/opengraph-image.alt.txt", "MyLife Hub — 스마트 가전·렌탈 통합 관리 플랫폼");
-await writeFile("src/app/twitter-image.alt.txt", "MyLife Hub — 스마트 가전·렌탈 통합 관리 플랫폼");
+await writeFile("src/app/opengraph-image.alt.txt", "MyLife Hub × CookSaver — 우리 집 스마트 키친 & 가전 케어 OS");
+await writeFile("src/app/twitter-image.alt.txt", "MyLife Hub × CookSaver — 우리 집 스마트 키친 & 가전 케어 OS");
 
+if (process.argv.includes("--og")) {
+  await browser.close();
+  console.log("share images written (--og: icons untouched)");
+  process.exit(0);
+}
 await writeFile("src/app/icon.png", await shot(iconHtml(512), 512, 512));
 await writeFile("src/app/apple-icon.png", await shot(iconHtml(180, 0.54), 180, 180));
 await writeFile("public/icons/icon-192.png", await shot(iconHtml(192), 192, 192));

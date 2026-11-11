@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const SITE_NAME = "MyLife Hub";
-export const SITE_TITLE = "MyLife Hub - 가전·렌탈 능동형 라이프 매니저";
-export const SITE_DESCRIPTION = "렌탈 약정 만료 추적, 3-Way 비용 비교, 소모품 최저가 검색, 가계 지출 리포트까지 한 번에 관리하는 스마트 가전 허브";
-const CARD_ALT = "MyLife Hub — 스마트 가전·렌탈 통합 관리 플랫폼";
+export const SITE_TITLE = "MyLife Hub × CookSaver · 우리 집 스마트 키친 & 가전 케어 OS";
+export const SITE_DESCRIPTION = "냉장고 식재료 유통기한 관리, AI 셰프 맞춤 레시피, 식비 머니로그부터 가전 케어까지 한눈에.";
+const CARD_ALT = "MyLife Hub × CookSaver — 우리 집 스마트 키친 & 가전 케어 OS";
 export const DEFAULT_SITE_URL = "https://mylife-hub-vert.vercel.app";
 
 /** Canonical origin for absolute OpenGraph/Twitter URLs (NEXT_PUBLIC_APP_URL, then APP_BASE_URL, then production). */

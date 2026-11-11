@@ -2455,8 +2455,8 @@ const CRON_SECRET = process.env.CRON_SECRET;
   const pngSize = (buf) => (buf.subarray(0, 8).toString("hex") === "89504e470d0a1a0a" ? { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) } : null);
   const pathOf = (u) => { try { const x = new URL(u, BASE); return x.pathname + x.search; } catch { return u; } };
 
-  const DEF_TITLE = "MyLife Hub - 가전·렌탈 능동형 라이프 매니저";
-  const DEF_DESC = "렌탈 약정 만료 추적, 3-Way 비용 비교, 소모품 최저가 검색, 가계 지출 리포트까지 한 번에 관리하는 스마트 가전 허브";
+  const DEF_TITLE = "MyLife Hub × CookSaver · 우리 집 스마트 키친 & 가전 케어 OS";
+  const DEF_DESC = "냉장고 식재료 유통기한 관리, AI 셰프 맞춤 레시피, 식비 머니로그부터 가전 케어까지 한눈에.";
 
   // ---- global defaults (served on /login, the public landing page)
   const login = await page("/login");
