@@ -60,21 +60,23 @@ export function KitchenBudgetCard({ data, onNotice }: { data: KitchenBudgetData;
 
   return (
     <section aria-label="머니로그" data-testid="budget-card" data-overspent={overspent} className="space-y-5 rounded-3xl bg-white p-5 shadow-sm dark:bg-zinc-900 sm:p-6">
-      <div className="flex items-center gap-4">
-        <ProgressRing testId="human-ring" percent={humanPct} tone={RING_TONE[summary.human.level]} label="사람 식비 소진율" size={76} />
-        <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <ProgressRing testId="human-ring" percent={humanPct} tone={RING_TONE[summary.human.level]} label="사람 식비 소진율" size={64} className="sm:hidden" />
+        <ProgressRing testId="human-ring-lg" percent={humanPct} tone={RING_TONE[summary.human.level]} label="사람 식비 소진율" size={76} className="hidden sm:inline-flex" />
+        <div className="min-w-[11rem] flex-1 space-y-1.5">
           <div
             data-testid="today-budget"
             data-state={overspent ? "over" : "ok"}
             className={cn(
-              "inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-base font-extrabold shadow-md",
+              "inline-flex max-w-full items-center gap-2.5 rounded-3xl px-4 py-2.5 text-base font-extrabold leading-tight shadow-md sm:rounded-full",
               overspent ? "bg-rose-100 text-rose-600 shadow-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:shadow-none" : "bg-gradient-to-r from-sky-500 to-teal-400 text-white shadow-sky-200 dark:from-sky-500 dark:to-teal-500 dark:shadow-none",
             )}
           >
             {overspent ? <TriangleAlert className="h-5 w-5 shrink-0" aria-hidden /> : <Wallet className="h-5 w-5 shrink-0" aria-hidden />}
-            <span className="truncate">
-              {overspent ? "예산 초과 · 오늘 권장 식비 " : "오늘의 권장 식비 "}
-              <span data-testid="today-budget-value" className="tabular-nums">{formatWon(summary.todayBudget)}</span>
+            {/* narrow phones (foldables): label on top, amount below — never cut off; from sm: one line */}
+            <span className="min-w-0 break-keep">
+              <span className="block text-xs font-bold sm:inline sm:text-base sm:font-extrabold">{overspent ? "예산 초과 · 오늘 권장 식비 " : "오늘의 권장 식비 "}</span>
+              <span data-testid="today-budget-value" className="block text-xl tabular-nums sm:inline sm:text-base">{formatWon(summary.todayBudget)}</span>
             </span>
           </div>
           <p data-testid="today-budget-hint" className="text-xs font-medium text-slate-500 dark:text-zinc-400">
