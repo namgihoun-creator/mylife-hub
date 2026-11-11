@@ -6,13 +6,18 @@ import { InviteAcceptForm } from "@/features/household/components/InviteAcceptFo
 import { getInvitePreview } from "@/features/household/server/household.queries";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { isPlausibleToken } from "@/shared/lib/token";
+import { shareMetadata } from "@/shared/lib/seo";
 import { AmbientBackground } from "@/shared/components/ui/ambient-background";
 import { ThemeToggle } from "@/shared/components/ui/theme-toggle";
 
 // The code in the URL is a secret: never cache/index the page, never leak it through Referer.
 export const dynamic = "force-dynamic";
+const INVITE_TITLE = "MyLife Hub 가구 초대장이 도착했습니다";
+const INVITE_DESCRIPTION = "가족과 함께 가전, 렌탈 약정, 소모품 교체 일정을 관리해 보세요.";
 export const metadata: Metadata = {
-  title: "가구 초대",
+  title: { absolute: INVITE_TITLE },
+  description: INVITE_DESCRIPTION,
+  ...shareMetadata(INVITE_TITLE, INVITE_DESCRIPTION), // no household name / code in the card: previews are visible to anyone the link is pasted to
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };

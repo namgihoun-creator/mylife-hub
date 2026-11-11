@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "./env";
 
 /** URL prefixes of the (dashboard) route group. Route groups don't appear in URLs. */
-const PROTECTED_PREFIXES = ["/assets", "/timeline"];
+const PROTECTED_PREFIXES = ["/assets", "/timeline", "/analytics"];
 const LOGIN_PATH = "/login";
 const HOME_AFTER_LOGIN = "/assets";
 

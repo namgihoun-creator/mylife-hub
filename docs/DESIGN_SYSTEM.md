@@ -215,6 +215,12 @@
 - **제로 상태:** 자산 0개 → 엠프티 스테이트(§D) 하나만. 렌탈 0개 → 결제 타임라인·절약 카드는 `렌탈·구독 자산이 없어요` 중립 안내, 나머지 섹션은 정상 표시.
 - **접근성:** 막대마다 `role="img"` + `aria-label`(값 포함), 색만으로 구분하지 않고 숫자 병기. 모바일(375px)에서 가로 스크롤 없음.
 
+### L. 브랜드 에셋 · 공유 메타데이터
+- **팔레트:** 배경 `#09090b`(딥블랙), 글로우 violet(`rgb(139 92 246)`) · emerald(`rgb(16 185 129)`) 블러, 텍스트 `#fafafa` / 보조 `#a1a1aa`, 1px 보더 `rgba(255,255,255,.10~.22)`. 마크는 헤더 로고와 같은 `Home` 글리프(흰색 라인).
+- **OG 카드(1200×630):** 안쪽 1px 프레임 · 상단 알약 배지(emerald 점) · 1px 보더 로고 박스 · `MyLife Hub` 128px 800 · 서브카피 · 기능 칩 4개. 파일: `src/app/opengraph-image.png`(+ `twitter-image.png`, `*.alt.txt`). 아이콘: `favicon.ico`(16/32/48), `icon.png`(512), `apple-icon.png`(180), PWA `public/icons/icon-192·512.png`.
+- **재생성:** `node scripts/generate-brand-assets.mjs` (HTML → Playwright 캡처). 브랜드가 바뀔 때만 실행하고 결과물을 커밋한다.
+- **메타데이터 규칙:** 기본 문구·URL은 `src/shared/lib/seo.ts`(`shareMetadata`)에서만 정의. `openGraph`를 덮어쓰는 페이지는 helper를 써서 이미지·siteName·locale을 유지한다. 토큰 페이지(`/m/*`, `/invite/*`)는 `noindex, nofollow` + `no-referrer`이며 공유 카드에 토큰·가구·과업 정보를 싣지 않는다.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

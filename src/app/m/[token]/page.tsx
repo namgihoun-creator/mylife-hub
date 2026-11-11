@@ -6,14 +6,19 @@ import { DDayBadge } from "@/shared/components/ui/dday-badge";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { getApplianceVisual } from "@/shared/lib/appliance-icons";
 import { toSeoulDate } from "@/shared/lib/recurrence";
+import { shareMetadata } from "@/shared/lib/seo";
 import { cn } from "@/shared/lib/utils";
 import { AmbientBackground } from "@/shared/components/ui/ambient-background";
 import { ThemeToggle } from "@/shared/components/ui/theme-toggle";
 
 // Token pages must never be cached, indexed, or leak the token through the Referer header.
 export const dynamic = "force-dynamic";
+const MAGIC_TITLE = "과업 완료 확인 | MyLife Hub";
+const MAGIC_DESCRIPTION = "가전 관리 과업을 확인하고 완료 처리해 주세요.";
 export const metadata: Metadata = {
-  title: "가전 관리 링크",
+  title: { absolute: MAGIC_TITLE },
+  description: MAGIC_DESCRIPTION,
+  ...shareMetadata(MAGIC_TITLE, MAGIC_DESCRIPTION), // generic on purpose: no task / asset / token details in a preview
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };

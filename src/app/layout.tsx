@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
 import { Providers } from "@/shared/components/providers";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, shareMetadata, siteUrl } from "@/shared/lib/seo";
 import "./globals.css";
 
 const notoSansKr = Noto_Sans_KR({
@@ -11,11 +12,13 @@ const notoSansKr = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: { default: "MyLife Hub", template: "%s · MyLife Hub" },
-  description: "개인·가족 통합 생활 OS — 입력은 최소로, 기억하고 연결하고 관리합니다.",
-  applicationName: "MyLife Hub",
+  metadataBase: siteUrl(), // NEXT_PUBLIC_APP_URL || APP_BASE_URL || production URL
+  title: { default: SITE_TITLE, template: "%s · MyLife Hub" },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
   manifest: "/manifest.json",
-  icons: { icon: "/icons/icon-192.png", apple: "/icons/icon-192.png" },
+  // Icons come from the app/ file conventions: favicon.ico, icon.png, apple-icon.png.
+  ...shareMetadata(SITE_TITLE, SITE_DESCRIPTION, { withImage: false }),
 };
 
 export const viewport: Viewport = {

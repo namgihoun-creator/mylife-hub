@@ -2428,6 +2428,91 @@ const CRON_SECRET = process.env.CRON_SECRET;
   }
 }
 
+// ---------------------------------------------------------------- share metadata: OpenGraph / Twitter / icons (what KakaoTalk & Facebook scrapers read — anonymous fetches, no JS)
+{
+  const FAKE = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"; // plausible-looking, unknown token / code
+  const decode = (s) => s.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  const metas = (html) => {
+    const out = {};
+    for (const m of html.matchAll(/<meta\s+([^>]*?)\/?>/g)) {
+      const k = /(?:property|name)="([^"]+)"/.exec(m[1])?.[1];
+      const v = /content="([^"]*)"/.exec(m[1])?.[1];
+      if (k && v !== undefined) (out[k] ??= []).push(decode(v));
+    }
+    return out;
+  };
+  const links = (html) => [...html.matchAll(/<link\s+([^>]*?)\/?>/g)].map((m) => Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map((x) => [x[1], decode(x[2])])));
+  const titleOf = (html) => decode(/<title>(.*?)<\/title>/s.exec(html)?.[1] ?? "");
+  const get = async (path) => {
+    const r = await fetch(`${BASE}${path}`, { redirect: "manual" });
+    return { status: r.status, type: r.headers.get("content-type") ?? "", buf: Buffer.from(await r.arrayBuffer()), html: null };
+  };
+  const page = async (path) => {
+    const r = await get(path);
+    r.html = r.buf.toString("utf8");
+    return r;
+  };
+  const pngSize = (buf) => (buf.subarray(0, 8).toString("hex") === "89504e470d0a1a0a" ? { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) } : null);
+  const pathOf = (u) => { try { const x = new URL(u, BASE); return x.pathname + x.search; } catch { return u; } };
+
+  const DEF_TITLE = "MyLife Hub - 가전·렌탈 능동형 라이프 매니저";
+  const DEF_DESC = "렌탈 약정 만료 추적, 3-Way 비용 비교, 소모품 최저가 검색, 가계 지출 리포트까지 한 번에 관리하는 스마트 가전 허브";
+
+  // ---- global defaults (served on /login, the public landing page)
+  const login = await page("/login");
+  const lm = metas(login.html);
+  record("share", "-", "global: <title>/description follow the brand copy (page title uses the ‘· MyLife Hub’ template)", login.status === 200 && titleOf(login.html) === "로그인 · MyLife Hub" && lm.description?.[0] === DEF_DESC, titleOf(login.html));
+  record("share", "-", "global OpenGraph: title, description, type=website, site_name, locale=ko_KR", lm["og:title"]?.[0] === DEF_TITLE && lm["og:description"]?.[0] === DEF_DESC && lm["og:type"]?.[0] === "website" && lm["og:site_name"]?.[0] === "MyLife Hub" && lm["og:locale"]?.[0] === "ko_KR", JSON.stringify([lm["og:title"], lm["og:type"], lm["og:locale"]]));
+  record("share", "-", "global Twitter card: summary_large_image with the same title/description/image", lm["twitter:card"]?.[0] === "summary_large_image" && lm["twitter:title"]?.[0] === DEF_TITLE && lm["twitter:description"]?.[0] === DEF_DESC && !!lm["twitter:image"]?.[0], lm["twitter:card"]?.[0]);
+  record("share", "-", "global: og:image is an ABSOLUTE https/http URL declared 1200x630 with alt text", /^https?:\/\/[^/]+\/.+/.test(lm["og:image"]?.[0] ?? "") && lm["og:image:width"]?.[0] === "1200" && lm["og:image:height"]?.[0] === "630" && !!lm["og:image:alt"]?.[0], lm["og:image"]?.[0]);
+
+  // ---- the image itself (fetched anonymously: must not be behind the login redirect)
+  const ogImg = await get(pathOf(lm["og:image"]?.[0] ?? "/opengraph-image.png"));
+  const ogSize = pngSize(ogImg.buf);
+  record("share", "-", "OG image: reachable without login (200, image/png), real 1200x630 PNG under 300 KB", ogImg.status === 200 && ogImg.type.startsWith("image/png") && ogSize?.w === 1200 && ogSize?.h === 630 && ogImg.buf.length < 300_000, `${ogImg.status} ${ogImg.type} ${JSON.stringify(ogSize)} ${ogImg.buf.length}B`);
+  const twImg = await get(pathOf(lm["twitter:image"]?.[0] ?? "/twitter-image.png"));
+  record("share", "-", "Twitter image: reachable without login, 1200x630 PNG", twImg.status === 200 && pngSize(twImg.buf)?.w === 1200 && pngSize(twImg.buf)?.h === 630);
+
+  // ---- invite page
+  const inv = await page(`/invite/${FAKE}`);
+  const im = metas(inv.html);
+  record("share", "-", "invite: custom title/description in <title>, description, og:* and twitter:*", inv.status === 200 && titleOf(inv.html) === "MyLife Hub 가구 초대장이 도착했습니다" && im.description?.[0] === "가족과 함께 가전, 렌탈 약정, 소모품 교체 일정을 관리해 보세요." && im["og:title"]?.[0] === "MyLife Hub 가구 초대장이 도착했습니다" && im["og:description"]?.[0] === im.description?.[0] && im["twitter:title"]?.[0] === im["og:title"]?.[0] && im["twitter:card"]?.[0] === "summary_large_image", titleOf(inv.html));
+  record("share", "-", "invite: still has the brand card (og:image 1200x630, site_name, locale, type) after overriding openGraph", /\/opengraph-image\.png/.test(im["og:image"]?.[0] ?? "") && im["og:image:width"]?.[0] === "1200" && im["og:site_name"]?.[0] === "MyLife Hub" && im["og:locale"]?.[0] === "ko_KR" && im["og:type"]?.[0] === "website" && /\/twitter-image\.png/.test(im["twitter:image"]?.[0] ?? ""), im["og:image"]?.[0]);
+  record("share", "-", "invite: privacy kept — noindex/nofollow, no-referrer, and the code never appears in any meta tag", /noindex/.test(im.robots?.[0] ?? "") && /nofollow/.test(im.robots?.[0] ?? "") && im.referrer?.[0] === "no-referrer" && !Object.values(im).flat().some((v) => v.includes(FAKE)) && !titleOf(inv.html).includes(FAKE));
+
+  // ---- magic link page
+  const mg = await page(`/m/${FAKE}`);
+  const mm = metas(mg.html);
+  record("share", "-", "magic link: title ‘과업 완료 확인 | MyLife Hub’ (exact, no template suffix) in <title> and og/twitter", mg.status === 200 && titleOf(mg.html) === "과업 완료 확인 | MyLife Hub" && mm["og:title"]?.[0] === "과업 완료 확인 | MyLife Hub" && mm["twitter:title"]?.[0] === "과업 완료 확인 | MyLife Hub", titleOf(mg.html));
+  record("share", "-", "magic link: robots noindex+nofollow and no-referrer kept; card has the brand image", /noindex/.test(mm.robots?.[0] ?? "") && /nofollow/.test(mm.robots?.[0] ?? "") && mm.referrer?.[0] === "no-referrer" && /\/opengraph-image\.png/.test(mm["og:image"]?.[0] ?? ""), mm.robots?.[0]);
+  record("share", "-", "magic link: generic preview — token/task/asset details never appear in any meta tag", !Object.values(mm).flat().some((v) => v.includes(FAKE)) && !/<meta[^>]*content="[^"]*\/m\//.test(mg.html));
+  const unrelated = await page("/login");
+  record("share", "-", "the login/landing page is NOT noindex (only token pages are)", !/noindex/.test(metas(unrelated.html).robots?.[0] ?? ""));
+
+  // ---- icons
+  const ll = links(login.html);
+  const icon32 = ll.filter((l) => /(^| )icon( |$)/.test(l.rel ?? ""));
+  const apple = ll.find((l) => l.rel === "apple-touch-icon");
+  record("share", "-", "icon <link> tags: favicon.ico, a PNG icon and an apple-touch-icon are declared", icon32.some((l) => /favicon\.ico/.test(l.href)) && icon32.some((l) => /icon\.png/.test(l.href)) && !!apple, JSON.stringify(ll.filter((l) => /icon/.test(l.rel ?? "")).map((l) => l.href)));
+  const fav = await get("/favicon.ico");
+  const nIco = fav.buf.length >= 6 ? fav.buf.readUInt16LE(4) : 0;
+  let icoOk = fav.buf.readUInt16LE(0) === 0 && fav.buf.readUInt16LE(2) === 1 && nIco >= 1;
+  for (let i = 0; icoOk && i < nIco; i++) {
+    const size = fav.buf.readUInt32LE(6 + i * 16 + 8), off = fav.buf.readUInt32LE(6 + i * 16 + 12);
+    icoOk = off + size <= fav.buf.length && pngSize(fav.buf.subarray(off, off + size)) !== null;
+  }
+  record("share", "-", "favicon.ico: 200, valid ICO with ≥3 embedded PNG sizes, anonymous", fav.status === 200 && icoOk && nIco >= 3, `${fav.status} ${fav.type} images=${nIco} ${fav.buf.length}B`);
+  const ic = await get(pathOf(icon32.find((l) => /icon\.png/.test(l.href))?.href ?? "/icon.png"));
+  record("share", "-", "icon.png is a real 512x512 PNG", ic.status === 200 && pngSize(ic.buf)?.w === 512 && pngSize(ic.buf)?.h === 512, JSON.stringify(pngSize(ic.buf)));
+  const ap = await get(pathOf(apple?.href ?? "/apple-icon.png"));
+  record("share", "-", "apple-icon.png is a real 180x180 PNG", ap.status === 200 && pngSize(ap.buf)?.w === 180 && pngSize(ap.buf)?.h === 180, JSON.stringify(pngSize(ap.buf)));
+  const mf = JSON.parse((await get("/manifest.json")).buf.toString("utf8"));
+  const i192 = await get("/icons/icon-192.png"), i512 = await get("/icons/icon-512.png");
+  record("share", "-", "PWA manifest icons (192/512) are valid PNGs of the right size, theme colour matches the dark brand", pngSize(i192.buf)?.w === 192 && pngSize(i512.buf)?.w === 512 && mf.theme_color === "#09090b" && mf.background_color === "#09090b");
+  const unauth = await fetch(`${BASE}/analytics`, { redirect: "manual" });
+  record("share", "-", "regression: protected /analytics still redirects anonymous visitors to /login (middleware + layout)", unauth.status >= 300 && unauth.status < 400 && /\/login/.test(unauth.headers.get("location") ?? ""), `${unauth.status} ${unauth.headers.get("location")}`);
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report
