@@ -76,3 +76,36 @@ export function summarizeBudget(settings: BudgetSettings, expenses: readonly Exp
   const pet = budgetPart(totals.pet_care, settings.pet_monthly_budget);
   return { month, totals, human, pet, daysLeft, todayBudget: recommendedDaily(human.left, daysLeft) };
 }
+
+// ---------------------------------------------------------------------------------------------- spoken / typed amounts
+export const MAX_MEMO = 40;
+
+/** '22000원' · '22,000원' · '2만원' · '2만 5천원' · '3천원' -> won; null when there is no amount (CookSaver `parse_won`). */
+export function parseWon(text: string): number | null {
+  const man = /(\d+)\s*만\s*(?:(\d+)\s*천)?\s*(?:(\d+)\s*)?원/.exec(text);
+  if (man) {
+    const total = Number(man[1]) * 10_000 + (man[2] ? Number(man[2]) * 1000 : 0) + (man[3] ? Number(man[3]) : 0);
+    return total > 0 && total <= MAX_WON ? total : null;
+  }
+  const chun = /(\d+)\s*천\s*원/.exec(text);
+  if (chun) {
+    const total = Number(chun[1]) * 1000;
+    return total > 0 && total <= MAX_WON ? total : null;
+  }
+  const plain = /(\d{1,3}(?:,\d{3})+|\d+)\s*원/.exec(text);
+  if (plain) {
+    const total = Number(plain[1].replace(/,/g, ""));
+    return total > 0 && total <= MAX_WON ? total : null;
+  }
+  return null;
+}
+
+const PET_WORDS = ["사료", "강아지", "고양이", "댕댕", "냥이", "펫", "애견", "애묘", "동물병원", "모래", "츄르", "캣"];
+const DELIVERY_WORDS = ["배달", "외식", "시켜", "시켰", "주문", "식당", "카페", "먹으러", "포장", "배민", "요기요"];
+
+/** Which budget a sentence belongs to: pet words -> pet_care, delivery words -> human_delivery, else groceries. */
+export function guessExpenseCategory(text: string): ExpenseCategory {
+  if (PET_WORDS.some((w) => text.includes(w))) return "pet_care";
+  if (DELIVERY_WORDS.some((w) => text.includes(w))) return "human_delivery";
+  return "human_groceries";
+}

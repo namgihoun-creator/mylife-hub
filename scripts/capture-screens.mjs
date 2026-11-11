@@ -3143,6 +3143,388 @@ const CRON_SECRET = process.env.CRON_SECRET;
   }
 }
 
+// ---------------------------------------------------------------- Smart Kitchen OS Phase 3: zero-typing intake (photo) + 말로 정리 — UI, Server Actions, mock Gemini
+// A local mock of the Gemini REST API (port 4010) stands in for Google. The dev server must run with
+//   GEMINI_API_KEY=<20+ chars>  GEMINI_API_BASE_URL=http://127.0.0.1:4010      (npm run dev:e2e)
+// otherwise the AI-dependent checks are reported as SKIPPED and the "AI not available" branch is verified instead.
+// Everything runs in a throw-away household; one extra row is created in the E2E household to prove cross-household writes fail.
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const http = await import("node:http");
+  const sharp = (await import("sharp")).default;
+  const MOCK_PORT = 4010;
+  const mock = { hits: [], vision: "receipt" };
+  const ai = (payload) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] });
+  const visionPayloads = {
+    receipt: { total_price: 33000, items: [
+      { name: "숙주", amount: "1봉", category: "냉장", is_pet: false },
+      { name: "고등어", amount: "2마리", category: "냉장", is_pet: false },
+      { name: "냉동만두", amount: "1봉", category: "냉동", is_pet: false },
+      { name: "강아지 간식", amount: "2개", category: "실온", is_pet: true },
+    ] },
+    nototal: { total_price: 0, items: [{ name: "당근", amount: "3개", category: "냉장", is_pet: false }] },
+    pet: { total_price: 15000, items: [{ name: "강아지 사료", amount: "1포", category: "실온", is_pet: true }] },
+    empty: { total_price: 0, items: [] },
+  };
+  const S1_ROWS = [
+    { name: "대파", action: "consume", amount: "1대", target_location: "", category: "" },
+    { name: "삼겹살", action: "move", amount: "", target_location: "냉동", category: "" },
+    { name: "치킨", action: "expense", amount: "22000", target_location: "", category: "human_delivery" },
+  ];
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let body = {};
+      try { body = JSON.parse(raw || "{}"); } catch { /* ignore */ }
+      const parts = body.contents?.[0]?.parts ?? [];
+      const text = parts.find((p) => p.text)?.text ?? "";
+      const image = parts.find((p) => p.inlineData)?.inlineData;
+      mock.hits.push({ url: req.url, key: req.headers["x-goog-api-key"], image: image?.data ?? null, text });
+      const send = (status, payload) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(payload); };
+      if (image) {
+        if (mock.vision === "fail429") return send(429, "{}");
+        if (mock.vision === "garbage") return send(200, JSON.stringify({ candidates: [{ content: { parts: [{ text: "this is not json" }] } }] }));
+        return send(200, ai(visionPayloads[mock.vision] ?? visionPayloads.empty));
+      }
+      const sentence = (() => { try { return JSON.parse(text.split("사용자 문장(데이터): ")[1] ?? '""'); } catch { return ""; } })();
+      if (sentence.includes("AI장애")) return send(503, "{}");
+      if (sentence.startsWith("대파 1대 쓰고")) return send(200, ai(S1_ROWS));
+      return send(200, ai([]));
+    });
+  });
+  await new Promise((resolve) => server.listen(MOCK_PORT, "127.0.0.1", resolve));
+
+  let strangerId = null, H2 = null;
+  const mainRowIds = [];
+  const until = async (fn, tries = 40) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+  try {
+    const email = `mylife.e2e.kzt+${rand}@example.com`;
+    const pw = `Pw-${rand}-${Date.now()}`;
+    const { data: su, error: suErr } = await svc.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: "E2E 키친ZT" } });
+    if (suErr) throw new Error(`kitchen-zt createUser failed: ${suErr.message}`);
+    strangerId = su.user.id;
+    const cl = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await cl.auth.signInWithPassword({ email, password: pw });
+    await cl.rpc("create_household", { p_name: "E2E 키친ZT", p_display_name: "E2E 키친ZT" });
+    H2 = (await svc.from("profiles").select("household_id").eq("id", strangerId).single()).data.household_id;
+    if ((await cl.from("kitchen_items").select("id").limit(1)).error) throw new Error("kitchen tables missing");
+
+    const seed = (name, storage_type, expire, amount = "1개") => ({ household_id: H2, name, storage_type, expire_date: expire, amount, spot: null, added_at: today, is_pet: false, memo: null });
+    await svc.from("kitchen_items").insert([seed("대파", "FRIDGE", shift(10), "4대"), seed("삼겹살", "FRIDGE", shift(2), "600g"), seed("우유", "FRIDGE", shift(6), "1l"), seed("두부", "FRIDGE", shift(8), "1모")]);
+    const rows = async () => (await svc.from("kitchen_items").select("*").eq("household_id", H2)).data ?? [];
+    const rowOf = async (n) => (await rows()).find((r) => r.name === n);
+    const expenses = async () => (await svc.from("kitchen_expenses").select("*").eq("household_id", H2)).data ?? [];
+    const prof = async () => (await svc.from("kitchen_profiles").select("*").eq("household_id", H2).maybeSingle()).data;
+
+    let state;
+    {
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.fill('input[name="email"]', email);
+      await p.fill('input[name="password"]', pw);
+      await p.click('button[type="submit"]');
+      await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20_000 });
+      state = await c.storageState();
+      await c.close();
+    }
+    const mk = async (vp, { scheme = "light", init } = {}) => {
+      const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+      await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+      if (init) await c.addInitScript(init);
+      const p = await c.newPage();
+      p.__errors = [];
+      p.on("pageerror", (e) => p.__errors.push(`pageerror: ${e.message}`));
+      p.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && p.__errors.push(`console: ${m.text()}`));
+      await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      await p.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      await p.getByTestId("kitchen-pulse").waitFor();
+      return { c, p };
+    };
+    // a big noisy photo (several MB) generated by the browser itself
+    const bigPhoto = async (p) => {
+      const b64 = await p.evaluate(() => {
+        const cv = document.createElement("canvas");
+        cv.width = 3200; cv.height = 2400;
+        const g = cv.getContext("2d");
+        const img = g.createImageData(cv.width, cv.height);
+        for (let i = 0; i < img.data.length; i += 4) { img.data[i] = Math.random() * 255; img.data[i + 1] = Math.random() * 255; img.data[i + 2] = Math.random() * 255; img.data[i + 3] = 255; }
+        g.putImageData(img, 0, 0);
+        return cv.toDataURL("image/jpeg", 0.95).split(",")[1];
+      });
+      return Buffer.from(b64, "base64");
+    };
+
+    const { c, p } = await mk(VIEWPORTS[0]);
+    record("kitchen-zt", "desktop", "page shows the [찰칵 입고] button and the one-line 말로 정리 bar (input + submit)", (await p.getByTestId("snap-open").count()) === 1 && (await p.getByTestId("checkout-input").count()) === 1 && (await p.getByTestId("checkout-submit").count()) === 1 && (await p.getByTestId("checkout-submit").isDisabled()));
+
+    // ================================================================ 찰칵 입고
+    await p.getByTestId("snap-open").click();
+    const sd = p.getByTestId("snap-dialog");
+    await sd.waitFor();
+    record("kitchen-zt", "desktop", "snap dialog: camera input has capture=environment, gallery input has none; both accept images", (await sd.getByTestId("snap-camera-input").getAttribute("capture")) === "environment" && (await sd.getByTestId("snap-camera-input").getAttribute("accept")) === "image/*" && (await sd.getByTestId("snap-gallery-input").getAttribute("capture")) === null && (await sd.getByTestId("snap-gallery-input").getAttribute("accept")) === "image/*");
+    record("kitchen-zt", "desktop", "privacy note: the photo goes only to Google Gemini and is not stored", /Gemini/.test(await sd.innerText()) && /저장되지 않아요/.test(await sd.innerText()));
+
+    // non-image file is rejected before anything is sent
+    const hitsBefore = mock.hits.length;
+    await sd.getByTestId("snap-gallery-input").setInputFiles({ name: "note.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+    await sd.getByRole("alert").waitFor();
+    record("kitchen-zt", "desktop", "a non-image file is refused with a clear message and nothing is sent to the AI", /사진 파일만/.test(await sd.getByRole("alert").innerText()) && mock.hits.length === hitsBefore);
+
+    const photo = await bigPhoto(p);
+    record("kitchen-zt", "desktop", "test photo is genuinely large (≥ 2 MB, 3200×2400) so the compression check below means something", photo.length > 2_000_000, `${(photo.length / 1e6).toFixed(1)} MB`);
+    mock.vision = "receipt";
+    await sd.getByTestId("snap-camera-input").setInputFiles({ name: "receipt.jpg", mimeType: "image/jpeg", buffer: photo });
+    await sd.locator('[data-testid="snap-list"], [data-testid="snap-unavailable"]').first().waitFor({ timeout: 30_000 });
+    const mocked = mock.hits.length > hitsBefore;
+
+    if (!mocked) {
+      // dev server is not wired to the mock: verify the friendly "not available" branch (no key configured) instead
+      const un = sd.getByTestId("snap-unavailable");
+      record("kitchen-zt", "desktop", "no AI key (or not mocked): friendly guidance, no fake sample data, manual routes suggested", (await un.count()) === 1 && /GEMINI_API_KEY|AI/.test(await un.innerText()) && (await sd.getByTestId("snap-row").count()) === 0 && /직접 넣거나/.test(await un.innerText()), (await un.innerText()).replace(/\s+/g, " ").slice(0, 160));
+      for (const n of ["snap compression", "snap review rows", "snap batch intake + receipt total", "snap pet-only receipt", "snap AI failure notes", "checkout AI path", "checkout rules fallback", "checkout execute", "checkout cross-household write"]) record("kitchen-zt", "-", `SKIPPED (dev server not started with the mock Gemini env — use npm run dev:e2e): ${n}`, true);
+    } else {
+      // ---- compression: what Google would have received
+      const hit = mock.hits[mock.hits.length - 1];
+      const sent = Buffer.from(hit.image, "base64");
+      const meta = await sharp(sent).metadata();
+      record("kitchen-zt", "desktop", "client compression: a multi-MB photo reaches the AI as a JPEG with long side 1024px and under 600 KB", meta.format === "jpeg" && Math.max(meta.width, meta.height) === 1024 && meta.width === 1024 && meta.height === 768 && sent.length < 600_000 && sent.length < photo.length / 5, `${meta.format} ${meta.width}x${meta.height} ${(sent.length / 1024).toFixed(0)} KB (from ${(photo.length / 1e6).toFixed(1)} MB)`);
+      record("kitchen-zt", "desktop", "the API key travels in the x-goog-api-key header only (never in the URL), the request goes to the configured base", typeof hit.key === "string" && hit.key.length >= 20 && !hit.url.includes(hit.key) && /\/v1beta\/models\/[^/]+:generateContent$/.test(hit.url));
+
+      // ---- review step
+      const list = sd.getByTestId("snap-list");
+      record("kitchen-zt", "desktop", "review: one row per detected item (4), all checked, with the CTA ‘4개 품목 한 번에 입고’", (await sd.getByTestId("snap-row").count()) === 4 && (await sd.getByTestId("snap-row-check").evaluateAll((els) => els.every((e) => e.checked))) && (await sd.getByTestId("snap-submit").innerText()).includes("4개 품목 한 번에 입고"));
+      const mackerel = sd.locator('[data-testid="snap-row"][data-name="고등어"]');
+      record("kitchen-zt", "desktop", "each row shows the dictionary default (고등어 fridge 2일) and the detected amount (2마리)", /2일/.test(await mackerel.getByTestId("snap-row-expire").innerText()) && (await mackerel.getByTestId("snap-row-amount").inputValue()) === "2마리" && (await mackerel.locator('[data-storage="FRIDGE"]').getAttribute("aria-checked")) === "true");
+      record("kitchen-zt", "desktop", "receipt total 33,000원 is offered as a checked ‘지출 기록’ option", (await sd.getByTestId("snap-total").innerText()).trim() === "33,000원" && (await sd.getByTestId("snap-total-check").isChecked()));
+      await p.screenshot({ path: `${OUT}/kitchen-snap-review-light-desktop.png` });
+
+      // ---- fine tuning
+      await sd.locator('[data-testid="snap-row"][data-name="숙주"] [data-testid="snap-row-check"]').uncheck();
+      record("kitchen-zt", "desktop", "unchecking a row updates the CTA to 3개 and dims the row", (await sd.getByTestId("snap-submit").innerText()).includes("3개 품목 한 번에 입고"));
+      await mackerel.locator('[data-storage="FREEZER"]').click();
+      record("kitchen-zt", "desktop", "moving 고등어 to 냉동 recalculates its expiry (frozen 60일 from the dictionary)", /60일/.test(await mackerel.getByTestId("snap-row-expire").innerText()));
+      await mackerel.getByTestId("snap-row-amount").fill("1마리");
+
+      // ---- one-tap intake
+      await sd.getByTestId("snap-submit").click();
+      await sd.waitFor({ state: "detached" });
+      const fish = await until(async () => rowOf("고등어"));
+      const dumpling = await rowOf("냉동만두"), treat = await rowOf("강아지 간식");
+      record("kitchen-zt", "desktop", "batch intake: exactly the 3 checked items were created (숙주 was not)", !!fish && !!dumpling && !!treat && !(await rowOf("숙주")) && (await rows()).length === 4 + 3, (await rows()).map((r) => r.name).join(","));
+      record("kitchen-zt", "desktop", "batch intake: tuned values stored — 고등어 FREEZER, amount 1마리, expiry today + 60; 냉동만두 FREEZER; pet treat is_pet with ROOM_TEMP default", fish?.storage_type === "FREEZER" && fish.amount === "1마리" && fish.expire_date === shift(60) && fish.added_at === today && dumpling?.storage_type === "FREEZER" && treat?.is_pet === true && treat.storage_type === "ROOM_TEMP", JSON.stringify({ fish, treat: treat && { s: treat.storage_type, p: treat.is_pet } }));
+      const e1 = await until(async () => { const e = await expenses(); return e.length ? e : null; });
+      record("kitchen-zt", "desktop", "receipt total went to the ledger: 33,000원, 장보기, today, memo ‘영수증 입고 3개’", e1?.length === 1 && e1[0].amount === 33000 && e1[0].category === "human_groceries" && e1[0].expense_date === today && e1[0].memo === "영수증 입고 3개", JSON.stringify(e1));
+      await p.getByTestId("kitchen-notice").waitFor();
+      record("kitchen-zt", "desktop", "success notice: ‘3개를 입고했어요’ + the recorded payment; new cards appear without a manual reload", /3개를 입고했어요/.test(await p.getByTestId("kitchen-notice").innerText()) && /33,000원/.test(await p.getByTestId("kitchen-notice").innerText()) && (await p.locator('[data-testid="kitchen-card"][data-name="고등어"]').waitFor().then(() => true)));
+
+      // ---- without a total: nothing is invented
+      await p.getByTestId("snap-open").click();
+      mock.vision = "nototal";
+      await sd.getByTestId("snap-gallery-input").setInputFiles({ name: "veg.jpg", mimeType: "image/jpeg", buffer: await bigPhoto(p) });
+      await sd.getByTestId("snap-list").waitFor({ timeout: 30_000 });
+      record("kitchen-zt", "desktop", "total_price 0 → no ‘지출 기록’ option is shown", (await sd.getByTestId("snap-total-check").count()) === 0);
+      await sd.getByTestId("snap-submit").click();
+      await sd.waitFor({ state: "detached" });
+      await until(async () => rowOf("당근"));
+      record("kitchen-zt", "desktop", "…and no expense is written (still 1 ledger row)", (await expenses()).length === 1 && !!(await rowOf("당근")));
+
+      // ---- pet-only receipt → pet budget
+      await p.getByTestId("snap-open").click();
+      mock.vision = "pet";
+      await sd.getByTestId("snap-camera-input").setInputFiles({ name: "pet.jpg", mimeType: "image/jpeg", buffer: await bigPhoto(p) });
+      await sd.getByTestId("snap-list").waitFor({ timeout: 30_000 });
+      await sd.getByTestId("snap-submit").click();
+      await sd.waitFor({ state: "detached" });
+      const e2 = await until(async () => { const e = await expenses(); return e.length === 2 ? e : null; });
+      record("kitchen-zt", "desktop", "a receipt with only pet items books the total to the pet budget (pet_care, 15,000원, memo 영수증 입고 1개)", !!e2 && e2.some((e) => e.category === "pet_care" && e.amount === 15000 && e.memo === "영수증 입고 1개"), JSON.stringify(e2));
+
+      // ---- AI failures are explained, nothing is created
+      const nBefore = (await rows()).length;
+      for (const [scenario, re, label] of [["fail429", /한도/, "quota exceeded (429)"], ["garbage", /읽지 못했어요/, "unreadable reply"]]) {
+        await p.getByTestId("snap-open").click();
+        mock.vision = scenario;
+        await sd.getByTestId("snap-gallery-input").setInputFiles({ name: "x.jpg", mimeType: "image/jpeg", buffer: await bigPhoto(p) });
+        await sd.getByTestId("snap-unavailable").waitFor({ timeout: 45_000 });
+        record("kitchen-zt", "desktop", `AI failure (${label}): explained in plain Korean, no rows, nothing written`, re.test(await sd.getByTestId("snap-unavailable").innerText()) && (await sd.getByTestId("snap-row").count()) === 0 && (await rows()).length === nBefore);
+        await p.keyboard.press("Escape");
+        await sd.waitFor({ state: "detached" });
+      }
+      mock.vision = "empty";
+      await p.getByTestId("snap-open").click();
+      await sd.getByTestId("snap-gallery-input").setInputFiles({ name: "x.jpg", mimeType: "image/jpeg", buffer: await bigPhoto(p) });
+      await sd.getByRole("alert").waitFor({ timeout: 30_000 });
+      record("kitchen-zt", "desktop", "a photo with no food → ‘찾지 못했어요’ hint, back to the picker", /찾지 못했어요/.test(await sd.getByRole("alert").innerText()) && (await sd.getByTestId("snap-camera-input").count()) === 1);
+      await p.keyboard.press("Escape");
+      await sd.waitFor({ state: "detached" });
+    }
+
+    // ================================================================ 말로 정리
+    const input = p.getByTestId("checkout-input");
+    const cd = p.getByTestId("checkout-dialog");
+    const ask = async (sentence) => {
+      await input.fill(sentence);
+      await p.getByTestId("checkout-submit").click();
+      await cd.waitFor();
+      await cd.locator('[data-testid="checkout-row"], [data-testid="checkout-empty"], [role="alert"]').first().waitFor({ timeout: 30_000 });
+    };
+    const texts = async () => cd.getByTestId("checkout-row-text").allInnerTexts();
+
+    // rules path works regardless of the mock (AI failure sentence, or no key)
+    await ask("AI장애 우유 버렸어, 대파 다 썼어");
+    record("kitchen-zt", "desktop", "AI down / no key → the offline rules read the sentence and the dialog says so", (await cd.getByTestId("checkout-source").getAttribute("data-source")) === "rules" && (mocked ? /바빠요/.test(await cd.getByTestId("checkout-source").innerText()) : /GEMINI_API_KEY|AI/.test(await cd.getByTestId("checkout-source").innerText())), (await cd.getByTestId("checkout-source").innerText()).slice(0, 120));
+    record("kitchen-zt", "desktop", "preview cards: ‘우유 폐기’ and ‘대파 소진 +3,000원’ (action icons per type)", JSON.stringify(await texts()) === JSON.stringify(["우유 폐기", "대파 소진 +3,000원"]) && (await cd.getByTestId("checkout-row").evaluateAll((els) => els.map((e) => e.getAttribute("data-action")))).join() === "discard,consume");
+    record("kitchen-zt", "desktop", "nothing changed yet (preview only): both items still exist", !!(await rowOf("우유")) && !!(await rowOf("대파")));
+    await cd.getByTestId("checkout-row-check").nth(1).uncheck();
+    record("kitchen-zt", "desktop", "unchecking a card lowers the run button to ‘1건 일괄 실행’", (await cd.getByTestId("checkout-run").innerText()).includes("1건 일괄 실행"));
+    await cd.getByTestId("checkout-run").click();
+    await cd.waitFor({ state: "detached" });
+    const profA = await until(async () => { const r = await prof(); return r && r.discarded_count === 1 ? r : null; });
+    record("kitchen-zt", "desktop", "only the checked action ran: 우유 discarded (row gone, discarded_count 1), 대파 untouched, no savings", !(await rowOf("우유")) && !!(await rowOf("대파")) && !!profA && profA.rescued_count === 0 && Number(profA.saved_money) === 0, JSON.stringify(profA));
+    await p.getByTestId("kitchen-notice").waitFor();
+    record("kitchen-zt", "desktop", "summary notice ‘반영 완료: 폐기 1’", /반영 완료/.test(await p.getByTestId("kitchen-notice").innerText()) && /폐기 1/.test(await p.getByTestId("kitchen-notice").innerText()), await p.getByTestId("kitchen-notice").innerText());
+
+    // unknown ingredient / nothing understood
+    await ask("AI장애 피자 1판 먹었어");
+    record("kitchen-zt", "desktop", "an ingredient that is not in the kitchen is shown as ‘찾지 못했어요’, its checkbox is disabled and the run button is 0건/disabled", /냉장고에서 찾지 못했어요/.test((await texts())[0]) && (await cd.getByTestId("checkout-row-check").first().isDisabled()) && (await cd.getByTestId("checkout-run").isDisabled()) && (await cd.getByTestId("checkout-row").first().getAttribute("data-ok")) === "false");
+    await p.keyboard.press("Escape");
+    await cd.waitFor({ state: "detached" });
+    await ask("AI장애 아무 말 대잔치");
+    record("kitchen-zt", "desktop", "nothing understood → helpful examples, no run button", (await cd.getByTestId("checkout-empty").count()) === 1 && (await cd.getByTestId("checkout-run").count()) === 0 && /대파 1대 썼어/.test(await cd.getByTestId("checkout-empty").innerText()));
+    await p.keyboard.press("Escape");
+    await cd.waitFor({ state: "detached" });
+
+    if (mocked) {
+      // AI path — the headline sentence
+      await ask("대파 1대 쓰고 삼겹살은 냉동실로 보냈어, 치킨 22000원 배달");
+      record("kitchen-zt", "desktop", "AI path: source shown as AI, 3 cards — ‘대파 1대 차감 (3대 남음)’, ‘삼겹살 냉동 이동’, ‘치킨 22,000원 지출’", (await cd.getByTestId("checkout-source").getAttribute("data-source")) === "gemini" && JSON.stringify(await texts()) === JSON.stringify(["대파 1대 차감 (3대 남음)", "삼겹살 냉동 이동", "치킨 22,000원 지출"]), JSON.stringify(await texts()));
+      const req = mock.hits[mock.hits.length - 1];
+      record("kitchen-zt", "desktop", "the AI prompt carries the kitchen's ingredient names and the sentence as quoted data", /냉장고 재료: .*대파/.test(req.text) && req.text.includes(JSON.stringify("대파 1대 쓰고 삼겹살은 냉동실로 보냈어, 치킨 22000원 배달")));
+      await p.screenshot({ path: `${OUT}/kitchen-checkout-light-desktop.png` });
+      await cd.getByTestId("checkout-run").click();
+      await cd.waitFor({ state: "detached" });
+      const scallion = await until(async () => { const r = await rowOf("대파"); return r?.amount === "3대" ? r : null; });
+      const pork = await rowOf("삼겹살");
+      const ex = (await expenses()).find((e) => e.memo === "치킨");
+      record("kitchen-zt", "desktop", "batch apply: 대파 4대 → 3대 (still in stock), 삼겹살 → freezer with expiry today + 90, 치킨 22,000원 booked as 배달", !!scallion && pork?.storage_type === "FREEZER" && pork.expire_date === shift(90) && pork.added_at === today && ex?.amount === 22000 && ex.category === "human_delivery" && ex.expense_date === today, JSON.stringify({ a: scallion?.amount, p: pork?.storage_type, e: ex }));
+      const profB = await prof();
+      record("kitchen-zt", "desktop", "a partial deduction is not a ‘rescue’: counters unchanged (rescued 0, saved 0, discarded 1)", profB.rescued_count === 0 && Number(profB.saved_money) === 0 && profB.discarded_count === 1);
+
+      // using it all up credits the saving
+      await ask("AI장애 대파 다 썼어");
+      await cd.getByTestId("checkout-run").click();
+      await cd.waitFor({ state: "detached" });
+      const profC = await until(async () => { const r = await prof(); return r && r.rescued_count === 1 ? r : null; });
+      record("kitchen-zt", "desktop", "using the rest up deletes the item and credits +3,000원 (rescued 1)", !!profC && Number(profC.saved_money) === 3000 && !(await rowOf("대파")), JSON.stringify(profC));
+      await p.waitForFunction(() => document.querySelector('[data-pulse="saved"] [data-testid="pulse-value"]')?.textContent?.trim() === "3,000원");
+
+      // ---- tampering: a modified request cannot touch another household's rows
+      const other = await svc.from("kitchen_items").insert({ household_id: myProfile.household_id, name: `타가구대파${rand}`, storage_type: "FRIDGE", expire_date: shift(9), amount: "1개", spot: null, added_at: today, is_pet: false, memo: null }).select("id").single();
+      mainRowIds.push(other.data.id);
+      const mine = await rowOf("두부"); // my own row; the request will be rewritten to point at the OTHER household's row
+      let swapped = false;
+      await p.route("**/kitchen", async (route) => {
+        const r = route.request();
+        const post = r.postData();
+        if (r.method() === "POST" && post && post.includes(mine.id) && !swapped) {
+          swapped = true;
+          return route.continue({ postData: post.split(mine.id).join(other.data.id) });
+        }
+        return route.continue();
+      });
+      await ask("AI장애 두부 버렸어");
+      await cd.getByTestId("checkout-run").click();
+      await p.waitForFunction(() => !document.querySelector('[data-testid="checkout-run"]') || document.querySelector('[data-testid="checkout-results"]'), null, { timeout: 15_000 }).catch(() => {});
+      await p.waitForTimeout(800);
+      record("kitchen-zt", "desktop", "tampered request (item id swapped for ANOTHER household's row): the action reports it as not found, the foreign row is untouched, my row is not deleted", swapped && !!(await svc.from("kitchen_items").select("id").eq("id", other.data.id).maybeSingle()).data && !!(await rowOf("두부")), `swapped=${swapped}`);
+      const resultsText = await p.getByTestId("checkout-results").innerText().catch(() => "");
+      record("kitchen-zt", "desktop", "…and the dialog lists the failure (‘찾지 못했어요’) instead of pretending success", /찾지 못했어요/.test(resultsText), resultsText);
+      await p.unroute("**/kitchen");
+      if ((await p.getByTestId("checkout-dialog").count()) > 0) { await p.keyboard.press("Escape"); await cd.waitFor({ state: "detached" }); }
+    }
+    record("kitchen-zt", "desktop", "no console/page errors in the whole desktop flow", p.__errors.length === 0, p.__errors.slice(0, 2).join(" | "));
+    await c.close();
+
+    // ================================================================ speech (Web Speech API)
+    {
+      const noSpeech = () => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; Object.defineProperty(window, "SpeechRecognition", { value: undefined, configurable: true }); Object.defineProperty(window, "webkitSpeechRecognition", { value: undefined, configurable: true }); };
+      const a = await mk(VIEWPORTS[0], { init: noSpeech });
+      record("kitchen-zt", "desktop", "browser without the Web Speech API: the mic button is not shown (typing still works)", (await a.p.getByTestId("checkout-mic").count()) === 0 && (await a.p.getByTestId("checkout-input").count()) === 1);
+      await a.c.close();
+
+      const fakeSpeech = () => {
+        class FakeRecognition {
+          constructor() { this.lang = ""; this.interimResults = false; this.continuous = false; window.__rec = this; }
+          start() { window.__recStarted = { lang: this.lang, interim: this.interimResults }; setTimeout(() => { this.onresult?.({ results: [Object.assign([{ transcript: "대파 1대 썼어" }], { isFinal: false })] }); }, 30); setTimeout(() => { this.onresult?.({ results: [Object.assign([{ transcript: "대파 1대 썼어 우유 버렸어" }], { isFinal: true })] }); this.onend?.(); }, 120); }
+          stop() { this.onend?.(); }
+          abort() {}
+        }
+        window.SpeechRecognition = FakeRecognition; window.webkitSpeechRecognition = FakeRecognition;
+      };
+      const b = await mk(VIEWPORTS[0], { init: fakeSpeech });
+      const mic = b.p.getByTestId("checkout-mic");
+      record("kitchen-zt", "desktop", "browser with the Web Speech API: a mic button appears next to the input", (await mic.count()) === 1 && (await mic.getAttribute("aria-label")) === "음성으로 말하기");
+      await mic.click();
+      await b.p.getByTestId("checkout-listening").waitFor();
+      record("kitchen-zt", "desktop", "mic click starts Korean recognition (ko-KR, interim results) and shows ‘듣고 있어요’", (await b.p.evaluate(() => window.__recStarted?.lang)) === "ko-KR" && (await b.p.evaluate(() => window.__recStarted?.interim)) === true && (await mic.getAttribute("aria-pressed")) === "true");
+      await b.p.waitForFunction(() => document.querySelector('[data-testid="checkout-input"]')?.value === "대파 1대 썼어 우유 버렸어");
+      await b.p.waitForTimeout(200);
+      record("kitchen-zt", "desktop", "the transcript fills the input live and listening ends by itself", (await b.p.getByTestId("checkout-input").inputValue()) === "대파 1대 썼어 우유 버렸어" && (await b.p.getByTestId("checkout-listening").count()) === 0 && (await mic.getAttribute("aria-pressed")) === "false");
+      await b.p.getByTestId("checkout-submit").click();
+      await b.p.getByTestId("checkout-dialog").waitFor();
+      await b.p.locator('[data-testid="checkout-row"], [data-testid="checkout-empty"]').first().waitFor({ timeout: 30_000 }); // (the mock AI only knows one sentence; the dialog still opens with the spoken text)
+      record("kitchen-zt", "desktop", "the spoken sentence flows into the same confirmation dialog", (await b.p.getByTestId("checkout-sentence").innerText()).includes("대파 1대 썼어 우유 버렸어"));
+      await b.c.close();
+    }
+
+    // ================================================================ light/dark × desktop/mobile
+    await svc.from("kitchen_items").insert([seed("대파", "FRIDGE", shift(10), "4대"), seed("삼겹살", "FRIDGE", shift(2), "600g")]);
+    for (const scheme of ["light", "dark"]) {
+      for (const vp of VIEWPORTS) {
+        const z = await mk(vp, { scheme });
+        const q = z.p;
+        const tag = `${scheme}/${vp.name}`;
+        record("kitchen-zt", vp.name, `${tag}: header actions + 말로 정리 bar fit the viewport (no horizontal scroll)`, await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth) && (await q.getByTestId("snap-open").isVisible()) && (await q.getByTestId("checkout-submit").isVisible()));
+        await q.getByTestId("checkout-input").fill("AI장애 대파 1대 썼고 삼겹살은 냉동실로 보냈어, 치킨 22000원 배달");
+        await q.getByTestId("checkout-submit").click();
+        const dlg = q.getByTestId("checkout-dialog");
+        await dlg.locator('[data-testid="checkout-row"], [data-testid="checkout-empty"], [role="alert"]').first().waitFor({ timeout: 30_000 });
+        if ((await dlg.getByTestId("checkout-row").count()) === 0) record("kitchen-zt", vp.name, `${tag}: 말로 정리 parsed the sentence into cards`, false, (await dlg.innerText()).replace(/\s+/g, " ").slice(0, 200));
+        const box = await dlg.evaluate((el) => { const r = el.getBoundingClientRect(); return { l: r.left, r: r.right, w: window.innerWidth, sw: el.scrollWidth, cw: el.clientWidth }; });
+        record("kitchen-zt", vp.name, `${tag}: 말로 정리 dialog (3 preview cards) fits inside the viewport`, box.l >= 0 && box.r <= box.w + 1 && box.sw <= box.cw + 1 && (await dlg.getByTestId("checkout-row").count()) === 3, JSON.stringify(box));
+        const bg = await dlg.evaluate((el) => getComputedStyle(el).backgroundColor);
+        const lum = (rgb) => { const [r, g, b] = (rgb.match(/[\d.]+/g) ?? [255, 255, 255]).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+        record("kitchen-zt", vp.name, `${tag}: dialog follows the theme`, scheme === "dark" ? lum(bg) < 0.1 : lum(bg) > 0.8, bg);
+        await q.screenshot({ path: `${OUT}/kitchen-checkout-${scheme}-${vp.name}.png` });
+        await q.keyboard.press("Escape");
+        await dlg.waitFor({ state: "detached" });
+        await q.getByTestId("snap-open").click();
+        const sdlg = q.getByTestId("snap-dialog");
+        await sdlg.waitFor();
+        await q.waitForTimeout(450); // let the dialog enter animation finish before measuring
+        const sb2 = await sdlg.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1; });
+        record("kitchen-zt", vp.name, `${tag}: snap dialog (camera / gallery picker) fits the viewport`, sb2);
+        await q.screenshot({ path: `${OUT}/kitchen-snap-${scheme}-${vp.name}.png` });
+        record("kitchen-zt", vp.name, `${tag}: no console/page errors`, q.__errors.length === 0, q.__errors.slice(0, 2).join(" | "));
+        await z.c.close();
+      }
+    }
+  } catch (err) {
+    if (/kitchen tables missing/.test(String(err))) record("kitchen-zt", "-", "kitchen tables available (migration 14)", false, "tables missing");
+    else record("kitchen-zt", "-", "zero-typing suite ran to completion", false, String(err?.stack ?? err).slice(0, 500));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (mainRowIds.length) await svc.from("kitchen_items").delete().in("id", mainRowIds);
+    if (H2) {
+      for (const t of ["kitchen_items", "kitchen_shopping_items", "kitchen_expenses", "kitchen_profiles"]) await svc.from(t).delete().eq("household_id", H2);
+      await svc.from("profiles").delete().eq("household_id", H2);
+      await svc.from("households").delete().eq("id", H2);
+    }
+    if (strangerId) await svc.auth.admin.deleteUser(strangerId);
+  }
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report

@@ -96,3 +96,52 @@ export type CreateKitchenItemInput = z.input<typeof createKitchenItemSchema>;
 export type UpdateKitchenItemInput = z.input<typeof updateKitchenItemSchema>;
 
 export type KitchenActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+
+// ---------------------------------------------------------------- zero-typing (photo intake + "말로 정리")
+import { EXPENSE_CATEGORIES, MAX_WON } from "../rules/kitchen-budget";
+import { MAX_BATCH_ITEMS } from "../rules/shelf-life";
+import { CHECKOUT_ACTIONS, MAX_CHECKOUT_ROWS, MAX_CHECKOUT_TEXT } from "../rules/smart-checkout-rules";
+
+/** Base64 of a ~1024px JPEG is a few hundred KB; this is the hard ceiling for the Server Action body. */
+export const MAX_IMAGE_BASE64_CHARS = 1_300_000;
+
+export const analyzeImageSchema = z.object({
+  imageBase64: z.string().min(16, "사진이 없어요.").max(MAX_IMAGE_BASE64_CHARS, "사진이 너무 커요. 다시 찍어 주세요."),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"], "JPG, PNG, WEBP 사진만 올릴 수 있어요."),
+});
+
+export const batchItemSchema = z.object({
+  name: z.string().trim().min(1, "재료 이름이 비어 있어요.").max(100, "재료 이름은 100자 이하예요."),
+  amount: z.string().trim().max(50, "수량은 50자 이하예요.").optional().transform((v) => (v ? v : "1개")),
+  storageType: z.enum(STORAGE_TYPES).optional(),
+  expireDate: dateField.optional(),
+  isPet: z.boolean().optional().default(false),
+});
+
+export const batchCreateSchema = z.object({
+  items: z.array(batchItemSchema).min(1, "입고할 재료를 하나 이상 골라 주세요.").max(MAX_BATCH_ITEMS, `한 번에 ${MAX_BATCH_ITEMS}개까지 등록할 수 있어요.`),
+  /** The receipt total read from the photo (won). Only recorded when `recordTotal` is true. */
+  receiptTotal: z.number().int().min(0).max(MAX_WON).nullish(),
+  recordTotal: z.boolean().optional().default(false),
+});
+
+export const smartCheckoutTextSchema = z.object({
+  text: z.string().trim().min(1, "정리할 내용을 적어 주세요.").max(MAX_CHECKOUT_TEXT, `${MAX_CHECKOUT_TEXT}자까지만 적을 수 있어요.`),
+});
+
+export const checkoutRowSchema = z.object({
+  action: z.enum(CHECKOUT_ACTIONS),
+  itemId: z.uuid().nullable(),
+  name: z.string().trim().min(1).max(100),
+  amount: z.string().trim().max(30).default(""),
+  target: z.enum(STORAGE_TYPES).nullable().default(null),
+  won: z.number().int().min(1).max(MAX_WON).nullable().default(null),
+  category: z.enum(EXPENSE_CATEGORIES).nullable().default(null),
+});
+
+export const executeCheckoutSchema = z.object({
+  rows: z.array(checkoutRowSchema).min(1, "반영할 내용이 없어요.").max(MAX_CHECKOUT_ROWS, `한 번에 ${MAX_CHECKOUT_ROWS}건까지 반영할 수 있어요.`),
+});
+
+export type BatchCreateInput = z.input<typeof batchCreateSchema>;
+export type CheckoutRowInput = z.input<typeof checkoutRowSchema>;

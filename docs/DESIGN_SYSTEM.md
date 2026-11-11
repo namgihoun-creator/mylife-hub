@@ -239,6 +239,12 @@
 - **KitchenItemCard:** `rounded-xl border` 평평한 행/카드. 1줄 이름(`text-sm font-semibold truncate`) + D-Day 배지, 2줄 `수량 · 보관 장소(spot) · 소비기한`(보조색), 3줄 배지들(화석·펫), 하단 액션: `소진`(Outline, 주 동작) · `이동`(드롭다운: 냉장/냉동/실온) · `수정` · `삭제`(2단계 확인 `삭제 확인` rose). 만료된 카드는 보더 `border-rose-300 dark:border-rose-900`.
 - **그리드(375px 반응형):** 모바일 1열, `sm` 2열, `lg` 3열; 모든 행은 `min-w-0`, 액션 줄은 `flex-wrap`. 가로 스크롤 없음.
 
+### O. 키친 Zero-Typing (찰칵 입고 · 말로 정리)
+- **진입점:** `/kitchen` 헤더 우측에 `찰칵 입고`(Outline, `Camera`) + `재료 추가`(Primary), 그 아래 한 줄 `SmartCheckoutBar`(입력창 + 마이크 + `말로 정리` Outline 버튼). 마이크는 Web Speech API가 있는 브라우저에서만 입력창 안쪽 우측에 나타나고, 듣는 동안 입력창 테두리·마이크가 Rose로 바뀌며 `듣고 있어요…`를 표시한다.
+- **SnapIngestDialog(`max-w-lg`):** ① 선택 — `카메라로 찍기`(`capture="environment"`) / `갤러리에서 고르기` 2칸 + 개인정보 안내(사진은 분석용으로 Gemini에만 전송, 저장 안 함) ② 작업 중 스피너 ③ 검토 — 품목 행(체크박스 · 이름 · 수량 입력 · 냉장/냉동/실온 세그먼트 · 권장 일수) + `결제 총액 N원 지출 기록` 체크 ④ 하단 단일 CTA `N개 품목 한 번에 입고`(Primary `h-11`). AI 사용 불가 시 amber 안내 박스(가짜 샘플 데이터 없음).
+- **SmartCheckoutDialog:** 읽은 문장을 따옴표로 보여 주고, 동작 카드(체크박스 + 동작 아이콘 박스 + 문장)를 나열 — 소진(emerald `Check`) · 이동(cyan `ArrowRightLeft`) · 폐기(rose `Trash2`) · 지출(violet `Wallet`). 냉장고에서 못 찾은 항목은 점선 카드 + 비활성 체크. 출처 한 줄(`AI가 읽었어요` / `글자 규칙으로 읽었어요 (사유)`), 하단 `N건 일괄 실행`. 일부 실패 시 결과 목록(✓/✗)을 보여 준다.
+- **원칙:** AI는 제안만 하고 아무것도 쓰지 않는다. 확인 후 서버가 모든 효과(차감 수량·새 소비기한)를 다시 계산한다.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

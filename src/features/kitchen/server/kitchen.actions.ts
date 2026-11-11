@@ -1,14 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { getSessionProfile } from "@/features/auth/server/session";
-import { createClient } from "@/shared/lib/supabase/server";
-import { toSeoulDate } from "@/shared/lib/recurrence";
 import { dday, isFossil, URGENT_DAYS } from "../rules/expiry";
 import { toxicMatch } from "../rules/pet-safety";
 import { defaultExpireDate, STORAGE_LABEL, type StorageType } from "../rules/shelf-life";
 import { moveStorage, SAVED_WON_PER_RESCUE } from "../rules/storage-move";
+import { adjustProfileCounters, kitchenContext as context, seoulToday } from "./kitchen-context";
 import {
   DEFAULT_KITCHEN_PROFILE,
   createKitchenItemSchema,
@@ -28,16 +25,6 @@ import {
 const ITEM_COLUMNS = "id, name, amount, storage_type, spot, expire_date, added_at, is_pet, memo, created_at";
 const PROFILE_COLUMNS = "pet_type, human_monthly_budget, pet_monthly_budget, rescued_count, discarded_count, saved_money";
 const friendly = (msg?: string) => (msg && /[가-힣]/.test(msg) ? msg : "잘못된 요청입니다.");
-const seoulToday = () => toSeoulDate(new Date().toISOString());
-
-type Ctx = { supabase: SupabaseClient; householdId: string; userId: string };
-async function context(): Promise<{ ok: true; ctx: Ctx } | { ok: false; error: string }> {
-  const { user, profile } = await getSessionProfile();
-  if (!user) return { ok: false, error: "로그인이 필요합니다." };
-  if (!profile) return { ok: false, error: "가구 설정이 필요합니다." };
-  return { ok: true, ctx: { supabase: await createClient(), householdId: profile.householdId, userId: user.id } };
-}
-
 const revalidate = () => revalidatePath("/kitchen");
 
 // ---------------------------------------------------------------------------------------------- read
@@ -143,33 +130,6 @@ export async function deleteKitchenItem(input: unknown): Promise<KitchenActionRe
 }
 
 // ---------------------------------------------------------------------------------------------- consume
-/**
- * Add one rescue + the fixed saving to the household profile. Optimistic compare-and-set on both counters, so two
- * members using up items at the same moment never lose an increment; the profile row is created on first use.
- */
-async function creditRescue(supabase: SupabaseClient, householdId: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const { data: p, error } = await supabase.from("kitchen_profiles").select("rescued_count, saved_money").maybeSingle();
-    if (error) return false;
-    if (!p) {
-      const ins = await supabase.from("kitchen_profiles").insert({ household_id: householdId, rescued_count: 1, saved_money: SAVED_WON_PER_RESCUE });
-      if (!ins.error) return true;
-      if (ins.error.code !== "23505") return false; // someone else just created it: loop and update instead
-      continue;
-    }
-    const upd = await supabase
-      .from("kitchen_profiles")
-      .update({ rescued_count: p.rescued_count + 1, saved_money: Number(p.saved_money) + SAVED_WON_PER_RESCUE })
-      .eq("household_id", householdId)
-      .eq("rescued_count", p.rescued_count)
-      .eq("saved_money", p.saved_money)
-      .select("household_id");
-    if (upd.error) return false;
-    if (upd.data && upd.data.length === 1) return true;
-  }
-  return false;
-}
-
 /** "다 먹었어요": delete the item, then rescued_count + 1 and saved_money + 3,000 on the household profile. */
 export async function consumeKitchenItem(input: unknown): Promise<KitchenActionResult<{ savedWon: number }>> {
   const parsed = kitchenIdSchema.safeParse(input);
@@ -182,7 +142,7 @@ export async function consumeKitchenItem(input: unknown): Promise<KitchenActionR
   if (error) return { ok: false, error: "재료를 처리하지 못했어요." };
   if (!data || data.length === 0) return { ok: false, error: "재료를 찾을 수 없어요. 이미 처리됐을 수 있어요." };
 
-  const credited = await creditRescue(c.ctx.supabase, c.ctx.householdId);
+  const credited = await adjustProfileCounters(c.ctx.supabase, c.ctx.householdId, { rescued: 1, savedWon: SAVED_WON_PER_RESCUE });
   if (!credited) console.error("kitchen: item consumed but the savings credit could not be written", parsed.data.id);
   revalidate();
   return { ok: true, savedWon: credited ? SAVED_WON_PER_RESCUE : 0 };

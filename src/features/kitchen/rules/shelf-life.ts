@@ -7,6 +7,9 @@ export const STORAGE_TYPES = ["FRIDGE", "FREEZER", "ROOM_TEMP"] as const;
 export type StorageType = (typeof STORAGE_TYPES)[number];
 export const STORAGE_LABEL: Record<StorageType, string> = { FRIDGE: "냉장", FREEZER: "냉동", ROOM_TEMP: "실온" };
 
+/** Most items one batch (receipt photo / bulk add) may carry. */
+export const MAX_BATCH_ITEMS = 50;
+
 /** Fallback days when an ingredient is not in the dictionary (CookSaver: 냉장 5 · 냉동 30 · 실온 90). */
 export const DEFAULT_DAYS: Record<StorageType, number> = { FRIDGE: 5, FREEZER: 30, ROOM_TEMP: 90 };
 

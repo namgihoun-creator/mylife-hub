@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { PawPrint, Plus, Refrigerator } from "lucide-react";
+import { Camera, PawPrint, Plus, Refrigerator } from "lucide-react";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { cn } from "@/shared/lib/utils";
 import { PET_TYPES, PET_TYPE_LABEL, type KitchenDashboardData, type KitchenItem, type PetType } from "../schemas/kitchen.schema";
@@ -11,6 +11,9 @@ import { KitchenItemCard } from "./KitchenItemCard";
 import { KitchenItemFormDialog, type KitchenFormTarget } from "./KitchenItemFormDialog";
 import { KitchenPulse } from "./KitchenPulse";
 import { PetToxicAlertBanner } from "./PetToxicAlertBanner";
+import { SmartCheckoutBar } from "./SmartCheckoutBar";
+import { SmartCheckoutDialog } from "./SmartCheckoutDialog";
+import { SnapIngestDialog } from "./SnapIngestDialog";
 import { StorageTabs, type StorageFilter } from "./StorageTabs";
 
 /** Household pet setting: it switches the toxic-food banner and per-card warnings on. */
@@ -51,6 +54,8 @@ export function KitchenDashboard({ data }: { data: KitchenDashboardData }) {
   const [tab, setTab] = useState<StorageFilter>("ALL");
   const [form, setForm] = useState<KitchenFormTarget | null>(null);
   const [fossilItem, setFossilItem] = useState<KitchenItem | null>(null);
+  const [snapOpen, setSnapOpen] = useState(false);
+  const [checkoutText, setCheckoutText] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -73,15 +78,27 @@ export function KitchenDashboard({ data }: { data: KitchenDashboardData }) {
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">키친</h1>
           <p className="text-xs font-normal text-zinc-500 dark:text-zinc-400">냉장고 속 재료를 기한 전에 먹고, 아낀 돈을 모아요.</p>
         </div>
-        <button
-          type="button"
-          data-testid="add-item"
-          onClick={() => setForm({ mode: "create" })}
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        >
-          <Plus className="h-4 w-4" aria-hidden /> 재료 추가
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            data-testid="snap-open"
+            onClick={() => setSnapOpen(true)}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900"
+          >
+            <Camera className="h-4 w-4" aria-hidden /> 찰칵 입고
+          </button>
+          <button
+            type="button"
+            data-testid="add-item"
+            onClick={() => setForm({ mode: "create" })}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            <Plus className="h-4 w-4" aria-hidden /> 재료 추가
+          </button>
+        </div>
       </div>
+
+      <SmartCheckoutBar onSubmit={setCheckoutText} />
 
       <PetToxicAlertBanner petType={profile.pet_type} toxicItems={toxicItems} />
       <KitchenPulse stats={stats} profile={profile} />
@@ -119,6 +136,8 @@ export function KitchenDashboard({ data }: { data: KitchenDashboardData }) {
 
       <KitchenItemFormDialog target={form} today={today} petType={profile.pet_type} onClose={() => setForm(null)} onNotice={showNotice} />
       <DefrostGuideDialog item={fossilItem} today={today} onClose={() => setFossilItem(null)} />
+      <SnapIngestDialog open={snapOpen} today={today} onClose={() => setSnapOpen(false)} onNotice={showNotice} />
+      <SmartCheckoutDialog text={checkoutText} onClose={() => setCheckoutText(null)} onNotice={showNotice} />
     </div>
   );
 }
