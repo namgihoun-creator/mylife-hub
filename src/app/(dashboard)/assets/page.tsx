@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ContextHelpButton } from "@/shared/components/ui/ContextHelpButton";
 import { z } from "zod";
 import { getSessionProfile } from "@/features/auth/server/session";
 import { getFridgeStock } from "@/features/appliances/server/fridge-stock";
@@ -24,9 +25,12 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-zinc-50">자산 관리</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="whitespace-nowrap text-2xl font-bold tracking-tight text-slate-900 dark:text-zinc-50">자산 관리</h1>
+            <ContextHelpButton topic="appliance_dday" />
+          </div>
           <p className="text-xs font-normal text-slate-500 dark:text-zinc-400">
             우리 집 가전과 소모품 교체 주기를 한눈에 확인해요.
           </p>

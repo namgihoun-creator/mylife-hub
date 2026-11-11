@@ -1,5 +1,6 @@
 "use client";
 
+import { ContextHelpButton } from "@/shared/components/ui/ContextHelpButton";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Camera, PawPrint, Plus, Refrigerator } from "lucide-react";
 import { GRADIENT_CTA, GRADIENT_CTA_MINT } from "@/shared/components/ui/gradient-cta";
@@ -83,7 +84,8 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-zinc-50">키친</h1>
           <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">냉장고 속 재료를 기한 전에 먹고, 아낀 돈을 모아요.</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+          <ContextHelpButton topic="zero_typing" />
           <button
             type="button"
             data-testid="snap-open"
@@ -117,8 +119,11 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="overflow-x-auto">
-          <StorageTabs value={tab} onChange={setTab} counts={counts} />
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 overflow-x-auto">
+            <StorageTabs value={tab} onChange={setTab} counts={counts} />
+          </div>
+          <ContextHelpButton topic="smart_stock" />
         </div>
         <PetTypeSelect value={profile.pet_type} />
       </div>

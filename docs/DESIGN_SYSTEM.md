@@ -273,6 +273,12 @@
 - **LocalLifeRadar:** 사람용 칩 3개(`ShoppingCart` 대형마트 · `Sprout` 전통시장 · `Store` 24시 편의점) + 펫 가구에만 두 번째 줄 3개(Rose `Siren` 24시 동물병원 · `Stethoscope` 동네 동물병원 · `PawPrint` 펫용품점). `h-9 rounded-lg border` 칩, 우측 `ExternalLink` 보조 아이콘. **일반 링크**(`https://m.map.kakao.com/actions/searchView?q=<encodeURIComponent>`, `target="_blank" rel="noopener noreferrer"`) — 스크립트 불필요, 방문자 위치를 묻거나 저장하지 않는다(위치는 카카오맵이 필요할 때 직접 묻는다).
 - **냉장고 자산 칩(`FridgeKitchenChip`, `/assets`):** 카테고리가 `냉장고`이거나 이름에 `냉장고/냉동고`(김치냉장고 포함)가 든 자산 카드의 관리 규칙 줄 아래. `rounded-full` 알약 `ChefHat` + `보관 N개`, 임박(D-3 이하·기한 지남 포함)이 있으면 amber 틴트 + `(임박 M개)` + `TriangleAlert`. 클릭 시 `/kitchen`으로 이동(`next/link`).
 
+### R. 맥락 도움말 (? 버튼) — `ui/ContextHelpButton.tsx`
+- 섹션 제목 바로 옆에 `<ContextHelpButton topic="…" />`. 문구는 `src/shared/constants/help-content.ts`에서만 관리(제목·설명·꿀팁[]).
+- 버튼: 아이콘 `HelpCircle` 15px/stroke 2.2, 기본 `text-slate-400` → hover `text-sky-600 bg-sky-50`, 터치 영역 최소 32×32.
+- 누르면 컴팩트 모달(`rounded-3xl bg-slate-50`, 폭 `calc(100%-2rem)` · 최대 `max-w-sm`): 스카이 "도움말" 뱃지 → 제목 → 설명 → 꿀팁 카드(전구 아이콘, 흰 카드) → 하단 [확인했어요].
+- 제목은 `whitespace-nowrap`로 두고 부모 행에 `flex-wrap`을 줘서 280px 폭에서도 ? 버튼과 제목이 갈라지지 않게 한다.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

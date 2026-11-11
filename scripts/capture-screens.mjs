@@ -4165,6 +4165,69 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
   }
 }
 
+// ---------------------------------------------------------------- contextual help (? buttons)
+{
+  const spots = [
+    { path: "/assets", topic: "appliance_dday", title: "가전 자산 & 소모품 D-Day" },
+    { path: "/kitchen", topic: "daily_budget", title: "오늘의 권장 식비란?" },
+    { path: "/kitchen", topic: "smart_stock", title: "스마트 식재료 보관함" },
+    { path: "/kitchen", topic: "zero_typing", title: "찰칵 입고 & 말로 정리" },
+    { path: "/kitchen", topic: "ai_chef", title: "냉장고 파먹기 AI 셰프" },
+  ];
+  for (const vp of [...VIEWPORTS, { name: "fold280", width: 280, height: 800 }]) {
+    const c = await newContext(vp, storageState);
+    const p = await c.newPage();
+    const errs = [];
+    p.on("pageerror", (e) => errs.push(e.message));
+    try {
+      for (const path of ["/assets", "/kitchen"]) {
+        await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+        record("help", vp.name, `${path}: no horizontal overflow`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+        for (const s of spots.filter((x) => x.path === path)) {
+          const btn = p.locator(`[data-help-topic="${s.topic}"]`);
+          const box = await btn.boundingBox();
+          const inView = !!box && box.x >= 0 && box.x + box.width <= vp.width + 1;
+          record("help", vp.name, `${s.topic}: ? button visible inside the viewport with a ≥32px hit area`, (await btn.count()) === 1 && inView && box.width >= 32 && box.height >= 32, JSON.stringify(box));
+          await btn.scrollIntoViewIfNeeded();
+          await btn.click();
+          const dlg = p.getByTestId("help-dialog");
+          await dlg.waitFor();
+          await p.waitForTimeout(450); // let the open animation settle before measuring
+          const txt = await dlg.innerText();
+          const dbox = await dlg.boundingBox();
+          record("help", vp.name, `${s.topic}: modal shows title, tips and ‘확인했어요’, fits the screen`, txt.includes(s.title) && txt.includes("확인했어요") && !!dbox && dbox.x >= 0 && dbox.x + dbox.width <= vp.width + 1);
+          await dlg.getByRole("button", { name: "확인했어요" }).click();
+          await dlg.waitFor({ state: "detached" });
+        }
+      }
+      // headings next to the button must not be pushed into broken wrapping
+      await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+      const h1 = await p.locator("h1").first().boundingBox();
+      const hb = await p.locator('[data-help-topic="appliance_dday"]').boundingBox();
+      record("help", vp.name, "assets title stays on one line next to the ? button", !!h1 && !!hb && h1.height < 40 && Math.abs((hb.y + hb.height / 2) - (h1.y + h1.height / 2)) < 16, `h1=${h1?.height}`);
+      await p.screenshot({ path: `${OUT}/help-assets-${vp.name}.png` });
+      await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      await p.screenshot({ path: `${OUT}/help-kitchen-${vp.name}.png` });
+      // household settings modal
+      await p.getByRole("button", { name: "가구 설정" }).first().click();
+      const hh = p.locator('[data-help-topic="household_sync"]');
+      await hh.waitFor();
+      await p.waitForTimeout(450);
+      const hbox = await hh.boundingBox();
+      record("help", vp.name, "household modal: ? beside the title; nested help modal opens and closes", !!hbox && hbox.x + hbox.width <= vp.width + 1);
+      await hh.click();
+      await p.getByTestId("help-dialog").waitFor();
+      await p.getByRole("button", { name: "확인했어요" }).click();
+      await p.getByTestId("help-dialog").waitFor({ state: "detached" });
+      await p.screenshot({ path: `${OUT}/help-household-${vp.name}.png` });
+    } catch (err) {
+      record("help", vp.name, "help suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
+    }
+    record("help", vp.name, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+    await c.close();
+  }
+}
+
 // ---------------------------------------------------------------- invite flow safeguards: remembered invite + "don't create a second household" warning
 {
   const { createHash, randomBytes } = await import("node:crypto");

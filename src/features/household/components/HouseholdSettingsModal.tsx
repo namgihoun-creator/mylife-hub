@@ -1,5 +1,6 @@
 "use client";
 
+import { ContextHelpButton } from "@/shared/components/ui/ContextHelpButton";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Link2, Loader2, Settings, ShieldCheck, Upload, Users } from "lucide-react";
@@ -143,9 +144,10 @@ export function HouseholdSettingsModal({
 
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">
-            {householdName} 설정
-          </DialogTitle>
+          <div className="flex items-center gap-1 pr-6">
+            <DialogTitle className="text-base font-semibold text-slate-800 dark:text-zinc-200">{householdName} 설정</DialogTitle>
+            <ContextHelpButton topic="household_sync" />
+          </div>
           <DialogDescription className={HINT}>구성원을 확인하고 가구 데이터를 백업·복구해요.</DialogDescription>
         </DialogHeader>
 
