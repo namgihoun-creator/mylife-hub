@@ -23,11 +23,11 @@ export function ConsumableQuarterlyBar({ outlook }: { outlook: QuarterOutlook })
                   data-quarter={q.label}
                   data-total={q.total}
                   aria-label={`${q.label} 소모품 ${q.consumable}건, 기타 점검 ${q.other}건`}
-                  className="flex w-full flex-col-reverse overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900"
+                  className="flex w-full flex-col-reverse overflow-hidden rounded-xl bg-slate-100 dark:bg-zinc-800"
                   style={{ height: `${Math.max(q.total > 0 ? 6 : 2, pct * 0.78)}%` }}
                 >
                   {q.consumable > 0 && <div className="bg-violet-500 dark:bg-violet-400" style={{ flexGrow: q.consumable }} />}
-                  {q.other > 0 && <div className="bg-zinc-300 dark:bg-zinc-700" style={{ flexGrow: q.other }} />}
+                  {q.other > 0 && <div className="bg-sky-300 dark:bg-sky-700" style={{ flexGrow: q.other }} />}
                 </div>
               </div>
             );
@@ -46,7 +46,7 @@ export function ConsumableQuarterlyBar({ outlook }: { outlook: QuarterOutlook })
             소모품 등록 규칙
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm bg-zinc-300 dark:bg-zinc-700" aria-hidden />
+            <span className="h-2 w-2 rounded-sm bg-sky-300 dark:bg-sky-700" aria-hidden />
             그 외 점검
           </span>
           {empty && <span data-testid="quarter-empty">예정된 반복 과업이 없어요.</span>}

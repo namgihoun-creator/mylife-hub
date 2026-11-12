@@ -4267,6 +4267,44 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
   }
 }
 
+// ---------------------------------------------------------------- sub-pages v4 alignment: /timeline + /analytics (cards, borders, narrow screens)
+{
+  for (const vp of [...VIEWPORTS, { name: "fold280", width: 280, height: 800 }]) {
+    const c = await newContext(vp, storageState);
+    const p = await c.newPage();
+    try {
+      for (const path of ["/timeline", "/analytics"]) {
+        await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+        await p.waitForTimeout(400);
+        const r = await p.evaluate(() => {
+          const vw = window.innerWidth;
+          const hard = [], oldRadius = [];
+          for (const el of document.querySelectorAll("main *")) {
+            const cs = getComputedStyle(el), b = el.getBoundingClientRect();
+            if (b.width < 2 || b.height < 2) continue;
+            const isControl = el.tagName === "BUTTON" || el.tagName === "INPUT";
+            if (!isControl && cs.borderTopStyle !== "none" && parseFloat(cs.borderTopWidth) > 0) hard.push(`${el.tagName}.${(el.className?.toString() ?? "").split(/\s+/).slice(0, 3).join(".")}`);
+            const filled = cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none";
+            if (!isControl && filled && b.width > 120 && b.height > 60 && parseFloat(cs.borderTopLeftRadius) > 0 && parseFloat(cs.borderTopLeftRadius) < 16 && !el.closest("[data-testid=help-dialog]")) oldRadius.push(`${el.tagName}.${(el.className?.toString() ?? "").split(/\s+/).slice(0, 3).join(".")}=${cs.borderTopLeftRadius}`);
+          }
+          const titles = [...document.querySelectorAll("li h3")].map((h) => h.getBoundingClientRect().width);
+          return { over: document.documentElement.scrollWidth - vw, hard: hard.slice(0, 5), oldRadius: oldRadius.slice(0, 5), minTitle: titles.length ? Math.min(...titles) : null, bg: getComputedStyle(document.body).backgroundColor };
+        });
+        record("subpages", vp.name, `${path}: off-white page bg, no horizontal overflow`, r.bg === "rgb(248, 250, 252)" && r.over <= 0, `bg=${r.bg} over=${r.over}`);
+        record("subpages", vp.name, `${path}: no hard 1px borders on cards/chips (v4)`, r.hard.length === 0, r.hard.join(" | "));
+        record("subpages", vp.name, `${path}: card containers use rounded-2xl/3xl (≥16px), no leftover rounded-xl panels`, r.oldRadius.length === 0, r.oldRadius.join(" | "));
+        if (path === "/timeline") record("subpages", vp.name, "/timeline: task titles keep a readable width (≥100px) — the D-Day/check cluster wraps instead of crushing them", r.minTitle === null || r.minTitle >= 100, `min=${r.minTitle}`);
+        // charts / tables: nothing is cut off inside a clipping container (decorative blur excluded)
+        const clipped = await p.evaluate(() => [...document.querySelectorAll("main *")].filter((el) => !el.querySelector(".blur-3xl") && !el.classList.contains("blur-3xl") && el.scrollWidth > el.clientWidth + 2 && ["hidden", "clip"].includes(getComputedStyle(el).overflowX) && getComputedStyle(el).textOverflow !== "ellipsis" && !el.className.toString().includes("truncate") && !el.className.toString().includes("line-clamp") && !el.hasAttribute("data-testid") ).length);
+        record("subpages", vp.name, `${path}: no content clipped inside overflow-hidden containers`, clipped === 0, `clipped=${clipped}`);
+      }
+    } catch (err) {
+      record("subpages", vp.name, "sub-page suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
+    }
+    await c.close();
+  }
+}
+
 // ---------------------------------------------------------------- invite flow safeguards: remembered invite + "don't create a second household" warning
 {
   const { createHash, randomBytes } = await import("node:crypto");

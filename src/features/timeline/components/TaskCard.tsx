@@ -22,10 +22,10 @@ export type TaskEmphasis = "overdue" | "today" | "upcoming" | "none";
 
 // Card chrome per section (complete strings for Tailwind JIT) — docs/DESIGN_SYSTEM.md "타임라인 섹션 성격".
 const EMPHASIS_CLASS: Record<TaskEmphasis, string> = {
-  overdue: "border-rose-200/80 dark:border-rose-900/60",
-  today: "border-amber-200/80 border-l-4 border-l-amber-400 dark:border-amber-900/60 dark:border-l-amber-500",
-  upcoming: "border-zinc-200 dark:border-zinc-800",
-  none: "border-zinc-200 dark:border-zinc-800",
+  overdue: "ring-2 ring-rose-200 dark:ring-rose-900/60",
+  today: "ring-2 ring-amber-200 dark:ring-amber-900/50",
+  upcoming: "",
+  none: "",
 };
 
 export type TaskCardProps = {
@@ -67,18 +67,18 @@ export function TaskCard({
   return (
     <li
       className={cn(
-        "rounded-xl border bg-white p-4 transition-all duration-200 dark:bg-zinc-950",
+        "rounded-3xl bg-white p-4 shadow-sm transition-all duration-200 hover:shadow-md dark:bg-zinc-900",
         EMPHASIS_CLASS[emphasis],
         !settled && !isHistory && " motion-reduce:transform-none",
         (settled || isHistory) && "opacity-60",
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", tone)}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", tone)}>
           <Icon className="h-5 w-5" />
         </div>
 
-        <div className="min-w-0 flex-1 space-y-1">
+        <div className="min-w-0 flex-1 basis-32 space-y-1">
           <h3
             className={cn(
               "line-clamp-2 break-keep text-sm font-semibold leading-snug text-slate-900 transition-all dark:text-zinc-50",
@@ -96,7 +96,7 @@ export function TaskCard({
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2.5">
+        <div className="ml-auto flex shrink-0 items-center gap-2.5">
           {isHistory ? (
             <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
               {task.completed_at ? `${shortDate(toSeoulDate(task.completed_at))} 완료` : "완료"}
@@ -127,7 +127,7 @@ export function TaskCard({
       {!isHistory && (task.consumable_name || task.consumable_model) && <ConsumableStrip info={consumable} className="mt-3" />}
 
       {!isHistory && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-zinc-800">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-1">
           <span className="text-[11px] font-normal tabular-nums text-slate-500 dark:text-zinc-400">
             {shortDate(task.due_date)} 예정
           </span>
@@ -137,7 +137,7 @@ export function TaskCard({
             <DropdownMenuTrigger
               disabled={busy || settled}
               aria-label={`${task.title} 더보기`}
-              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 bg-slate-100 dark:bg-zinc-800"
+              className="inline-flex min-h-8 items-center gap-1 rounded-full px-3 py-1 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 bg-slate-100 dark:bg-zinc-800"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
               더보기

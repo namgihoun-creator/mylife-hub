@@ -39,7 +39,7 @@ export function ReportEmpty({ children, testId }: { children: React.ReactNode; t
   return (
     <p
       data-testid={testId}
-      className="rounded-lg border border-dashed border-zinc-200 px-3 py-6 text-center text-xs font-normal text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
+      className="rounded-2xl bg-slate-50 px-3 py-6 text-center text-xs font-medium text-slate-500 dark:bg-zinc-800/60 dark:text-zinc-400"
     >
       {children}
     </p>

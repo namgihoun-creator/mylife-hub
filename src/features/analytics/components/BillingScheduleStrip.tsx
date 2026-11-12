@@ -56,10 +56,10 @@ export function BillingScheduleStrip({ schedule }: { schedule: BillingSchedule }
             </div>
           </div>
 
-          <ul className="divide-y divide-zinc-200 dark:divide-zinc-800" aria-label="결제일 순 목록">
+          <ul className="space-y-2" aria-label="결제일 순 목록">
             {items.map((it) => (
-              <li key={it.assetId} data-testid="billing-row" className="flex items-center gap-3 py-2.5">
-                <span className="inline-flex h-7 w-12 shrink-0 items-center justify-center rounded-xl text-xs font-medium tabular-nums text-zinc-900 dark:text-zinc-100 bg-slate-100 dark:bg-zinc-800">
+              <li key={it.assetId} data-testid="billing-row" className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5 dark:bg-zinc-800/60">
+                <span className="inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-xs font-bold tabular-nums text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
                   {it.billingDay ? `${it.billingDay}일` : "—"}
                 </span>
                 <div className="min-w-0 flex-1">

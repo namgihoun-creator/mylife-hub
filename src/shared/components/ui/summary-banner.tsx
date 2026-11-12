@@ -42,10 +42,10 @@ export function SummaryStat({
   return (
     <div
       className={cn(
-        "relative flex min-w-0 flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-3 sm:p-4",
+        "relative flex min-w-0 flex-col gap-2 rounded-3xl p-3 shadow-sm sm:flex-row sm:items-center sm:gap-3 sm:p-4",
         danger
-          ? "border-rose-200 bg-rose-50/60 dark:border-rose-900/60 dark:bg-rose-950/20"
-          : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+          ? "bg-rose-50 dark:bg-rose-950/30"
+          : "bg-white dark:bg-zinc-900",
       )}
     >
       {danger && (
@@ -54,7 +54,7 @@ export function SummaryStat({
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
         </span>
       )}
-      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", ICON_TONE[tone])}>
+      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl", ICON_TONE[tone])}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">

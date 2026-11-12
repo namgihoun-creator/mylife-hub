@@ -31,8 +31,8 @@ export const URGENCY_BAR_CLASS: Record<Urgency, string> = {
 /** Badge classes per urgency (complete strings for Tailwind JIT). */
 export const URGENCY_BADGE_CLASS: Record<Urgency, string> = {
   overdue:
-    "bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900",
-  soon: "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900",
-  ok: "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900",
-  none: "bg-sky-50 text-sky-600 border-sky-200 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-900",
+    "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400",
+  soon: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
+  ok: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+  none: "bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400",
 };

@@ -18,13 +18,13 @@ import type { TimelineTask } from "../schemas/timeline.schema";
 import { applyFilter, groupTasks, type TimelineFilter } from "../utils/timeline-group";
 import { TaskCard, type TaskCardProps, type TaskEmphasis } from "./TaskCard";
 
-const PILL_BASE = "shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "bg-sky-600 text-white dark:bg-sky-500 dark:text-white";
+const PILL_BASE = "min-h-11 shrink-0 rounded-full px-5 text-sm font-bold shadow-sm transition-all active:scale-95 motion-reduce:transform-none";
+const PILL_ACTIVE = "bg-sky-600 text-white shadow-sky-200 dark:bg-sky-500 dark:text-white dark:shadow-none";
 const PILL_INACTIVE =
   "bg-white text-slate-600 hover:bg-slate-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
 const CTA =
-  "inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
+  "inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-sky-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 
 type SectionKey = "overdue" | "today" | "upcoming" | "recent";
 
@@ -42,31 +42,31 @@ const SECTIONS: Record<SectionKey, SectionStyle> = {
   overdue: {
     title: "기한 초과",
     icon: AlertTriangle,
-    iconTone: "bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-950/60 dark:text-rose-400 dark:ring-rose-900/60",
-    shell: "rounded-xl border border-rose-200/80 bg-rose-50/60 p-4 dark:border-rose-900/60 dark:bg-rose-950/20",
+    iconTone: "bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400",
+    shell: "rounded-3xl bg-rose-50/70 p-3 shadow-sm dark:bg-rose-950/20 sm:p-4",
     badge: { text: "긴급", className: "bg-rose-600 text-white" },
     emphasis: "overdue",
   },
   today: {
     title: "오늘 할 일",
     icon: CalendarCheck,
-    iconTone: "bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900/50",
+    iconTone: "bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
     shell:
-      "rounded-xl border border-amber-300/70 bg-amber-50/40 p-4 ring-2 ring-amber-200/50 dark:border-amber-800/60 dark:bg-amber-950/15 dark:ring-amber-900/30",
+      "rounded-3xl bg-amber-50/70 p-3 shadow-sm dark:bg-amber-950/15 sm:p-4",
     badge: { text: "TODAY", className: "bg-amber-600 text-white dark:bg-amber-500 dark:text-black" },
     emphasis: "today",
   },
   upcoming: {
     title: "다가오는 과업",
     icon: CalendarClock,
-    iconTone: "bg-sky-50 text-sky-500 ring-1 ring-inset ring-sky-100 dark:bg-sky-950/40 dark:text-sky-400 dark:ring-sky-900/50",
+    iconTone: "bg-sky-100 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400",
     shell: "",
     emphasis: "upcoming",
   },
   recent: {
     title: "최근 완료",
     icon: CheckCircle2,
-    iconTone: "bg-emerald-50 text-emerald-500 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900/50",
+    iconTone: "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
     shell: "",
     emphasis: "none",
   },
@@ -185,10 +185,10 @@ export function TaskList({
               onClick={() => setCollapsed((c) => ({ ...c, [key]: !c[key] }))}
               className="flex w-full items-center gap-2.5 text-left"
             >
-              <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", s.iconTone)}>
+              <span className={cn("flex h-9 w-9 items-center justify-center rounded-2xl", s.iconTone)}>
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="text-base font-semibold text-slate-800 dark:text-zinc-200">{s.title}</span>
+              <span className="text-base font-extrabold text-slate-800 dark:text-zinc-100">{s.title}</span>
               {s.badge && (
                 <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide", s.badge.className)}>
                   {s.badge.text}

@@ -14,12 +14,12 @@ export function SavingsOpportunityCard({ forecast, hasRentals }: { forecast: Sav
       data-testid="savings-card"
       data-state={active ? "active" : "empty"}
       aria-label="절약 기회"
-      className="relative overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20 sm:p-5"
+      className="relative overflow-hidden rounded-3xl bg-emerald-50 p-4 shadow-sm dark:bg-emerald-950/25 sm:p-5"
     >
       <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-300/30 blur-3xl dark:bg-emerald-500/10" />
       <div className="relative space-y-4">
         <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
             <Sparkles className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0 space-y-0.5">
@@ -41,7 +41,7 @@ export function SavingsOpportunityCard({ forecast, hasRentals }: { forecast: Sav
         {transfers.length > 0 && (
           <ol className="space-y-1.5" aria-label="소유권 이전 일정">
             {transfers.map((t) => (
-              <li key={t.assetId} data-testid="transfer-row" className="flex items-center gap-2 rounded-lg border border-emerald-200/70 bg-white/70 px-3 py-2 text-xs dark:border-emerald-900/50 dark:bg-black/30">
+              <li key={t.assetId} data-testid="transfer-row" className="flex items-center gap-2 rounded-2xl bg-white px-3 py-2.5 text-xs shadow-sm dark:bg-zinc-900">
                 <span className="w-12 shrink-0 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{dday(t.daysUntil)}</span>
                 <span className="min-w-0 flex-1 font-medium text-zinc-900 dark:text-zinc-50">
                   <span className="block truncate">{t.name}</span>
@@ -59,7 +59,7 @@ export function SavingsOpportunityCard({ forecast, hasRentals }: { forecast: Sav
         {obligations.length > 0 && (
           <ul className="space-y-1.5" aria-label="약정 만료 일정">
             {obligations.map((o) => (
-              <li key={o.assetId} data-testid="obligation-row" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs dark:border-amber-900/50 dark:bg-amber-950/20">
+              <li key={o.assetId} data-testid="obligation-row" className="flex items-center gap-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-xs dark:bg-amber-950/25">
                 <span className="w-12 shrink-0 font-semibold tabular-nums text-amber-700 dark:text-amber-400">{dday(o.daysUntil)}</span>
                 <span className="min-w-0 flex-1 font-medium text-zinc-900 dark:text-zinc-50">
                   <span className="block truncate">{o.name}</span>

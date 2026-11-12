@@ -125,7 +125,7 @@ export function TimelineBoard({
       {error && (
         <p
           role="alert"
-          className="rounded-lg bg-rose-50 px-4 py-2.5 text-xs font-medium text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
+          className="rounded-2xl bg-rose-50 px-4 py-2.5 text-xs font-medium text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
         >
           {error}
         </p>

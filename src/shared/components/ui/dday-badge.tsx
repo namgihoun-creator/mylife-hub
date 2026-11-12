@@ -17,7 +17,7 @@ export function DDayBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border font-semibold tabular-nums",
+        "inline-flex items-center rounded-full font-semibold tabular-nums",
         size === "lg" ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs",
         URGENCY_BADGE_CLASS[urgency],
         className,

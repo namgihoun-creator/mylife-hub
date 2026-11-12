@@ -30,7 +30,7 @@ export function KitchenExpenseStrip({ cash, month }: { cash: Cashflow; month: st
           <Tile id="defended" icon={PiggyBank} label="냉파로 아낀 금액" value={formatWon(cash.defended)} sub="지금까지 누적 · 순 방어 이익" tone={cash.defended > 0 ? "emerald" : undefined} />
         </div>
 
-        <div data-testid="cashflow-summary" className="space-y-3 rounded-xl p-4 bg-slate-100 dark:bg-zinc-800">
+        <div data-testid="cashflow-summary" className="space-y-3 rounded-2xl bg-slate-50 p-4 dark:bg-zinc-800/60">
           <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50">가계 종합 캐시플로우 요약</p>
           <dl className="grid grid-cols-3 gap-3 text-xs">
             <div className="min-w-0">
@@ -50,18 +50,18 @@ export function KitchenExpenseStrip({ cash, month }: { cash: Cashflow; month: st
             role="img"
             data-testid="cash-bar"
             aria-label={`렌탈 ${cash.share.fixed}%, 식비 ${cash.share.human}%, 양육비 ${cash.share.pet}%`}
-            className="flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900"
+            className="flex h-2.5 w-full overflow-hidden rounded-full bg-white shadow-inner dark:bg-zinc-900"
           >
             {cash.fixed > 0 && <div data-seg="fixed" className="bg-violet-500 dark:bg-violet-400" style={{ width: `${(cash.fixed / cash.total) * 100}%` }} />}
-            {cash.humanSpent > 0 && <div data-seg="human" className="bg-zinc-900 dark:bg-zinc-100" style={{ width: `${(cash.humanSpent / cash.total) * 100}%` }} />}
+            {cash.humanSpent > 0 && <div data-seg="human" className="bg-sky-500 dark:bg-sky-400" style={{ width: `${(cash.humanSpent / cash.total) * 100}%` }} />}
             {cash.petSpent > 0 && <div data-seg="pet" className="bg-cyan-500 dark:bg-cyan-400" style={{ width: `${(cash.petSpent / cash.total) * 100}%` }} />}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-violet-500 dark:bg-violet-400" aria-hidden />렌탈 {cash.share.fixed}%</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-zinc-900 dark:bg-zinc-100" aria-hidden />식비 {cash.share.human}%</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-sky-500 dark:bg-sky-400" aria-hidden />식비 {cash.share.human}%</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-cyan-500 dark:bg-cyan-400" aria-hidden />양육비 {cash.share.pet}%</span>
           </div>
-          <p data-testid="cash-defended" className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-300">
+          <p data-testid="cash-defended" className="rounded-2xl bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
             {cash.defended > 0
               ? `냉파로 지금까지 ${formatWon(cash.defended)}을 지켰어요${cash.defendedPct !== null && cash.variable > 0 ? ` (이번 달 변동 지출 대비 방어액 비율 ${cash.defendedPct}%)` : ""}.`
               : "재료를 기한 안에 다 먹으면 방어액이 쌓여요."}

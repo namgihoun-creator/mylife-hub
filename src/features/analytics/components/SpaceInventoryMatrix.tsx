@@ -10,8 +10,8 @@ type Mode = "space" | "category";
 function StackBar({ owned, rental, label }: { owned: number; rental: number; label: string }) {
   const total = owned + rental;
   return (
-    <div role="img" aria-label={label} className="flex h-2 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900">
-      {owned > 0 && <div data-seg="owned" className="bg-zinc-900 dark:bg-zinc-100" style={{ width: `${(owned / total) * 100}%` }} />}
+    <div role="img" aria-label={label} className="flex h-2 w-full overflow-hidden rounded-full bg-white shadow-inner dark:bg-zinc-900">
+      {owned > 0 && <div data-seg="owned" className="bg-sky-500 dark:bg-sky-400" style={{ width: `${(owned / total) * 100}%` }} />}
       {rental > 0 && <div data-seg="rental" className="bg-violet-500 dark:bg-violet-400" style={{ width: `${(rental / total) * 100}%` }} />}
     </div>
   );
@@ -19,7 +19,7 @@ function StackBar({ owned, rental, label }: { owned: number; rental: number; lab
 
 function Row({ row }: { row: DistributionRow }) {
   return (
-    <li data-testid="matrix-row" data-key={row.key} className="space-y-1.5 py-2.5">
+    <li data-testid="matrix-row" data-key={row.key} className="space-y-1.5 rounded-2xl bg-slate-50 px-3 py-2.5 dark:bg-zinc-800/60">
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{row.key}</p>
         <p className="shrink-0 text-xs font-normal tabular-nums text-zinc-500 dark:text-zinc-400">
@@ -31,7 +31,7 @@ function Row({ row }: { row: DistributionRow }) {
   );
 }
 
-const TAB = "h-8 rounded-lg border px-3 text-xs font-medium transition-colors";
+const TAB = "min-h-11 rounded-full px-4 text-sm font-bold transition-all active:scale-95 motion-reduce:transform-none";
 
 /** Where the appliances are (by space / category) and how much of each is rented. */
 export function SpaceInventoryMatrix({ distribution }: { distribution: Distribution }) {
@@ -44,7 +44,7 @@ export function SpaceInventoryMatrix({ distribution }: { distribution: Distribut
       title="가전 현황"
       description="자가 / 렌탈 비율을 한눈에 확인해요."
       action={
-        <div role="radiogroup" aria-label="분류 기준" className="flex shrink-0 gap-1.5">
+        <div role="radiogroup" aria-label="분류 기준" className="flex flex-wrap gap-1.5">
           {(["space", "category"] as const).map((m) => (
             <button
               key={m}
@@ -55,8 +55,8 @@ export function SpaceInventoryMatrix({ distribution }: { distribution: Distribut
               className={cn(
                 TAB,
                 mode === m
-                  ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100"
-                  : "border-zinc-200 text-zinc-500 hover:border-zinc-300 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700",
+                  ? "bg-sky-600 text-white shadow-sm dark:bg-sky-500"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700",
               )}
             >
               {m === "space" ? "공간별" : "카테고리별"}
@@ -69,7 +69,7 @@ export function SpaceInventoryMatrix({ distribution }: { distribution: Distribut
         <ReportEmpty testId="matrix-empty">등록된 가전이 없어요.</ReportEmpty>
       ) : (
         <div className="space-y-4">
-          <div data-testid="ownership-share" className="space-y-1.5 rounded-xl p-3 bg-slate-100 dark:bg-zinc-800">
+          <div data-testid="ownership-share" className="space-y-1.5 rounded-2xl bg-slate-50 p-3 dark:bg-zinc-800/60">
             <div className="flex items-baseline justify-between text-xs font-normal text-zinc-500 dark:text-zinc-400">
               <span>전체 {distribution.total}개 · 소유 형태</span>
               <span className="tabular-nums">
@@ -78,14 +78,14 @@ export function SpaceInventoryMatrix({ distribution }: { distribution: Distribut
             </div>
             <StackBar owned={distribution.owned} rental={distribution.rental} label={`전체: 자가 ${distribution.owned}개, 렌탈 ${distribution.rental}개`} />
           </div>
-          <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <ul className="space-y-2">
             {rows.map((r) => (
               <Row key={r.key} row={r} />
             ))}
           </ul>
           <div className="flex gap-4 text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-sm bg-zinc-900 dark:bg-zinc-100" aria-hidden />
+              <span className="h-2 w-2 rounded-sm bg-sky-500 dark:bg-sky-400" aria-hidden />
               자가
             </span>
             <span className="inline-flex items-center gap-1.5">
