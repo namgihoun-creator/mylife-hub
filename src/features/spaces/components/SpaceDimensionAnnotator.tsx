@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Camera, Check, Image as ImageIcon, Loader2, PencilRuler, Trash2, Pencil, X } from "lucide-react";
+import { Camera, Check, Image as ImageIcon, Loader2, PencilRuler, ScanLine, Trash2, Pencil, X } from "lucide-react";
 import { saveAnnotations, setSpacePhoto } from "../server/space.actions";
 import { PhotoError, uploadSpacePhoto } from "../utils/space-photo";
 import { MAX_ANNOTATIONS } from "../schemas/space-constants";
 import type { AnnotationInput } from "../schemas/space.schema";
 import { AXIS_WORD, annotationAxis, composeLabel, type AxisChoice } from "@/shared/utils/space-planner";
 import { cn } from "@/shared/lib/utils";
+import { useWebXrArSupport } from "@/shared/hooks/useWebXrArSupport";
+import { WebXrArMeasureModal, type ArMeasurement } from "./WebXrArMeasureModal";
 
 type Point = { x: number; y: number };
 type Line = { x1: number; y1: number; x2: number; y2: number };
@@ -60,6 +62,22 @@ export function SpaceDimensionAnnotator({
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const arSupport = useWebXrArSupport();
+  const [arOpen, setArOpen] = useState(false);
+
+  // AR result -> a movable line on the photo plus the prefilled form; the user can drag it into place and save
+  const applyAr = (m: ArMeasurement) => {
+    if (annotations.length >= MAX_ANNOTATIONS) {
+      setMessage(`치수는 ${MAX_ANNOTATIONS}개까지 넣을 수 있어요.`);
+      return;
+    }
+    const y = 0.25 + 0.1 * (annotations.length % 6);
+    setSelectedId(null);
+    setDraft({ x1: 0.2, y1: y, x2: 0.8, y2: y });
+    setDragging(false);
+    setForm({ axis: m.axis, name: m.name, cm: cmText(m.lengthCm) });
+    setMessage(null);
+  };
 
   const editing = draft !== null && !dragging ? "new" : selectedId ? "existing" : null;
   useEffect(() => onBusyChange?.(dragging || live !== null || editing !== null || saving || uploading), [dragging, live, editing, saving, uploading, onBusyChange]);
@@ -210,6 +228,11 @@ export function SpaceDimensionAnnotator({
         </h2>
         {photoUrl && (
           <div className="flex flex-wrap items-center gap-2">
+            {arSupport === "supported" && (
+              <button type="button" data-testid="ar-open" onClick={() => setArOpen(true)} className={cn(pickBtn, "bg-sky-600 text-white shadow-sm hover:bg-sky-500 dark:bg-sky-500")}>
+                <ScanLine size={16} strokeWidth={2.5} aria-hidden /> AR 카메라로 재기 (Beta)
+              </button>
+            )}
             <button type="button" data-testid="draw-toggle" aria-pressed={draw} onClick={() => { setDraw((v) => !v); closeForm(); }} className={cn(pickBtn, draw ? "bg-sky-600 text-white shadow-sm dark:bg-sky-500" : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700")}>
               <PencilRuler size={16} strokeWidth={2.5} aria-hidden /> {draw ? "선 긋는 중" : "선 긋기"}
             </button>
@@ -220,6 +243,7 @@ export function SpaceDimensionAnnotator({
         )}
       </div>
       {pickers}
+      {arOpen && <WebXrArMeasureModal onApply={applyAr} onClose={() => setArOpen(false)} />}
 
       {!photoUrl ? (
         <div data-testid="photo-empty" className="flex flex-col items-center gap-3 rounded-3xl bg-slate-50 px-4 py-10 text-center dark:bg-zinc-800/60">

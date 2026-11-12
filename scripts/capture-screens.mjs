@@ -5017,6 +5017,47 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         await c.close();
       }
 
+      // AR camera measuring (WebXR immersive-ar): hidden unless the browser says it can do AR
+      {
+        const { c, p } = await mk(VIEWPORTS[0]);
+        await p.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+        await p.getByTestId("space-photo").waitFor();
+        await p.waitForTimeout(400);
+        record("spaces", "desktop", "AR: ordinary browser (no immersive-ar) -> ‘AR 카메라로 재기’ button is not rendered, page has no errors", (await p.getByTestId("ar-open").count()) === 0 && p.__errors.length === 0, p.__errors.join(" | ").slice(0, 160));
+        await c.close();
+        const { c: c2, p: p2 } = await mk(VIEWPORTS[0]);
+        await p2.addInitScript(() => { Object.defineProperty(navigator, "xr", { value: { isSessionSupported: () => { throw new Error("SecurityError"); } }, configurable: true }); });
+        await p2.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+        await p2.getByTestId("space-photo").waitFor();
+        await p2.waitForTimeout(400);
+        record("spaces", "desktop", "AR: isSessionSupported throws -> still hidden, no crash", (await p2.getByTestId("ar-open").count()) === 0 && p2.__errors.length === 0, p2.__errors.join(" | ").slice(0, 160));
+        await c2.close();
+      }
+      for (const vp of SPACE_VPS) {
+        const { c, p } = await mk(vp);
+        await p.addInitScript(() => {
+          Object.defineProperty(navigator, "xr", { value: { isSessionSupported: async (m) => m === "immersive-ar", requestSession: async () => { throw new Error("mock: no AR hardware"); } }, configurable: true });
+        });
+        await p.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+        await p.getByTestId("space-photo").waitFor();
+        const btn = p.getByTestId("ar-open");
+        await btn.waitFor({ timeout: 10_000 });
+        const info = await btn.evaluate((b) => { const r = b.getBoundingClientRect(); const cs = getComputedStyle(b); return { l: r.left, r: r.right, h: r.height, vw: window.innerWidth, text: b.textContent.trim(), bg: cs.backgroundColor, sw: b.scrollWidth, cw: b.clientWidth }; });
+        record("spaces", vp.name, "AR: with immersive-ar supported the Sky ‘AR 카메라로 재기 (Beta)’ capsule shows inside the screen (no overflow/clipping, >= 44px tall)", /AR 카메라로 재기 \(Beta\)/.test(info.text) && info.l >= 0 && info.r <= info.vw + 0.5 && info.h >= 44 && info.sw <= info.cw + 1 && (await overflowX(p)) <= 0, `${Math.round(info.l)}-${Math.round(info.r)}/${info.vw} h=${Math.round(info.h)} ${info.bg}`);
+        await btn.click();
+        const modal = p.getByTestId("ar-modal");
+        await modal.waitFor();
+        const mi = await modal.evaluate((m) => { const r = m.getBoundingClientRect(); return { w: r.width, vw: window.innerWidth, sw: m.scrollWidth, cw: m.clientWidth }; });
+        record("spaces", vp.name, "AR: opening shows the intro card with the 2~5 cm error notice, no horizontal overflow", /2~5cm 오차/.test(await modal.innerText()) && mi.sw <= mi.cw + 1 && mi.w <= mi.vw + 0.5 && (await overflowX(p)) <= 0, JSON.stringify(mi));
+        await p.getByTestId("ar-start").click();
+        await p.getByTestId("ar-error").waitFor();
+        record("spaces", vp.name, "AR: a failing session start falls back to a message and keeps the dialog usable (no page error)", /직접 입력/.test(await p.getByTestId("ar-error").innerText()) && (await p.getByTestId("ar-start").isEnabled()) && p.__errors.length === 0, p.__errors.join(" | ").slice(0, 160));
+        if (vp.name === "mobile" || vp.name === "fold280") await p.screenshot({ path: `${OUT}/spaces-ar-${vp.name}.png` });
+        await p.getByTestId("ar-close").click();
+        record("spaces", vp.name, "AR: close button dismisses the dialog", (await p.getByTestId("ar-modal").count()) === 0);
+        await c.close();
+      }
+
       // dark mode
       {
         const { c, p } = await mk(VIEWPORTS[1], { scheme: "dark" });
