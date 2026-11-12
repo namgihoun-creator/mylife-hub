@@ -3188,6 +3188,9 @@ const CRON_SECRET = process.env.CRON_SECRET;
       const image = parts.find((p) => p.inlineData)?.inlineData;
       mock.hits.push({ url: req.url, key: req.headers["x-goog-api-key"], image: image?.data ?? null, text });
       const send = (status, payload) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(payload); };
+      if (text.includes("인테리어 코디네이터")) { // space planner (/api/spaces/analyze): one fixed, plausible reply
+        return send(200, ai({ spaceSummary: "밝은 오크 마루에 화이트 벽지예요. 남향 창으로 채광이 좋고 벽면 오른쪽에 콘센트가 있어요.", recommendations: [{ category: "소파", title: "웜 아이보리 패브릭 3인용 모듈 소파", reason: "벽면 240cm보다 30cm 짧아 동선이 편해요.", recommendedSize: { widthCm: 210, depthCm: 90, heightCm: 80 }, searchKeywords: "아이보리 패브릭 3인 소파 2100", estimatedPriceRange: "60만~90만원대" }, { category: "수납장", title: "화이트 우드 낮은 수납장", reason: "마루 톤과 맞아요.", recommendedSize: { widthCm: 180, depthCm: 35, heightCm: 70 }, searchKeywords: "화이트 우드 수납장 1800", estimatedPriceRange: "20만원대" }, { category: "테이블", title: "오크 원형 테이블", reason: "동선을 막지 않아요.", recommendedSize: { widthCm: 80, depthCm: 80, heightCm: 45 }, searchKeywords: "오크 원형 테이블 800", estimatedPriceRange: "15만~25만원대" }] }));
+      }
       if (image) {
         if (mock.vision === "fail429") return send(429, "{}");
         if (mock.vision === "garbage") return send(200, JSON.stringify({ candidates: [{ content: { parts: [{ text: "this is not json" }] } }] }));
