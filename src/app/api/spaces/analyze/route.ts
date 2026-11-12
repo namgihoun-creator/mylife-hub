@@ -4,12 +4,14 @@ import { createClient } from "@/shared/lib/supabase/server";
 import { clientIp, rateLimit } from "@/shared/lib/rate-limit";
 import { analyzeSpace, type RoomType } from "@/features/spaces/server/gemini-space";
 import { analyzeBodySchema, annotationsSchema } from "@/features/spaces/schemas/space.schema";
-import { checkImage, sniffImage, MAX_IMAGE_BYTES } from "@/features/kitchen/server/gemini-kitchen";
+import { checkImage, sniffImage } from "@/features/kitchen/server/gemini-kitchen";
 
 export const maxDuration = 60; // Gemini Vision can take a while (45 s client timeout per model)
 
 const NO_STORE = { "Cache-Control": "no-store" };
 const BUCKET = "space-photos";
+// Stored photos are compressed to <= 1600 px in the browser (the bucket itself caps at 5 MB); inline uploads keep the kitchen's tighter limit.
+const MAX_STORED_BYTES = 5 * 1024 * 1024;
 // Gemini is on the free tier: a couple analysing a room needs a handful of calls, not hundreds.
 const RATE_LIMIT = 8;
 const RATE_WINDOW_MS = 60_000;
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
     const { data: blob, error } = await supabase.storage.from(BUCKET).download(photoPath);
     if (error || !blob) return fail(404, "PHOTO_NOT_FOUND", "사진을 찾을 수 없어요.");
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (bytes.length > MAX_IMAGE_BYTES) return fail(400, "BAD_IMAGE", "사진이 너무 커요. 더 작은 사진으로 다시 올려 주세요.");
+    if (bytes.length > MAX_STORED_BYTES) return fail(400, "BAD_IMAGE", "사진이 너무 커요. 더 작은 사진으로 다시 올려 주세요.");
     const sniffed = sniffImage(bytes);
     if (!sniffed) return fail(400, "BAD_IMAGE", "JPG, PNG, WEBP 사진만 분석할 수 있어요.");
     imageBase64 = Buffer.from(bytes).toString("base64");

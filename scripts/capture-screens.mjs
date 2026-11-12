@@ -2333,7 +2333,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
           const links = await nav.locator("a").allInnerTexts();
           const cur = await nav.locator('a[aria-current="page"]').allInnerTexts();
           record("analytics", vp.name, "nav: [리포트] tab present and marked aria-current on /analytics (others not)", links.some((t) => t.includes("리포트")) && cur.length === 1 && cur[0].includes("리포트"), `links=${links.join("|")} cur=${cur.join("|")}`);
-          if (vp.name === "mobile") record("analytics", vp.name, "mobile bottom tab bar has 4 tabs (자산·타임라인·키친·리포트)", (await nav.locator("a").count()) === 4);
+          if (vp.name === "mobile") record("analytics", vp.name, "mobile bottom tab bar has 5 tabs (자산·타임라인·키친·공간·리포트)", (await nav.locator("a").count()) === 5);
 
           const row = p.getByTestId("billing-row").filter({ hasText: `E2E렌탈A${rand}` });
           const rowText = await row.innerText();
@@ -3113,7 +3113,7 @@ const CRON_SECRET = process.env.CRON_SECRET;
         record("kitchen-ui", vp.name, `${tag}: pet banner is visible and themed (cat household, 양파 present)`, (await q.getByTestId("pet-toxic-banner").isVisible()) && (scheme === "dark" ? lum(bn) < 0.2 : lum(bn) > 0.85), bn);
         if (vp.name === "mobile") {
           const bottom = q.locator('nav[aria-label="주요 메뉴"]').last();
-          record("kitchen-ui", vp.name, `${tag}: 4-tab bottom bar with 키친 active`, (await bottom.locator("a").count()) === 4 && (await bottom.locator('a[aria-current="page"]').innerText()).includes("키친"));
+          record("kitchen-ui", vp.name, `${tag}: 5-tab bottom bar with 키친 active`, (await bottom.locator("a").count()) === 5 && (await bottom.locator('a[aria-current="page"]').innerText()).includes("키친"));
           const cols = await q.getByTestId("kitchen-list").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
           record("kitchen-ui", vp.name, `${tag}: one-column card grid at 375px, 2×2 KPI tiles`, cols === 1 && (await q.getByTestId("kitchen-pulse").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length)) === 2);
         } else {
@@ -4109,7 +4109,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         const n = nav.getBoundingClientRect();
         return { lastBottom: last.bottom, navTop: n.top, pb: parseFloat(getComputedStyle(f).paddingBottom), scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth };
       });
-      record("footer", vp.name, "at the very bottom of the page the footer's last line sits ABOVE the fixed 4-tab bar (not hidden behind it)", geo.lastBottom <= geo.navTop, JSON.stringify(geo));
+      record("footer", vp.name, "at the very bottom of the page the footer's last line sits ABOVE the fixed 5-tab bar (not hidden behind it)", geo.lastBottom <= geo.navTop, JSON.stringify(geo));
       record("footer", vp.name, "mobile bottom padding clears the tab bar (≥ 72px = 4.5rem + safe area) and there is no horizontal scroll", geo.pb >= 72 && geo.scrollW <= geo.innerW, JSON.stringify(geo));
       // tapping a tab while scrolled to the bottom still works (the footer never intercepts the bar)
       const tab = p.locator('nav[aria-label="주요 메뉴"]').last().getByRole("link", { name: "리포트" });
@@ -4614,6 +4614,445 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
     record("invite-guard", "-", "invite-guard suite ran to completion", false, String(err?.stack ?? err).slice(0, 400));
   } finally {
     if (inviteId) await svc.from("household_invites").delete().eq("id", inviteId);
+  }
+}
+
+// ---------------------------------------------------------------- Space & furniture planner (stage 2 UI): /spaces, measuring canvas, AI coordinator, wish board
+// Runs in a throw-away household. Needs migration 16 and `npm run dev:e2e` (the mock Gemini on :4010 answers the coordinator prompt).
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const http = await import("node:http");
+  const sharp = (await import("sharp")).default;
+  const probe = await svc.from("space_projects").select("id").limit(1);
+  if (probe.error) {
+    record("spaces", "-", "migration 16 applied (space_projects exists)", false, probe.error.message);
+  } else {
+    const ai = (payload) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] });
+    const RECS = {
+      spaceSummary: "밝은 오크 마루에 화이트 벽지예요. 남향 창으로 채광이 좋고 오른쪽 벽에 콘센트가 있어요.",
+      recommendations: [
+        { category: "소파", title: "웜 아이보리 패브릭 3인용 모듈 소파", reason: "벽면 안에 여유 있게 들어가고 오크 마루와 톤이 맞아요.", recommendedSize: { widthCm: 210, depthCm: 90, heightCm: 80 }, searchKeywords: "아이보리 패브릭 3인 소파 2100", estimatedPriceRange: "60만~90만원대" },
+        { category: "수납장", title: "화이트 우드 낮은 수납장", reason: "창가 아래 높이를 막지 않아요.", recommendedSize: { widthCm: 236, depthCm: 35, heightCm: 70 }, searchKeywords: "화이트 우드 수납장 2360", estimatedPriceRange: "20만원대" },
+        { category: "테이블", title: "오크 원형 테이블", reason: "동선을 막지 않아요.", recommendedSize: { widthCm: 260, depthCm: 80, heightCm: 45 }, searchKeywords: "오크 원형 테이블 800", estimatedPriceRange: "15만~25만원대" },
+      ],
+    };
+    const mock = { hits: [] };
+    const server = http.createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        let body = {};
+        try { body = JSON.parse(raw || "{}"); } catch { /* ignore */ }
+        const parts = body.contents?.[0]?.parts ?? [];
+        const text = parts.find((p) => p.text)?.text ?? "";
+        mock.hits.push({ key: req.headers["x-goog-api-key"], text, image: parts.find((p) => p.inlineData)?.inlineData?.data ?? null });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(ai(text.includes("인테리어 코디네이터") ? RECS : []));
+      });
+    });
+    let listening = true;
+    await new Promise((resolve) => { server.once("error", () => { listening = false; resolve(); }); server.listen(4010, "127.0.0.1", resolve); });
+
+    let userId = null, H = null;
+    const until = async (fn, tries = 60) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+    const near = (a, b, tol = 0.02) => typeof a === "number" && Math.abs(a - b) <= tol;
+    try {
+      if (!listening) throw new Error("port 4010 busy (mock Gemini could not start)");
+      const email = `mylife.e2e.space+${rand}@example.com`;
+      const pw = `Pw-${rand}-${Date.now()}`;
+      const { data: su, error: suErr } = await svc.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: "E2E 공간" } });
+      if (suErr) throw new Error(`spaces createUser failed: ${suErr.message}`);
+      userId = su.user.id;
+      const cl = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+      await cl.auth.signInWithPassword({ email, password: pw });
+      await cl.rpc("create_household", { p_name: "E2E 공간", p_display_name: "E2E 공간" });
+      H = (await svc.from("profiles").select("household_id").eq("id", userId).single()).data.household_id;
+
+      let state;
+      {
+        const c = await newContext(VIEWPORTS[0]);
+        const p = await c.newPage();
+        await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+        await p.fill('input[name="email"]', email);
+        await p.fill('input[name="password"]', pw);
+        await p.click('button[type="submit"]');
+        await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20_000 });
+        state = await c.storageState();
+        await c.close();
+      }
+      const mk = async (vp, { scheme = "light" } = {}) => {
+        const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+        await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+        const p = await c.newPage();
+        p.__errors = [];
+        p.on("pageerror", (e) => p.__errors.push(String(e)));
+        return { c, p };
+      };
+      const overflowX = (p) => p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+      // a 2400x1800 "room" photo: must be shrunk to <= 1600px before it is stored
+      const roomJpeg = await sharp({ create: { width: 2400, height: 1800, channels: 3, background: { r: 236, g: 226, b: 208 } } })
+        .composite([{ input: Buffer.from('<svg width="2400" height="700" xmlns="http://www.w3.org/2000/svg"><rect width="2400" height="700" fill="#cfd8dc"/><rect x="1500" y="120" width="500" height="420" fill="#90caf9"/></svg>'), top: 0, left: 0 }])
+        .jpeg({ quality: 92 }).toBuffer();
+
+      const spaceRows = async () => (await svc.from("space_projects").select("*").eq("household_id", H).order("created_at")).data ?? [];
+      const candRows = async () => (await svc.from("space_furniture_candidates").select("*").eq("household_id", H).order("created_at")).data ?? [];
+      const lineBox = async (p) => {
+        await p.getByTestId("annotation-overlay").evaluate((el) => el.scrollIntoView({ block: "center" })); // mouse coordinates are viewport-relative
+        return p.getByTestId("annotation-overlay").boundingBox();
+      };
+      const dragFrac = async (p, [fx1, fy1], [fx2, fy2]) => {
+        const b = await lineBox(p);
+        await p.mouse.move(b.x + fx1 * b.width, b.y + fy1 * b.height);
+        await p.mouse.down();
+        await p.mouse.move(b.x + ((fx1 + fx2) / 2) * b.width, b.y + ((fy1 + fy2) / 2) * b.height, { steps: 5 });
+        await p.mouse.move(b.x + fx2 * b.width, b.y + fy2 * b.height, { steps: 5 });
+        await p.mouse.up();
+      };
+
+      // ============================================================ desktop: the whole flow
+      const { c: dc, p: dp } = await mk(VIEWPORTS[0]);
+      await dp.goto(`${BASE}/spaces`, { waitUntil: "networkidle" });
+      const topTabs = await dp.locator('header nav[aria-label="주요 메뉴"] a').allInnerTexts();
+      record("spaces", "desktop", "header has 5 tabs; ‘공간 플래너’ is the active one on /spaces", topTabs.length === 5 && topTabs.some((t) => t.trim() === "공간 플래너") && (await dp.locator('header nav a[aria-current="page"]').innerText()).trim() === "공간 플래너", topTabs.join("|"));
+      record("spaces", "desktop", "empty state + page title + gradient CTA ‘새 공간 등록’", (await dp.getByText("아직 등록한 공간이 없어요").count()) === 1 && (await dp.getByRole("heading", { name: "공간 플래너" }).count()) === 1 && /from-sky-500/.test((await dp.getByTestId("space-new").getAttribute("class")) ?? ""));
+
+      // help badge -> 3-step slide tutorial
+      await dp.getByTestId("help-btn").click();
+      const helpDlg = dp.getByRole("dialog");
+      await helpDlg.waitFor();
+      const s1 = (await helpDlg.innerText()).replace(/\s+/g, " ");
+      await dp.keyboard.press("ArrowRight");
+      await dp.keyboard.press("ArrowRight");
+      await dp.waitForTimeout(450);
+      const s3 = (await helpDlg.innerText()).replace(/\s+/g, " ");
+      record("spaces", "desktop", "‘사용 가이드’ badge opens the space_planner 3-step slide tutorial (Step 1/3 … 3/3, final CTA)", /Step 1 \/ 3/.test(s1) && /사진 찍고 실측 치수 표시/.test(s1) && /Step 3 \/ 3/.test(s3) && /위시 보드/.test(s3) && /직접 해보기/.test(s3), s1.slice(0, 80));
+      await dp.keyboard.press("Escape");
+      await dp.waitForTimeout(300);
+
+      // ---- new space (with photo)
+      await dp.getByTestId("space-new").click();
+      const nd = dp.getByTestId("space-new-dialog");
+      await nd.waitFor();
+      await nd.getByTestId("space-name").fill("거실 소파 자리");
+      await nd.getByRole("radio", { name: "화이트 우드" }).click();
+      await nd.getByTestId("new-photo-gallery").setInputFiles({ name: "room.jpg", mimeType: "image/jpeg", buffer: roomJpeg });
+      record("spaces", "desktop", "new-space dialog: purpose (6) and style (5) pills, photo picker shows the chosen file", (await nd.getByRole("radiogroup", { name: "공간 용도" }).getByRole("radio").count()) === 6 && (await nd.getByRole("radiogroup", { name: "선호 스타일" }).getByRole("radio").count()) === 5 && (await nd.getByTestId("new-photo-name").innerText()) === "room.jpg");
+      await nd.getByTestId("space-create").click();
+      await dp.waitForURL(/\/spaces\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+      const spaceId = dp.url().split("/").pop();
+      const sp0 = await until(async () => { const r = (await spaceRows())[0]; return r?.photo_path ? r : null; });
+      record("spaces", "desktop", "space saved: name · purpose living · style · photo_path = <household>/<space>/<file>.jpg", sp0?.name === "거실 소파 자리" && sp0.room_type === "living" && sp0.style_preference === "화이트 우드" && new RegExp(`^${H}/${spaceId}/[0-9a-f-]{36}\\.jpg$`).test(sp0.photo_path ?? ""), sp0?.photo_path);
+      const dl = sp0?.photo_path ? await svc.storage.from("space-photos").download(sp0.photo_path) : null;
+      const meta = dl?.data ? await sharp(Buffer.from(await dl.data.arrayBuffer())).metadata() : null;
+      record("spaces", "desktop", "photo was resized in the browser: stored JPEG longest side 1500-1600 px and <= 5 MB (original 2400x1800)", !!meta && Math.max(meta.width, meta.height) <= 1600 && Math.max(meta.width, meta.height) >= 1500 && meta.format === "jpeg" && dl.data.size <= 5 * 1024 * 1024, meta ? `${meta.width}x${meta.height} ${dl.data.size}B` : "no file");
+      await dp.getByTestId("space-photo").waitFor();
+      const imgInfo = await dp.getByTestId("space-photo").evaluate((i) => ({ src: i.src, w: i.naturalWidth }));
+      record("spaces", "desktop", "photo renders through a Signed URL of the private bucket", /\/storage\/v1\/object\/sign\/space-photos\//.test(imgInfo.src) && /token=/.test(imgInfo.src) && imgInfo.w > 0, imgInfo.src.slice(0, 90));
+      record("spaces", "desktop", "detail page: title and three sections (실측 · AI · 위시)", (await dp.getByTestId("space-title").innerText()) === "거실 소파 자리" && (await dp.getByTestId("annotator").count()) === 1 && (await dp.getByTestId("ai-coordinator").count()) === 1 && (await dp.getByTestId("wish-board").count()) === 1);
+
+      // ---- measuring: draw, label, save
+      await dp.getByTestId("draw-toggle").click();
+      await dragFrac(dp, [0.15, 0.5], [0.85, 0.5]);
+      const form = dp.getByTestId("annotation-form");
+      await form.waitFor();
+      record("spaces", "desktop", "dragging two points opens the inline form: axis pills (가로·깊이·높이·직접 입력), name, cm", (await form.getByRole("radio").count()) === 4 && (await form.getByTestId("annotation-cm").count()) === 1);
+      await form.getByTestId("annotation-name").fill("소파 벽면");
+      await form.getByTestId("annotation-cm").fill("240");
+      await form.getByTestId("annotation-save").click();
+      const a1 = await until(async () => { const r = (await spaceRows())[0]; return r?.annotations?.length === 1 ? r.annotations[0] : null; });
+      record("spaces", "desktop", "line saved to space_projects.annotations as 0..1 fractions + label + lengthCm", !!a1 && near(a1.x1, 0.15) && near(a1.y1, 0.5) && near(a1.x2, 0.85) && near(a1.y2, 0.5) && [a1.x1, a1.y1, a1.x2, a1.y2].every((n) => n >= 0 && n <= 1) && a1.label === "소파 벽면" && a1.lengthCm === 240, JSON.stringify(a1));
+      const cap = dp.getByTestId("annotation-capsule");
+      record("spaces", "desktop", "bold capsule label on the photo: ‘소파 벽면 240cm’, list row below", (await cap.innerText()).trim() === "소파 벽면 240cm" && /소파 벽면/.test(await dp.getByTestId("annotation-list").innerText()));
+
+      // handle drag: move the end point; capsule click: edit the cm
+      const ob = await lineBox(dp);
+      const hb = await dp.getByTestId("annotation-handle").nth(1).boundingBox();
+      await dp.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+      await dp.mouse.down();
+      await dp.mouse.move(ob.x + 0.7 * ob.width, ob.y + 0.5 * ob.height, { steps: 6 });
+      await dp.mouse.up();
+      const a1b = await until(async () => { const r = (await spaceRows())[0]; return r?.annotations?.[0] && near(r.annotations[0].x2, 0.7, 0.03) ? r.annotations[0] : null; });
+      const a1bNow = a1b ?? (await spaceRows())[0]?.annotations?.[0];
+      record("spaces", "desktop", "end handle can be dragged: new end point saved (x2 ≈ 0.7), start unchanged", !!a1b && near(a1b.x1, 0.15) && near(a1b.y2, 0.5, 0.03), JSON.stringify(a1bNow));
+      await dp.getByTestId("draw-toggle").click(); // drawing off
+      await cap.click();
+      await dp.getByTestId("annotation-form").waitFor();
+      await dp.getByTestId("annotation-cm").fill("250");
+      await dp.getByTestId("annotation-save").click();
+      const a1c = await until(async () => { const r = (await spaceRows())[0]; return r?.annotations?.[0]?.lengthCm === 250 ? r.annotations[0] : null; });
+      record("spaces", "desktop", "clicking the capsule edits the measurement (240 → 250 cm saved)", !!a1c && a1c.label === "소파 벽면", JSON.stringify(a1c));
+
+      // a 2nd line (높이) and delete it
+      await dp.getByTestId("draw-toggle").click();
+      await dragFrac(dp, [0.9, 0.1], [0.9, 0.9]);
+      await dp.getByTestId("annotation-form").waitFor();
+      await dp.getByTestId("annotation-form").getByRole("radio", { name: "높이" }).click();
+      await dp.getByTestId("annotation-cm").fill("235");
+      await dp.getByTestId("annotation-save").click();
+      const two = await until(async () => { const r = (await spaceRows())[0]; return r?.annotations?.length === 2 ? r.annotations : null; });
+      record("spaces", "desktop", "axis pill 높이 → label reads back as height (‘높이’) with 235 cm", !!two && two[1].label === "높이" && two[1].lengthCm === 235, JSON.stringify(two?.[1]));
+      await dp.getByRole("button", { name: "높이 삭제" }).click();
+      const one = await until(async () => { const r = (await spaceRows())[0]; return r?.annotations?.length === 1 ? r : null; });
+      record("spaces", "desktop", "a measurement can be deleted (row removed, capsule gone)", !!one && (await dp.getByTestId("annotation-capsule").count()) === 1);
+      await dp.getByTestId("draw-toggle").click(); // off
+
+      // ---- AI coordinator
+      const hitsBefore = mock.hits.length;
+      record("spaces", "desktop", "AI panel: purposes 거실·안방/침실·주방·서재·아이방·기타 and styles 화이트 우드·모던 미니멀·내추럴 패브릭·아기 안전·호텔식", (await dp.getByRole("radiogroup", { name: "공간 용도" }).getByRole("radio").allInnerTexts()).join("|") === "거실|안방/침실|주방|서재|아이방|기타" && (await dp.getByRole("radiogroup", { name: "선호 스타일" }).getByRole("radio").allInnerTexts()).join("|") === "화이트 우드|모던 미니멀|내추럴 패브릭|아기 안전|호텔식");
+      await dp.getByTestId("ai-run").click();
+      await dp.getByTestId("ai-rec").first().waitFor({ timeout: 30_000 });
+      const recs = dp.getByTestId("ai-rec");
+      record("spaces", "desktop", "AI result: diagnosis card + 3 recommendation cards", (await recs.count()) === 3 && /오크 마루/.test(await dp.getByTestId("ai-summary").innerText()));
+      const rec0 = (await recs.nth(0).innerText()).replace(/\s+/g, " ");
+      record("spaces", "desktop", "card shows category, name, reason, size W×D×H cm, price range", /소파/.test(rec0) && /웜 아이보리 패브릭 3인용 모듈 소파/.test(rec0) && /벽면 안에 여유/.test(rec0) && /210×90×80cm/.test(rec0) && /60만~90만원대/.test(rec0), rec0.slice(0, 120));
+      const fits = await recs.evaluateAll((els) => els.map((e) => e.querySelector('[data-testid="fit-badge"]')?.getAttribute("data-fit")));
+      const fitTexts = await recs.evaluateAll((els) => els.map((e) => e.querySelector('[data-testid="fit-badge"]')?.textContent?.trim()));
+      record("spaces", "desktop", "server fit verdicts vs the 250 cm wall: FIT ‘여유 40cm’ · FIT ‘여유 14cm’ · OVERFLOW ‘치수 초과’", fits.join() === "FIT,FIT,OVERFLOW" && fitTexts[0] === "여유 40cm" && fitTexts[1] === "여유 14cm" && /^치수 초과/.test(fitTexts[2]), fitTexts.join(" | "));
+      const links0 = await recs.nth(0).locator('[data-testid="shop-links"] a').evaluateAll((as) => as.map((a) => ({ mall: a.dataset.mall, href: a.href, target: a.target, rel: a.rel, text: a.textContent.trim() })));
+      const kw = encodeURIComponent("아이보리 패브릭 3인 소파 2100");
+      record("spaces", "desktop", "one-click shopping: 오늘의집 · 네이버 쇼핑 · 쿠팡 · 이케아 (new tab, noopener) with the keyword", links0.map((l) => l.text).join("|") === "오늘의집|네이버 쇼핑|쿠팡|이케아 코리아" && links0.every((l) => l.target === "_blank" && /noopener/.test(l.rel)) && links0[0].href === `https://ohou.se/store/search?query=${kw}` && links0[1].href === `https://search.shopping.naver.com/search/all?query=${kw}` && links0[2].href === `https://www.coupang.com/np/search?q=${kw}` && links0[3].href === `https://www.ikea.com/kr/ko/search/?q=${kw}`, links0.map((l) => l.mall).join());
+      const hit = mock.hits[mock.hits.length - 1];
+      record("spaces", "desktop", "API call: key in header, prompt carries the measurement, purpose and style, photo attached", mock.hits.length === hitsBefore + 1 && hit.key?.length >= 20 && /소파 벽면 250cm/.test(hit.text) && /공간 용도: 거실/.test(hit.text) && /화이트 우드/.test(hit.text) && !!hit.image);
+      const cached = await until(async () => { const r = (await spaceRows())[0]; return r?.ai_diagnosis?.recommendations?.length === 3 ? r.ai_diagnosis : null; });
+      record("spaces", "desktop", "result cached in space_projects.ai_diagnosis (summary, 3 recs, analyzedAt)", !!cached && !!cached.spaceSummary && !!cached.analyzedAt, cached?.analyzedAt);
+      record("spaces", "desktop", "button now reads ‘다시 분석하기’ + ‘마지막 분석’ time", /다시 분석하기/.test(await dp.getByTestId("ai-run").innerText()) && /마지막 분석/.test(await dp.getByTestId("ai-coordinator").innerText()));
+
+      await dp.reload({ waitUntil: "networkidle" });
+      record("spaces", "desktop", "saved diagnosis renders at once after a reload — no new AI call", (await dp.getByTestId("ai-rec").count()) === 3 && mock.hits.length === hitsBefore + 1 && /다시 분석하기/.test(await dp.getByTestId("ai-run").innerText()));
+      await dp.getByTestId("ai-run").click();
+      await until(async () => mock.hits.length === hitsBefore + 2);
+      await dp.getByTestId("ai-rec").first().waitFor();
+      record("spaces", "desktop", "‘다시 분석하기’ runs the analysis again (2nd API call)", mock.hits.length === hitsBefore + 2 && (await dp.getByTestId("ai-rec").count()) === 3);
+
+      // ---- wish board
+      await dp.getByTestId("rec-add").first().click();
+      const c1 = await until(async () => (await candRows())[0] ?? null);
+      record("spaces", "desktop", "‘위시 보드에 담기’ inserts the recommendation (name, category, 210×90×80, status CANDIDATE, memo)", !!c1 && c1.name === "웜 아이보리 패브릭 3인용 모듈 소파" && c1.category === "소파" && Number(c1.width_cm) === 210 && Number(c1.depth_cm) === 90 && Number(c1.height_cm) === 80 && c1.status === "CANDIDATE" && /^AI 추천/.test(c1.memo ?? "") && c1.space_id === spaceId, JSON.stringify({ n: c1?.name, m: c1?.memo }));
+      await dp.getByTestId("wish-card").first().waitFor();
+      record("spaces", "desktop", "card appears on the board with a live FIT badge; the recommendation button turns into ‘담았어요’ (disabled)", (await dp.getByTestId("wish-card").count()) === 1 && (await dp.getByTestId("wish-card").first().getByTestId("fit-badge").getAttribute("data-fit")) === "FIT" && (await dp.getByTestId("rec-add").first().isDisabled()) && /담았어요/.test(await dp.getByTestId("rec-add").first().innerText()));
+
+      await dp.getByTestId("wish-add-open").click();
+      const wf = dp.getByTestId("wish-form");
+      await wf.getByTestId("wish-name").fill("딱 맞는 수납장");
+      await wf.getByTestId("wish-category").fill("수납장");
+      await wf.getByTestId("wish-w").fill("246");
+      await wf.getByTestId("wish-d").fill("40");
+      await wf.getByTestId("wish-h").fill("80");
+      await wf.getByTestId("wish-price").fill("320000");
+      await wf.getByTestId("wish-url").fill("javascript:alert(1)");
+      await wf.getByTestId("wish-memo").fill("부부 합의 필요");
+      const preview = await wf.getByTestId("fit-badge").getAttribute("data-fit");
+      await wf.getByTestId("wish-save").click();
+      await dp.getByTestId("wish-error").waitFor();
+      record("spaces", "desktop", "form shows a live fit preview (246 on a 250 wall = TIGHT); a non-http(s) link is refused with a message", preview === "TIGHT" && /http/.test(await dp.getByTestId("wish-error").innerText()) && (await candRows()).length === 1, preview);
+      await wf.getByTestId("wish-url").fill("https://www.ikea.com/kr/ko/p/example-cabinet/");
+      await wf.getByTestId("wish-save").click();
+      await until(async () => (await candRows()).length === 2);
+      const c2 = (await candRows())[1];
+      record("spaces", "desktop", "manual add: saved with price 320000, 246×40×80, source_mall inferred = ikea, memo, link", c2?.name === "딱 맞는 수납장" && c2.price === 320000 && Number(c2.width_cm) === 246 && c2.source_mall === "ikea" && c2.memo === "부부 합의 필요" && c2.product_url === "https://www.ikea.com/kr/ko/p/example-cabinet/", JSON.stringify({ p: c2?.price, m: c2?.source_mall }));
+      const card2 = dp.getByTestId("wish-card").filter({ hasText: "딱 맞는 수납장" });
+      await card2.waitFor();
+      const link2 = await card2.getByTestId("wish-link").evaluate((a) => ({ href: a.href, target: a.target, rel: a.rel }));
+      record("spaces", "desktop", "card: TIGHT badge, ‘320,000원’, ‘246×40×80cm’, memo, product link (new tab, noopener)", (await card2.getByTestId("fit-badge").getAttribute("data-fit")) === "TIGHT" && /320,000원/.test(await card2.innerText()) && /246×40×80cm/.test(await card2.innerText()) && /부부 합의 필요/.test(await card2.innerText()) && link2.target === "_blank" && /noopener/.test(link2.rel) && /ikea\.com/.test(link2.href));
+
+      // OVERFLOW + UNKNOWN items
+      await dp.getByTestId("wish-add-open").click();
+      await dp.getByTestId("wish-name").fill("큰 수납장");
+      await dp.getByTestId("wish-w").fill("300");
+      await dp.getByTestId("wish-save").click();
+      await until(async () => (await candRows()).length === 3);
+      await dp.getByTestId("wish-add-open").click();
+      await dp.getByTestId("wish-name").fill("치수 모르는 의자");
+      await dp.getByTestId("wish-save").click();
+      await until(async () => (await candRows()).length === 4);
+      const fitOf = async (name) => dp.getByTestId("wish-card").filter({ hasText: name }).getByTestId("fit-badge").getAttribute("data-fit");
+      record("spaces", "desktop", "live fit badges on the board: FIT / TIGHT / OVERFLOW (300 > 250) / UNKNOWN (no size)", (await fitOf("웜 아이보리")) === "FIT" && (await fitOf("딱 맞는 수납장")) === "TIGHT" && (await fitOf("큰 수납장")) === "OVERFLOW" && (await fitOf("치수 모르는 의자")) === "UNKNOWN");
+
+      // editing a measurement re-computes the badges at once
+      await dp.getByRole("button", { name: "소파 벽면 수정" }).click();
+      await dp.getByTestId("annotation-cm").fill("310");
+      await dp.getByTestId("annotation-save").click();
+      await until(async () => (await spaceRows())[0]?.annotations?.[0]?.lengthCm === 310);
+      record("spaces", "desktop", "after the wall becomes 310 cm the badges re-evaluate at once (300 → FIT, 246 → FIT)", (await fitOf("큰 수납장")) === "FIT" && (await fitOf("딱 맞는 수납장")) === "FIT");
+      await dp.getByRole("button", { name: "소파 벽면 수정" }).click();
+      await dp.getByTestId("annotation-cm").fill("250");
+      await dp.getByTestId("annotation-save").click();
+      await until(async () => (await spaceRows())[0]?.annotations?.[0]?.lengthCm === 250);
+
+      // status pills
+      await card2.locator('[data-status-btn="SELECTED"]').click();
+      const st1 = await until(async () => (await candRows()).find((r) => r.name === "딱 맞는 수납장")?.status === "SELECTED");
+      await card2.locator('[data-status-btn="PURCHASED"]').click();
+      const st2 = await until(async () => (await candRows()).find((r) => r.name === "딱 맞는 수납장")?.status === "PURCHASED");
+      await card2.locator('[data-status-btn="CANDIDATE"]').click();
+      const st3 = await until(async () => (await candRows()).find((r) => r.name === "딱 맞는 수납장")?.status === "CANDIDATE");
+      record("spaces", "desktop", "status pills 후보 → 최종 픽 → 구매 완료 → 후보 persist (card data-status follows)", !!st1 && !!st2 && !!st3 && (await card2.getAttribute("data-status")) === "CANDIDATE");
+
+      // edit a candidate
+      await dp.getByRole("button", { name: "딱 맞는 수납장 수정" }).click();
+      await dp.getByTestId("wish-memo").fill("색상은 화이트로");
+      await dp.getByTestId("wish-save").click();
+      record("spaces", "desktop", "a wish item can be edited (memo updated in the DB)", !!(await until(async () => (await candRows()).find((r) => r.name === "딱 맞는 수납장")?.memo === "색상은 화이트로")));
+
+      // partner sync: rows written by the other spouse appear without a reload (focus triggers a sync)
+      await svc.from("space_furniture_candidates").insert({ space_id: spaceId, household_id: H, created_by: userId, name: "배우자가 담은 러그", category: "러그" });
+      await svc.from("space_projects").update({ annotations: [{ ...a1c, lengthCm: 260 }] }).eq("id", spaceId);
+      await dp.evaluate(() => window.dispatchEvent(new Event("focus")));
+      const synced = await until(async () => (await dp.getByTestId("wish-card").filter({ hasText: "배우자가 담은 러그" }).count()) === 1);
+      const capSynced = await until(async () => /260cm/.test(await dp.getByTestId("annotation-capsule").innerText()));
+      record("spaces", "desktop", "near-real-time sync: the partner's wish item and re-measured wall show up without a reload", !!synced && !!capSynced);
+      await svc.from("space_projects").update({ annotations: [a1c] }).eq("id", spaceId);
+
+      // delete (two-step)
+      const rug = dp.getByTestId("wish-card").filter({ hasText: "배우자가 담은 러그" });
+      await rug.getByTestId("wish-delete").click();
+      const confirmText = await rug.getByTestId("wish-delete").innerText();
+      await rug.getByTestId("wish-delete").click();
+      const gone = await until(async () => !(await candRows()).some((r) => r.name === "배우자가 담은 러그"));
+      record("spaces", "desktop", "delete asks ‘삭제 확인’ first, then removes the row", /삭제 확인/.test(confirmText) && !!gone);
+
+      // list page
+      await dp.goto(`${BASE}/spaces`, { waitUntil: "networkidle" });
+      const card = dp.getByTestId("space-card");
+      const nWish = (await candRows()).length;
+      const cardText = (await card.innerText()).replace(/\s+/g, " ");
+      await dp.getByTestId("space-thumb").waitFor();
+      const thumbOk = await dp.getByTestId("space-thumb").evaluate((i) => i.complete && i.naturalWidth > 0);
+      record("spaces", "desktop", "list card: thumbnail, name, purpose + style pills, ‘실측 1개 · 위시 N개’", (await card.count()) === 1 && /거실 소파 자리/.test(cardText) && /거실/.test(cardText) && /화이트 우드/.test(cardText) && /실측 1개/.test(cardText) && new RegExp(`위시 ${nWish}개`).test(cardText) && thumbOk, cardText);
+      await dp.screenshot({ path: `${OUT}/spaces-list-desktop.png`, fullPage: true });
+      await dp.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+      await dp.getByTestId("space-photo").waitFor();
+      await dp.screenshot({ path: `${OUT}/spaces-detail-desktop.png`, fullPage: true });
+      record("spaces", "desktop", "no page errors during the flow", dp.__errors.length === 0, dp.__errors.join(" | ").slice(0, 200));
+      await dc.close();
+
+      // ============================================================ responsive: desktop / tablet / 375 / 280
+      const SPACE_VPS = [VIEWPORTS[0], { name: "tablet768", width: 768, height: 900 }, VIEWPORTS[1], { name: "fold280", width: 280, height: 800 }];
+      const expectLine = a1c;
+      for (const vp of SPACE_VPS) {
+        const { c, p } = await mk(vp);
+        const mobile = vp.width < 768;
+        for (const [label, url] of [["list", `${BASE}/spaces`], ["detail", `${BASE}/spaces/${spaceId}`]]) {
+          await p.goto(url, { waitUntil: "networkidle" });
+          if (label === "detail") await p.getByTestId("space-photo").waitFor();
+          const ox = await overflowX(p);
+          record("spaces", vp.name, `${label}: no horizontal overflow`, ox <= 0, `overflow=${ox}`);
+          if (label !== "list") continue;
+          // nav: 5 tabs, nothing clipped or wrapped
+          const navSel = mobile ? 'nav[aria-label="주요 메뉴"].fixed' : 'header nav[aria-label="주요 메뉴"]';
+          const nav = await p.locator(navSel).evaluate((n) => {
+            const links = [...n.querySelectorAll("a")];
+            const rects = links.map((a) => a.getBoundingClientRect());
+            const nr = n.getBoundingClientRect();
+            return {
+              count: links.length,
+              inside: rects.every((r) => r.left >= nr.left - 0.5 && r.right <= nr.right + 0.5) && nr.right <= window.innerWidth + 0.5,
+              clipped: links.some((a) => a.scrollWidth > a.clientWidth + 1),
+              oneLine: links.every((a) => [...a.querySelectorAll("span")].every((s) => s.getBoundingClientRect().height < parseFloat(getComputedStyle(s).fontSize) * 1.8)),
+              heightsEqual: new Set(rects.map((r) => Math.round(r.height))).size === 1,
+              text: links.map((a) => a.textContent.trim()).join("|"),
+              minW: Math.min(...rects.map((r) => r.width)),
+            };
+          });
+          record("spaces", vp.name, `${mobile ? "bottom tab bar" : "header tabs"}: 5 tabs, all inside, no clipping or line wrap`, nav.count === 5 && nav.inside && !nav.clipped && nav.oneLine && nav.heightsEqual, `${nav.text} minW=${Math.round(nav.minW)}`);
+          if (!mobile) {
+            const over = await p.locator("header").evaluate((h) => h.scrollWidth - h.clientWidth);
+            record("spaces", vp.name, "header does not overflow with 5 tabs", over <= 0, `over=${over}`);
+          }
+        }
+
+        // ---- detail: normalized coordinates survive any screen size
+        await p.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+        await p.getByTestId("space-photo").waitFor();
+        const geo = await p.evaluate(() => {
+          const ph = document.querySelector('[data-testid="space-photo"]').getBoundingClientRect();
+          const hs = [...document.querySelectorAll('[data-testid="annotation-handle"]')].map((h) => { const r = h.getBoundingClientRect(); return { x: (r.left + r.width / 2 - ph.left) / ph.width, y: (r.top + r.height / 2 - ph.top) / ph.height }; });
+          const cp = document.querySelector('[data-testid="annotation-capsule"]').getBoundingClientRect();
+          return { hs, capInside: cp.left >= ph.left - 0.5 && cp.right <= ph.right + 0.5 && cp.top >= ph.top - 0.5 && cp.bottom <= ph.bottom + 0.5, photoW: ph.width };
+        });
+        record("spaces", vp.name, "line end points sit at the same fractions of the photo (stored as 0..1) and the capsule stays inside it", near(geo.hs[0].x, expectLine.x1) && near(geo.hs[0].y, expectLine.y1) && near(geo.hs[1].x, expectLine.x2) && near(geo.hs[1].y, expectLine.y2) && geo.capInside, `photoW=${Math.round(geo.photoW)} h0=(${geo.hs[0].x.toFixed(3)},${geo.hs[0].y.toFixed(3)}) h1=(${geo.hs[1].x.toFixed(3)},${geo.hs[1].y.toFixed(3)}) stored=(${expectLine.x1},${expectLine.y1})(${expectLine.x2},${expectLine.y2})`);
+
+        // draw a fresh line at this size: stored fractions equal where the pointer was
+        await p.getByTestId("draw-toggle").click();
+        await dragFrac(p, [0.2, 0.25], [0.8, 0.25]);
+        await p.getByTestId("annotation-form").waitFor();
+        await p.getByTestId("annotation-form").getByRole("radio", { name: "직접 입력" }).click();
+        await p.getByTestId("annotation-name").fill(`창문 ${vp.name}`);
+        await p.getByTestId("annotation-cm").fill("120");
+        await p.getByTestId("annotation-save").click();
+        const drawn = await until(async () => { const r = (await spaceRows())[0]; return r?.annotations?.find((a) => a.label === `창문 ${vp.name}`) ?? null; });
+        record("spaces", vp.name, "drawing at this width stores fractions (0.2,0.25)→(0.8,0.25), independent of pixel size", !!drawn && near(drawn.x1, 0.2) && near(drawn.y1, 0.25) && near(drawn.x2, 0.8) && near(drawn.y2, 0.25) && drawn.lengthCm === 120, JSON.stringify(drawn && [drawn.x1, drawn.y1, drawn.x2, drawn.y2]));
+        await p.getByTestId("draw-toggle").click();
+        const capOk = await p.getByTestId("annotation-capsule").evaluateAll((cs) => { const ph = document.querySelector('[data-testid="space-photo"]').getBoundingClientRect(); return cs.every((c) => { const r = c.getBoundingClientRect(); return r.left >= ph.left - 0.5 && r.right <= ph.right + 0.5; }); });
+        record("spaces", vp.name, "every capsule label stays inside the photo", capOk);
+        await p.getByRole("button", { name: `창문 ${vp.name} 삭제` }).click();
+        await until(async () => (await spaceRows())[0]?.annotations?.length === 1);
+
+        // ---- the AI + wish sections
+        const ox2 = await overflowX(p);
+        const blocks = await p.evaluate(() => {
+          const bad = [];
+          for (const sel of ['[data-testid="ai-rec"]', '[data-testid="wish-card"]', '[data-testid="annotation-list"] li', '[data-testid="wish-board"]', '[data-testid="ai-coordinator"]', '[data-testid="annotator"]']) {
+            for (const el of document.querySelectorAll(sel)) if (el.scrollWidth > el.clientWidth + 1) bad.push(`${sel}:${el.scrollWidth}>${el.clientWidth}`);
+          }
+          return bad;
+        });
+        record("spaces", vp.name, "AI cards, wish cards and measurement rows never overflow their box", blocks.length === 0 && ox2 <= 0, blocks.slice(0, 3).join(",") || `overflow=${ox2}`);
+        const targets = await p.evaluate(() => {
+          const out = {};
+          for (const [k, sel] of [["draw", '[data-testid="draw-toggle"]'], ["ai-run", '[data-testid="ai-run"]'], ["rec-add", '[data-testid="rec-add"]'], ["wish-add", '[data-testid="wish-add-open"]']]) {
+            const el = document.querySelector(sel);
+            out[k] = el ? Math.round(el.getBoundingClientRect().height) : null;
+          }
+          return out;
+        });
+        record("spaces", vp.name, "main buttons keep a 44px touch target", Object.values(targets).every((h) => h !== null && h >= 43), JSON.stringify(targets));
+        const onScreen = await p.evaluate(() => ["help-btn", "space-delete"].map((id) => { const r = document.querySelector(`[data-testid="${id}"]`).getBoundingClientRect(); return { id, h: Math.round(r.height), inside: r.left >= 0 && r.right <= window.innerWidth }; }));
+        record("spaces", vp.name, "help badge (≥32px) and ‘공간 삭제’ stay on screen", onScreen.every((b) => b.h >= 32 && b.inside), JSON.stringify(onScreen));
+        await p.screenshot({ path: `${OUT}/spaces-detail-${vp.name}.png`, fullPage: true });
+        await p.goto(`${BASE}/spaces`, { waitUntil: "networkidle" });
+        await p.screenshot({ path: `${OUT}/spaces-list-${vp.name}.png`, fullPage: true });
+        record("spaces", vp.name, "no page errors", p.__errors.length === 0, p.__errors.join(" | ").slice(0, 200));
+        await c.close();
+      }
+
+      // dark mode
+      {
+        const { c, p } = await mk(VIEWPORTS[1], { scheme: "dark" });
+        await p.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+        await p.getByTestId("space-photo").waitFor();
+        const bg = await p.evaluate(() => getComputedStyle(document.querySelector('[data-testid="annotator"]')).backgroundColor);
+        const m = bg.match(/\d+/g).map(Number);
+        record("spaces", "mobile", "dark mode: cards are dark (no white slabs) and nothing overflows", m[0] < 60 && m[1] < 60 && (await overflowX(p)) <= 0, bg);
+        await p.screenshot({ path: `${OUT}/spaces-detail-mobile-dark.png`, fullPage: true });
+        await c.close();
+      }
+
+      // deleting the space removes its photo from the bucket and cascades to the wish items
+      const { c: xc, p: xp } = await mk(VIEWPORTS[0]);
+      await xp.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+      const photoPath = (await spaceRows())[0].photo_path;
+      await xp.getByTestId("space-delete").click();
+      await xp.getByTestId("space-delete").click();
+      await xp.waitForURL(/\/spaces$/, { timeout: 20_000 });
+      const left = await svc.storage.from("space-photos").list(`${H}/${spaceId}`);
+      record("spaces", "desktop", "‘공간 삭제’ (2-step): row, wish items and the stored photo are all gone", (await spaceRows()).length === 0 && (await candRows()).length === 0 && (left.data ?? []).length === 0 && !!photoPath);
+      await xc.close();
+    } catch (err) {
+      record("spaces", "-", "spaces suite ran to completion", false, String(err?.stack ?? err).slice(0, 500));
+    } finally {
+      server.close();
+      if (H) {
+        for (const s of (await svc.from("space_projects").select("id").eq("household_id", H)).data ?? []) {
+          const { data: files } = await svc.storage.from("space-photos").list(`${H}/${s.id}`);
+          if (files?.length) await svc.storage.from("space-photos").remove(files.map((f) => `${H}/${s.id}/${f.name}`));
+        }
+        await svc.from("space_projects").delete().eq("household_id", H);
+      }
+      if (userId) await svc.auth.admin.deleteUser(userId).catch(() => {});
+      if (H) await svc.from("households").delete().eq("id", H);
+    }
   }
 }
 

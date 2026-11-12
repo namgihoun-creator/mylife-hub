@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { annotationAxis, buildShoppingLinks, evaluateFurnitureFit, type SpaceAnnotation } from "./space-planner.ts";
+import { annotationAxis, buildShoppingLinks, composeLabel, evaluateFurnitureFit, inferMall, type SpaceAnnotation } from "./space-planner.ts";
 
 const wall = (label: string, lengthCm: number): SpaceAnnotation => ({ id: label, x1: 0, y1: 0, x2: 1, y2: 0, label, lengthCm });
 
@@ -77,4 +77,28 @@ test("fit: missing data is UNKNOWN, never a fake FIT; junk values are ignored", 
 
 test("fit: no float noise in the spare space", () => {
   assert.equal(evaluateFurnitureFit([wall("가로", 240.3)], { widthCm: 200.1 }).slackCm, 40.2);
+});
+
+test("composeLabel: the label always reads back as the axis that was picked", () => {
+  assert.equal(composeLabel("width", ""), "가로");
+  assert.equal(composeLabel("width", "소파 벽면"), "소파 벽면");
+  assert.equal(annotationAxis(composeLabel("depth", "소파 벽면")), "depth");
+  assert.equal(composeLabel("depth", "소파 벽면"), "소파 벽면 깊이");
+  assert.equal(composeLabel("depth", "창가 깊이"), "창가 깊이");
+  assert.equal(annotationAxis(composeLabel("height", "")), "height");
+  assert.equal(composeLabel("custom", "  창문   아래  "), "창문 아래");
+  assert.equal(composeLabel("height", "가".repeat(60)).length <= 40, true);
+  assert.equal(annotationAxis(composeLabel("height", "가".repeat(60))), "height");
+});
+
+test("inferMall: the four malls (and subdomains) are recognised, anything else is null", () => {
+  assert.equal(inferMall("https://ohou.se/productions/123/selling"), "ohouse");
+  assert.equal(inferMall("https://search.shopping.naver.com/x"), "naver");
+  assert.equal(inferMall("https://smartstore.naver.com/a/products/1"), "naver");
+  assert.equal(inferMall("https://www.coupang.com/vp/products/1"), "coupang");
+  assert.equal(inferMall("https://www.ikea.com/kr/ko/p/x/"), "ikea");
+  assert.equal(inferMall("https://notikea.com/x"), null);
+  assert.equal(inferMall("https://evil.com/?u=ikea.com"), null);
+  assert.equal(inferMall("not a url"), null);
+  assert.equal(inferMall(null), null);
 });

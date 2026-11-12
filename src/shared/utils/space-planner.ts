@@ -102,3 +102,37 @@ export function evaluateFurnitureFit(spaceAnnotations: readonly SpaceAnnotation[
         : `${where} ${worst.slackCm}cm 여유가 있어요.`;
   return { status: worst.status, slackCm, axes, message };
 }
+
+// ---------------------------------------------------------------------------------------------- labels & malls
+export type AxisChoice = FitAxis | "custom";
+export const AXIS_WORD: Record<FitAxis, string> = { width: "가로", depth: "깊이", height: "높이" };
+
+/**
+ * Label of a measured line from the axis the couple picked and an optional name ("소파 벽면"). The result always reads back as
+ * the same axis through `annotationAxis` (the fit check relies on that): "깊이"/"높이" is appended when the name does not
+ * already carry it; width needs no keyword (it is the default). `custom` keeps the typed name as is.
+ */
+export function composeLabel(axis: AxisChoice, name: string): string {
+  const clean = String(name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 40).trim();
+  if (axis === "custom") return clean;
+  if (!clean) return AXIS_WORD[axis];
+  if (annotationAxis(clean) === axis) return clean;
+  const joined = `${clean} ${AXIS_WORD[axis]}`;
+  return joined.length <= 40 ? joined : AXIS_WORD[axis];
+}
+
+/** Mall id of a product link (for `source_mall`), or null when it is none of the four. */
+export function inferMall(url: string | null | undefined): ShoppingMallId | null {
+  let host = "";
+  try {
+    host = new URL(String(url ?? "")).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  const is = (d: string) => host === d || host.endsWith(`.${d}`);
+  if (is("ohou.se")) return "ohouse";
+  if (is("naver.com") || is("naver.me")) return "naver";
+  if (is("coupang.com") || is("coupa.ng")) return "coupang";
+  if (is("ikea.com")) return "ikea";
+  return null;
+}

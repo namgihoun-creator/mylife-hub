@@ -49,7 +49,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </span>
           </Link>
 
-          <span className="inline-flex min-w-0 max-w-[40vw] items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:bg-zinc-800/60 dark:text-zinc-300">
+          <span className="inline-flex min-w-0 max-w-[40vw] items-center gap-1.5 md:max-w-[7rem] lg:max-w-[40vw] rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:bg-zinc-800/60 dark:text-zinc-300">
             <Users className="h-3 w-3 shrink-0" />
             <span className="truncate">{profile.householdName}</span>
           </span>

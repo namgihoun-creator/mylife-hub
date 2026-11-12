@@ -5,8 +5,9 @@
 import { AiError, geminiKeyStatus, replyText, run, type GeminiDeps, type GeminiReply, type ImageMime } from "../../kitchen/server/gemini-kitchen.ts";
 import { evaluateFurnitureFit, type FitResult, type SpaceAnnotation } from "../../../shared/utils/space-planner.ts";
 
-export const ROOM_TYPES = ["living", "bedroom", "kitchen", "study", "kids", "etc"] as const;
-export type RoomType = (typeof ROOM_TYPES)[number];
+import { ROOM_TYPES, type RoomType } from "../schemas/space-constants.ts";
+export { ROOM_TYPES };
+export type { RoomType };
 export const ROOM_LABEL_KO: Record<RoomType, string> = { living: "거실", bedroom: "침실", kitchen: "주방", study: "서재", kids: "아이방", etc: "기타 공간" };
 
 export const MAX_RECOMMENDATIONS = 3;

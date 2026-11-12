@@ -241,7 +241,7 @@
 - **동작:** Android / 데스크톱 Chrome·Edge → 브라우저 네이티브 설치 대화상자(문구는 브라우저가 정함, 앱이 바꿀 수 없음). iOS → 네이티브 프롬프트가 없으므로 `Popover`(`w-72 rounded-xl p-4`)에 2단계 안내(공유 `Share` 아이콘 → `홈 화면에 추가`).
 
 ### N. 키친 OS (`/kitchen`, 헤더·하단 탭 "키친")
-- **내비게이션:** `ChefHat` 아이콘, 활성 규칙은 기존 탭과 동일. 모바일 하단 탭은 4칸.
+- **내비게이션:** `ChefHat` 아이콘, 활성 규칙은 기존 탭과 동일. (하단 탭은 §S의 5칸 규칙을 따른다.)
 - **페이지 골격:** 제목 `키친` + 보조 한 줄 + 우측 `재료 추가`(Primary) → (조건부) 펫 경보 배너 → `KitchenPulse` → 보관 탭 + 목록. 카드·배너는 평평한 1px 보더(§0), 그림자 없음.
 - **KitchenPulse:** 4열(모바일 2×2) 메트릭 타일 — 보관 중 · 소비 임박(D-3 이하, 지난 것 포함) · 냉동 화석(30일+) · 누적 절약액. 숫자는 `text-2xl font-semibold tabular-nums`, 임박이 있으면 값만 amber, 지난 재료가 있으면 rose + 보조 줄 `기한 지남 N건`.
 - **D-Day 신호등 배지(알약, `rounded-full px-2 py-0.5 text-[11px] font-semibold`):** `≤2일` Rose(`border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300`) · `≤7일` Amber(`border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300`) · 그 외 Emerald(`border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300`). 날짜가 지났으면 **Rose Alert**: 진한 채움(`bg-rose-600 text-white dark:bg-rose-500 dark:text-black`) + 라벨 `D+n 지남`. 색만으로 구분하지 않고 항상 `D-n` 텍스트를 함께 쓴다.
@@ -283,6 +283,17 @@
 - 콘텐츠는 `src/shared/constants/help-content.ts`의 `steps`(정확히 3개: step·title·desc·icon·badge)에서만 관리. 설명은 2줄 안팎(좁은 폭에서는 늘어날 수 있음).
 - 모달(`rounded-3xl bg-slate-50`, 폭 `calc(100%-2rem)`·최대 `max-w-sm`): 상단 "Step X / 3" + 3칸 진행 바(Sky→Teal) → 슬라이드(Sky/Mint 그라데이션 일러스트 박스 + 흰 아이콘 타일 + 우하단 뱃지, 볼드 타이틀, 설명) → [이전](1단계에서 숨김) / [다음] → 마지막은 그라데이션 CTA "직접 해보기 🚀"(닫힘).
 - 이동: 버튼 · 키보드 ←/→ · 포인터 스와이프(40px 이상, `touch-pan-y`). 열 때마다 1단계부터. 비활성 슬라이드는 `inert`.
+
+### S. 공간·가구 플래너 (`/spaces`, `/spaces/[id]`, 헤더·하단 탭 "공간 플래너")
+- **내비게이션:** `Sofa` 아이콘, 5번째 탭(자산 · 타임라인 · 키친 · 공간 플래너 · 리포트). 데스크톱 상단 탭은 `px-3 lg:px-4` + `whitespace-nowrap`. **모바일 하단 탭은 5칸(`grid-cols-5`)이라 라벨을 4자 이하 `short`로 쓴다**(자산 · 타임라인 · 키친 · 공간 · 리포트, `text-[11px]`, `whitespace-nowrap`, `aria-label`에 전체 이름). 280px에서 셀 폭 56px 안에 라벨이 들어가야 하고 가로 스크롤은 없다.
+- **`/spaces`:** 제목 + 보조 한 줄, 우측 `ContextHelpButton topic="space_planner"` + 그라데이션 CTA `+ 새 공간 등록`(`GRADIENT_CTA`). 카드 그리드(모바일 1열 · `sm` 2열 · `lg` 3열): `rounded-3xl bg-white shadow-sm` 카드, 4:3 썸네일(사진이 없으면 Sky→Teal 그라데이션 + `Sofa`), 공간명(`truncate`), 용도(Sky) · 스타일(Mint) 알약, `실측 N개 · 위시 N개`. 비어 있으면 EmptyState.
+- **`/spaces/[id]`:** `← 공간 목록` → 제목 + 용도/스타일 알약 + 도움말 뱃지 + `공간 삭제`(2단계 확인 `삭제 확인` Rose) → 카드 3장을 세로로: ① 실측 치수 ② AI 공간 코디네이터 ③ 부부 위시 가구. 모든 카드는 `rounded-3xl bg-white p-4 shadow-sm sm:p-5`, 안쪽 블록은 `rounded-2xl bg-slate-50`, 보더 없음.
+- **실측 캔버스(`SpaceDimensionAnnotator`):** 사진 위 SVG 오버레이(`viewBox 0 0 1 1`, `vector-effect: non-scaling-stroke`)로 선을 그리고, 끝점 핸들(터치 영역 32px)과 치수 캡슐(`bg-sky-600 text-white rounded-full`, `라벨 + N cm`)은 HTML을 `%`로 배치한다. **좌표는 항상 0~1 비율(`x1,y1,x2,y2`)로 저장**해 화면 크기와 무관하게 같은 자리에 남는다. 선 긋기를 켠 동안에만 오버레이가 `touch-none`(그 외에는 페이지 스크롤 유지). 선은 흰 밑선 6px + 색선 3px(선택 시 Amber). 입력 폼은 사진 아래 인라인: 축 알약(가로 · 깊이 · 높이 · 직접 입력) + 이름 + 길이(cm). 라벨은 `composeLabel`로 만들어 `annotationAxis`가 같은 축으로 되읽게 한다.
+- **사진:** 브라우저에서 긴 변 1600px · JPEG · 5MB 이하로 줄여 비공개 버킷 `space-photos`의 `<household_id>/<space_id>/<uuid>.jpg`에 올리고, 화면에는 1시간짜리 Signed URL로만 보여 준다.
+- **AI 패널(`SpaceAiCoordinator`):** 용도 6종 · 스타일 5종 알약(라디오) → `AI 가구 추천받기`(그라데이션). 저장된 진단(`ai_diagnosis`)이 있으면 곧바로 보여 주고 버튼은 `다시 분석하기`. 공간 진단 카드(`from-sky-50 to-teal-50`) + 추천 3장(카테고리 · 적합도 뱃지 · 이름 · 이유 · 권장 사이즈 `W×D×H cm` · 가격대 · 검색어 · 쇼핑 4버튼 · `위시 보드에 담기` Mint).
+- **적합도 뱃지(`FitBadge`):** FIT 민트 `여유 N cm` · TIGHT 앰버 `딱 맞음 (N cm)` · OVERFLOW 로즈 `치수 초과 N cm` · UNKNOWN 슬레이트 `치수 미확인`. 항상 아이콘 + 글자를 함께 쓴다.
+- **쇼핑 버튼:** 오늘의집 · 네이버 쇼핑 · 쿠팡 · 이케아 코리아, `rounded-full bg-slate-100`, `target="_blank" rel="noopener noreferrer"`, 높이 36px 이상.
+- **위시 보드(`WishFurnitureBoard`):** 직접 추가 폼(이름 · 카테고리 · 가로/깊이/높이 · 가격 · 링크 · 메모, 현재 공간 기준 적합도 미리보기) + 카드 그리드(`md` 2열). 상태 알약 `후보 / 최종 픽 / 구매 완료`(`role="radiogroup"`, 활성은 Slate · Sky · Mint 채움). 파트너의 변경은 15초 폴링과 탭 복귀 시 동기화한다(그리는 중인 치수는 덮어쓰지 않음).
 
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.

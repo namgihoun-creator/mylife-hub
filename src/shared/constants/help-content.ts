@@ -1,12 +1,21 @@
 // 항목별 사용 가이드(3단계 슬라이드 튜토리얼) 콘텐츠. 문구는 여기서만 관리한다.
 export type HelpIconKey =
   | "plus" | "calendar" | "check" | "camera" | "fridge" | "wallet" | "ring" | "receipt"
-  | "chef" | "paw" | "sparkles" | "users" | "lock" | "mic" | "timer" | "shield";
+  | "chef" | "paw" | "sparkles" | "users" | "lock" | "mic" | "timer" | "shield" | "ruler" | "sofa";
 
 export type HelpStep = { step: 1 | 2 | 3; title: string; desc: string; icon: HelpIconKey; badge: string };
 export type HelpEntry = { title: string; label: string; steps: readonly [HelpStep, HelpStep, HelpStep] };
 
 export const HELP_CONTENT = {
+  space_planner: {
+    title: "공간·가구 플래너",
+    label: "사용 가이드",
+    steps: [
+      { step: 1, title: "1. 사진 찍고 실측 치수 표시", desc: "가구를 놓을 공간 사진을 올리고, ‘선 긋기’로 벽·창문 위에 두 점을 드래그해 실제 길이(cm)를 적어요.", icon: "ruler", badge: "실측" },
+      { step: 2, title: "2. AI 가구 추천받기", desc: "공간 용도와 스타일을 고르면 AI가 공간 톤과 치수에 맞는 가구 3가지를 추천하고, 들어갈지 여유까지 알려줘요.", icon: "sparkles", badge: "AI 추천" },
+      { step: 3, title: "3. 부부 위시 보드에 담기", desc: "마음에 드는 가구를 위시 보드에 담고 오늘의집·네이버·쿠팡·이케아에서 바로 찾아봐요. 후보 → 최종 픽 → 구매 완료로 함께 정리해요.", icon: "sofa", badge: "함께 고르기" },
+    ],
+  },
   appliance_dday: {
     title: "가전 자산 & 소모품 D-Day",
     label: "사용 가이드",
