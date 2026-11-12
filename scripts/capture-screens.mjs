@@ -1169,7 +1169,13 @@ if (inviteUrl && svc) {
         record("due", V, "D-3 (PENDING and SNOOZED) → DUE_SOON for every household member (FAMILY)", [of("soon"), of("snoozed")].every((r) => r.length === 2 && r.every((x) => x.type === "DUE_SOON")) && users("soon") === both && users("snoozed") === both, `soon=${of("soon").length} snoozed=${of("snoozed").length}`);
         record("due", V, "D-Day → DUE_TODAY: FAMILY task to all members, PRIVATE task to its owner only", of("today").length === 2 && of("today").every((x) => x.type === "DUE_TODAY") && users("today") === both && of("priv").length === 1 && of("priv")[0].user_id === me.user.id && of("priv")[0].type === "DUE_TODAY", `today=${of("today").length} private=${of("priv").length}`);
         record("due", V, "overdue → OVERDUE with the days-late text", of("over").length === 2 && of("over").every((x) => x.type === "OVERDUE" && /2일 지났어요/.test(x.body)), of("over")[0]?.body ?? "none");
-        record("due", V, "D-2, D-4 and COMPLETED tasks create nothing", of("near").length === 0 && of("far").length === 0 && of("done").length === 0, `near=${of("near").length} far=${of("far").length} done=${of("done").length}`);
+        // Migration 15 widened DUE_SOON from "exactly D-3" to the whole window D-7…D-1 (kitchen_expiring in the summary marks it as applied).
+        const windowed = typeof gen1.data?.kitchen_expiring === "number";
+        if (windowed) {
+          record("due", V, "D-2 and D-4 (inside the D-7…D-1 window) → DUE_SOON for every member; D-8 and COMPLETED create nothing", of("near").length === 2 && of("far").length === 2 && [...of("near"), ...of("far")].every((x) => x.type === "DUE_SOON") && /2일 후/.test(of("near")[0].body) && /4일 후/.test(of("far")[0].body) && of("done").length === 0, `near=${of("near").length} far=${of("far").length} done=${of("done").length}`);
+        } else {
+          record("due", V, "D-2, D-4 and COMPLETED tasks create nothing (pre-migration-15 behaviour)", of("near").length === 0 && of("far").length === 0 && of("done").length === 0, `near=${of("near").length} far=${of("far").length} done=${of("done").length}`);
+        }
         record(
           "due",
           V,
@@ -4302,6 +4308,176 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
       record("subpages", vp.name, "sub-page suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
     }
     await c.close();
+  }
+}
+
+// ---------------------------------------------------------------- notification bell: aggregation, read sync, click-through deep links
+// Kitchen alerts need migration 15 (notifications.kitchen_item_id + KITCHEN_EXPIRING); those checks report SKIPPED until it is applied.
+{
+  const probe = await svc.from("notifications").select("kitchen_item_id").limit(1);
+  const migrated = !probe.error;
+  const ids = [];
+  let assetId = null, kitchenId = null;
+  const unreadInDb = async () => (await svc.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", me.user.id).is("read_at", null)).count ?? 0;
+  try {
+    const { data: asset, error: aErr } = await sb.from("assets").insert({ household_id: myProfile.household_id, owner_id: me.user.id, name: `${SANDBOX_PREFIX} 벨 가전` }).select("id").single();
+    if (aErr) throw new Error(`asset fixture: ${aErr.message}`);
+    assetId = asset.id;
+    const mk = async (row) => {
+      const { data, error } = await svc.from("notifications").insert({ household_id: myProfile.household_id, user_id: me.user.id, ...row }).select("id").single();
+      if (error) throw new Error(`notification fixture: ${error.message}`);
+      ids.push(data.id);
+      return data.id;
+    };
+    const stamp = Date.now();
+    const nDue = await mk({ type: "DUE_SOON", asset_id: assetId, title: "곧 관리 시기가 돌아와요", body: `${SANDBOX_PREFIX} 벨 가전 · 필터 — 5일 후`, dedupe_key: `e2e-bell-due:${stamp}` });
+    const nOver = await mk({ type: "OVERDUE", title: "기한이 지난 관리가 있어요", body: `${SANDBOX_PREFIX} 자산 없는 알림 — 2일 지났어요`, dedupe_key: `e2e-bell-over:${stamp}` });
+    if (migrated) {
+      const { data: kit, error: kErr } = await svc.from("kitchen_items").insert({ household_id: myProfile.household_id, name: `${SANDBOX_PREFIX} 벨 두부`, expire_date: shift(2) }).select("id").single();
+      if (kErr) throw new Error(`kitchen fixture: ${kErr.message}`);
+      kitchenId = kit.id;
+      await mk({ type: "KITCHEN_EXPIRING", kitchen_item_id: kitchenId, title: "소비기한이 임박한 재료가 있어요", body: `${SANDBOX_PREFIX} 벨 두부 (1개) — 2일 후`, dedupe_key: `e2e-bell-kitchen:${stamp}` });
+    }
+
+    for (const vp of [...VIEWPORTS, { name: "fold280", width: 280, height: 800 }]) {
+      const c = await newContext(vp, storageState);
+      const p = await c.newPage();
+      const errs = [];
+      p.on("pageerror", (e) => errs.push(e.message));
+      try {
+        // reset read state for this round
+        await svc.from("notifications").update({ read_at: null }).in("id", ids);
+        const unread = await unreadInDb();
+        await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+        const badge = p.getByTestId("notification-badge");
+        const shown = async () => ((await badge.count()) ? (await badge.innerText()).trim() : "0");
+        const expect = (n) => (n > 9 ? "9+" : String(n));
+        record("bell", vp.name, "header badge count matches the unread rows in the DB", (await shown()) === expect(unread), `badge=${await shown()} db=${unread}`);
+        await p.getByRole("button", { name: /^알림/ }).first().click();
+        const list = p.locator('[aria-label="알림 목록"]');
+        await list.locator("button[data-unread]").first().waitFor();
+        const texts = await list.locator("button[data-unread]").allInnerTexts();
+        const has = (re) => texts.some((t) => re.test(t));
+        record("bell", vp.name, "list shows the appliance D-day alert (asset + days left) and the overdue alert", has(/벨 가전 · 필터 — 5일 후/) && has(/2일 지났어요/), `items=${texts.length}`);
+        if (migrated) record("bell", vp.name, "list shows the kitchen expiry alert (ingredient + days left)", has(/벨 두부 \(1개\) — 2일 후/));
+        const box = await list.boundingBox();
+        record("bell", vp.name, "popover fits the screen (no horizontal clipping)", !!box && box.x >= 0 && box.x + box.width <= vp.width + 1, JSON.stringify(box));
+        if (vp.name === "mobile" || vp.name === "fold280") await p.screenshot({ path: `${OUT}/bell-${vp.name}.png` });
+
+        // click-through: appliance alert → that appliance's detail panel, marked read, badge −1
+        await list.locator("button[data-unread]", { hasText: "벨 가전 · 필터" }).click();
+        await p.waitForURL(/\/assets\?openAssetId=/);
+        const dlg = p.getByRole("dialog");
+        await dlg.waitFor();
+        record("bell", vp.name, "click → /assets?openAssetId=<id> and the appliance detail panel opens on that asset", p.url().includes(`openAssetId=${assetId}`) && (await dlg.innerText()).includes("벨 가전"));
+        await p.waitForTimeout(600);
+        const { data: nowRow } = await svc.from("notifications").select("read_at").eq("id", nDue).single();
+        record("bell", vp.name, "…it is marked read in the DB and the badge dropped by exactly one", !!nowRow?.read_at && (await shown()) === expect(unread - 1) && (await unreadInDb()) === unread - 1, `badge=${await shown()} db=${await unreadInDb()}`);
+        await p.keyboard.press("Escape");
+
+        if (migrated) {
+          await p.getByRole("button", { name: /^알림/ }).first().click();
+          await p.locator('[aria-label="알림 목록"] button[data-unread]', { hasText: "벨 두부" }).click();
+          await p.waitForURL(/\/kitchen\?focus=/);
+          const li = p.locator(`#kitchen-item-${kitchenId}`);
+          await li.waitFor();
+          await p.waitForTimeout(900);
+          const lb = await li.boundingBox();
+          record("bell", vp.name, "kitchen alert → /kitchen?focus=<id>: the ingredient card is highlighted and scrolled into view", (await li.getAttribute("data-highlight")) === "true" && !!lb && lb.y >= 0 && lb.y + lb.height <= vp.height + 1, JSON.stringify(lb));
+          if (vp.name === "mobile") await p.screenshot({ path: `${OUT}/bell-kitchen-focus.png` });
+        }
+
+        // mark all read → badge gone, DB clean
+        await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+        await p.getByRole("button", { name: /^알림/ }).first().click();
+        await p.getByRole("button", { name: "모두 읽음" }).click();
+        await p.waitForTimeout(700);
+        record("bell", vp.name, "‘모두 읽음’ clears the badge and every unread row in the DB", (await badge.count()) === 0 && (await unreadInDb()) === 0, `db=${await unreadInDb()}`);
+      } catch (err) {
+        record("bell", vp.name, "bell suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
+      }
+      record("bell", vp.name, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+      await c.close();
+    }
+
+    // dead links degrade gracefully
+    await svc.from("notifications").update({ read_at: null }).in("id", ids);
+    const c2 = await newContext(VIEWPORTS[0], storageState);
+    const p2 = await c2.newPage();
+    await p2.goto(`${BASE}/kitchen?focus=00000000-0000-4000-8000-000000000000`, { waitUntil: "networkidle" });
+    await p2.waitForTimeout(500);
+    record("bell", "desktop", "kitchen deep link to a deleted/unknown ingredient shows a friendly notice instead of failing", (await p2.getByText("이미 정리된 재료예요.").count()) === 1);
+    await p2.goto(`${BASE}/kitchen?focus=not-a-uuid`, { waitUntil: "networkidle" });
+    record("bell", "desktop", "a malformed focus param is ignored (page renders normally)", (await p2.getByTestId("budget-card").count()) === 1);
+    await c2.close();
+
+    if (!migrated) record("bell", "-", "SKIPPED kitchen alert checks (apply supabase/migrations/20261112000015_notification_windows_and_kitchen.sql first)", true, "migration 15 not applied");
+  } catch (err) {
+    record("bell", "-", "bell suite setup", false, String(err?.stack ?? err).slice(0, 300));
+  } finally {
+    if (ids.length) await svc.from("notifications").delete().in("id", ids);
+    if (kitchenId) await svc.from("kitchen_items").delete().eq("id", kitchenId);
+    if (assetId) await sb.from("assets").delete().eq("id", assetId);
+  }
+}
+
+// ---------------------------------------------------------------- v4 alignment of entry / legal / header-panel screens (login, invite, privacy, terms, bell, settings)
+{
+  const { createHash, randomBytes } = await import("node:crypto");
+  const code = randomBytes(32).toString("base64url");
+  const hash = createHash("sha256").update(code).digest("hex");
+  const inv = await svc.from("household_invites").insert({ household_id: myProfile.household_id, code_hash: hash, created_by: me.user.id, expires_at: new Date(Date.now() + 86400_000).toISOString() }).select("id").single();
+  const probe = () => {
+    const vw = window.innerWidth;
+    const d = (el) => `${el.tagName.toLowerCase()}.${(el.className?.toString?.() ?? "").split(/\s+/).slice(0, 3).join(".")}`;
+    const root = document.querySelector("[role=dialog],[data-radix-popper-content-wrapper]") ?? document.querySelector("main") ?? document.body;
+    const hard = [], smallRadius = [], vertical = [], cut = [];
+    for (const el of root.querySelectorAll("*")) {
+      if (el.closest("[aria-hidden=true]")) continue;
+      const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      const ctl = ["BUTTON", "INPUT", "SELECT", "TEXTAREA", "SVG", "svg"].includes(el.tagName) || el.getAttribute("role") === "switch";
+      if (!ctl && cs.borderTopStyle !== "none" && parseFloat(cs.borderTopWidth) > 0) hard.push(d(el));
+      const filled = cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none";
+      if (!ctl && filled && r.width > 120 && r.height > 56 && parseFloat(cs.borderTopLeftRadius) < 16 && !el.matches("main,body,header,nav")) smallRadius.push(`${d(el)}=${cs.borderTopLeftRadius}`);
+      if (el.children.length === 0 && el.textContent.trim().length > 3 && r.width < 14 && r.height > 28) vertical.push(d(el));
+      if (ctl && el.tagName === "BUTTON" && r.right > vw + 1) cut.push(d(el));
+    }
+    return { over: document.documentElement.scrollWidth - vw, bg: getComputedStyle(document.body).backgroundColor, hard: hard.slice(0, 4), smallRadius: smallRadius.slice(0, 4), vertical: vertical.slice(0, 3), cut: cut.slice(0, 3) };
+  };
+  try {
+    for (const vp of [...VIEWPORTS, { name: "fold280", width: 280, height: 800 }]) {
+      const anon = await newContext(vp);
+      const p = await anon.newPage();
+      const screens = [["login", "/login"], ["login-invite", `/login?invite=${code}`], ["invite", `/invite/${code}`], ["invite-invalid", `/invite/${randomBytes(32).toString("base64url")}`], ["privacy", "/privacy"], ["terms", "/terms"]];
+      for (const [name, path] of screens) {
+        await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+        if (name === "login-invite") await p.getByRole("button", { name: /계정 만들기/ }).click();
+        const r = await p.evaluate(probe);
+        record("v4-screens", vp.name, `${name}: off-white bg, no horizontal scroll, no cut-off buttons, no vertically-broken text`, r.bg === "rgb(248, 250, 252)" && r.over <= 0 && r.cut.length === 0 && r.vertical.length === 0, JSON.stringify(r));
+        record("v4-screens", vp.name, `${name}: no hard 1px borders, cards/panels rounded ≥16px`, r.hard.length === 0 && r.smallRadius.length === 0, `${r.hard.join(" | ")} ${r.smallRadius.join(" | ")}`);
+      }
+      await anon.close();
+      const c = await newContext(vp, storageState);
+      const q = await c.newPage();
+      await q.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+      await q.getByRole("button", { name: /^알림/ }).first().click();
+      await q.waitForTimeout(700);
+      let r = await q.evaluate(probe);
+      record("v4-screens", vp.name, "bell popover: borderless rounded-3xl card, rows ≥16px radius, fits the screen", r.hard.length === 0 && r.smallRadius.length === 0 && r.over <= 0 && r.cut.length === 0, JSON.stringify(r));
+      const rad = await q.locator("[data-radix-popper-content-wrapper] > div").first().evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+      record("v4-screens", vp.name, "bell popover container radius is 24px (rounded-3xl)", rad === "24px", rad);
+      await q.keyboard.press("Escape");
+      await q.getByRole("button", { name: "가구 설정" }).first().click();
+      await q.waitForTimeout(700);
+      r = await q.evaluate(probe);
+      record("v4-screens", vp.name, "settings modal: no hard borders on role badges/panels/messages, rounded panels, no clipping", r.hard.length === 0 && r.smallRadius.length === 0 && r.cut.length === 0 && r.vertical.length === 0, JSON.stringify(r));
+      await c.close();
+    }
+  } catch (err) {
+    record("v4-screens", "-", "v4 screens suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
+  } finally {
+    if (inv.data?.id) await svc.from("household_invites").delete().eq("id", inv.data.id);
   }
 }
 

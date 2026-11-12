@@ -8,6 +8,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
+  Refrigerator,
   Repeat,
   UserPlus,
   type LucideIcon,
@@ -25,27 +26,31 @@ import { PushToggle } from "./PushToggle";
 const VISUAL: Record<NotificationType, { icon: LucideIcon; tone: string }> = {
   MAGIC_COMPLETED: {
     icon: CheckCircle2,
-    tone: "bg-emerald-50 text-emerald-500 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900/50",
+    tone: "bg-emerald-50 text-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-400",
   },
   INVITE_ACCEPTED: {
     icon: UserPlus,
-    tone: "bg-sky-50 text-sky-500 ring-1 ring-inset ring-sky-100 dark:bg-sky-950/40 dark:text-sky-400 dark:ring-sky-900/50",
+    tone: "bg-sky-50 text-sky-500 dark:bg-sky-950/40 dark:text-sky-400",
   },
   RENTAL_EXPIRING: {
     icon: Repeat,
-    tone: "bg-violet-50 text-violet-500 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:ring-violet-900/50",
+    tone: "bg-violet-50 text-violet-500 dark:bg-violet-950/40 dark:text-violet-400",
+  },
+  KITCHEN_EXPIRING: {
+    icon: Refrigerator,
+    tone: "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-300",
   },
   DUE_SOON: {
     icon: CalendarClock,
-    tone: "bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900/50",
+    tone: "bg-amber-50 text-amber-500 dark:bg-amber-950/40 dark:text-amber-400",
   },
   DUE_TODAY: {
     icon: CalendarCheck,
-    tone: "bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900/50",
+    tone: "bg-amber-50 text-amber-500 dark:bg-amber-950/40 dark:text-amber-400",
   },
   OVERDUE: {
     icon: AlertTriangle,
-    tone: "bg-rose-50 text-rose-500 ring-1 ring-inset ring-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:ring-rose-900/50",
+    tone: "bg-rose-50 text-rose-500 dark:bg-rose-950/40 dark:text-rose-400",
   },
 };
 
@@ -78,7 +83,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
         if (!r.ok) void refresh();
       });
     }
-    router.push(notificationHref(n.type, n.asset_id));
+    router.push(notificationHref(n.type, n.asset_id, n.kitchen_item_id));
   }
 
   async function onMarkAll() {
@@ -110,13 +115,13 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
       </PopoverTrigger>
 
       <PopoverContent aria-label="알림 목록">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-50">알림</h2>
+        <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-4">
+          <h2 className="text-base font-extrabold text-slate-900 dark:text-zinc-50">알림</h2>
           <button
             type="button"
             onClick={onMarkAll}
             disabled={count === 0}
-            className="text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-300 dark:hover:text-zinc-50"
+            className="min-h-8 rounded-full bg-sky-50 px-3 text-xs font-bold text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/70"
           >
             모두 읽음
           </button>
@@ -125,7 +130,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
         {items === null ? (
           <div className="space-y-2 p-4" aria-busy>
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none dark:bg-zinc-800" />
+              <div key={i} className="h-12 animate-pulse rounded-2xl bg-slate-100 motion-reduce:animate-none dark:bg-zinc-800" />
             ))}
           </div>
         ) : items.length === 0 ? (
@@ -136,7 +141,7 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
             <p className="text-sm font-medium text-slate-600 dark:text-zinc-300">새로운 알림이 없습니다</p>
           </div>
         ) : (
-          <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto dark:divide-zinc-800">
+          <ul className="max-h-96 space-y-1 overflow-y-auto px-2 pb-1">
             {items.map((n) => {
               const { icon: Icon, tone } = VISUAL[n.type];
               const unread = !n.read_at;
@@ -147,11 +152,11 @@ export function NotificationBell({ initialCount }: { initialCount: number }) {
                     onClick={() => onItemClick(n)}
                     data-unread={unread}
                     className={cn(
-                      "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/60",
-                      unread && "bg-sky-50/50 dark:bg-sky-950/20",
+                      "flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/60",
+                      unread && "bg-sky-50 dark:bg-sky-950/30",
                     )}
                   >
-                    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", tone)}>
+                    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl", tone)}>
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">

@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 };
 
 const CTA =
-  "flex h-14 w-full items-center justify-center rounded-xl bg-sky-600 text-base font-semibold text-white transition-all hover:bg-sky-700 active:scale-[0.98] dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
+  "flex min-h-14 w-full items-center justify-center rounded-2xl bg-sky-600 text-base font-bold shadow-sm text-white transition-all hover:bg-sky-700 active:scale-[0.98] dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 const SMALL_CTA =
   "inline-flex items-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400";
 
@@ -53,7 +53,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
 
         {preview.status === "ACTIVE" && (
           <>
-            <header className="flex items-center gap-3 rounded-xl bg-gradient-to-br from-white to-slate-50 p-4 ring-1 ring-inset ring-white/60 dark:from-zinc-900 dark:to-zinc-900/60 dark:ring-white/5">
+            <header className="flex items-center gap-3 rounded-3xl bg-white p-4 shadow-sm dark:bg-zinc-900">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-white">
                 <Home className="h-5 w-5" />
               </span>

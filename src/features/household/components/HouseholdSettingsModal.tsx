@@ -165,10 +165,10 @@ export function HouseholdSettingsModal({
                 <span className="flex-1 truncate text-sm font-medium text-slate-900 dark:text-zinc-50">{m.display_name}</span>
                 <span
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-bold",
                     m.role === "ADMIN"
-                      ? "border-sky-200 bg-sky-50 text-sky-600 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-400"
-                      : "border-slate-200 bg-white text-slate-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400",
+                      ? "bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-300"
+                      : "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300",
                   )}
                 >
                   {m.role === "ADMIN" ? "관리자" : "구성원"}
@@ -223,7 +223,7 @@ export function HouseholdSettingsModal({
                 />
               </div>
               {pendingFile && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs dark:bg-amber-950/30">
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-amber-50 p-3 text-xs dark:bg-amber-950/30">
                   <span className="min-w-0 flex-1 truncate font-medium text-amber-700 dark:text-amber-400">
                     {pendingFile.name} 을(를) 복구할까요?
                   </span>
@@ -254,10 +254,10 @@ export function HouseholdSettingsModal({
           <p
             role="status"
             className={cn(
-              "rounded-lg border px-3 py-2 text-xs font-medium",
+              "rounded-2xl px-3 py-2.5 text-xs font-bold",
               message.tone === "ok"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400"
-                : "border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400",
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300",
             )}
           >
             {message.text}

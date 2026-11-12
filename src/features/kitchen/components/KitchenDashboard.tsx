@@ -41,10 +41,10 @@ function PetTypeSelect({ value }: { value: PetType }) {
             data-pet={p}
             onClick={() => startTransition(async () => { await setKitchenPetType({ petType: p }); })}
             className={cn(
-              "h-7 rounded-lg border px-2.5 text-[11px] font-medium transition-colors disabled:opacity-60",
+              "min-h-9 rounded-full px-3.5 text-xs font-bold transition-all active:scale-95 disabled:opacity-60 motion-reduce:transform-none",
               value === p
-                ? "border-zinc-900 text-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:text-zinc-50 dark:ring-zinc-100"
-                : "border-zinc-200 text-zinc-500 hover:border-zinc-300 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700",
+                ? "bg-sky-600 text-white shadow-sm dark:bg-sky-500"
+                : "bg-white text-slate-600 shadow-sm hover:bg-slate-100 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700",
             )}
           >
             {PET_TYPE_LABEL[p]}
@@ -55,7 +55,7 @@ function PetTypeSelect({ value }: { value: PetType }) {
   );
 }
 
-export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData; budget: KitchenBudgetData | null }) {
+export function KitchenDashboard({ data, budget, focusId = null }: { data: KitchenDashboardData; budget: KitchenBudgetData | null; focusId?: string | null }) {
   const { today, profile, items, stats, toxicItems } = data;
   const [tab, setTab] = useState<StorageFilter>("ALL");
   const [form, setForm] = useState<KitchenFormTarget | null>(null);
@@ -65,6 +65,24 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
   const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
+  // Notification deep link (/kitchen?focus=<id>): show the item, scroll to it and highlight it for a few seconds.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusId) return;
+    if (!items.some((i) => i.id === focusId)) {
+      setNotice("이미 정리된 재료예요.");
+      return;
+    }
+    setTab("ALL");
+    setHighlightId(focusId);
+    const t1 = setTimeout(() => document.getElementById(`kitchen-item-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+    const t2 = setTimeout(() => setHighlightId(null), 4500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per deep link
+  }, [focusId]);
   const showNotice = (m: string) => {
     setNotice(m);
     clearTimeout(timer.current);
@@ -139,7 +157,7 @@ export function KitchenDashboard({ data, budget }: { data: KitchenDashboardData;
       ) : (
         <ul data-testid="kitchen-list" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((it) => (
-            <li key={it.id} className="min-w-0">
+            <li key={it.id} id={`kitchen-item-${it.id}`} data-highlight={highlightId === it.id} className={cn("min-w-0 rounded-3xl transition-shadow duration-500", highlightId === it.id && "ring-4 ring-sky-300 dark:ring-sky-500")}>
               <KitchenItemCard item={it} today={today} petType={profile.pet_type} onEdit={(i) => setForm({ mode: "edit", item: i })} onFossil={setFossilItem} onNotice={showNotice} />
             </li>
           ))}

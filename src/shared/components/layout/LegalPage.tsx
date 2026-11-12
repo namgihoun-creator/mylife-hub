@@ -4,8 +4,8 @@ import { ArrowLeft } from "lucide-react";
 /** Plain reading layout for the privacy policy / terms (public pages, no app shell). */
 export function LegalPage({ title, updated, children }: { title: string; updated: string; children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 dark:bg-zinc-950">
-      <article className="mx-auto w-full max-w-2xl space-y-6 rounded-3xl bg-white p-6 shadow-sm dark:bg-zinc-900 sm:p-8">
+    <main className="min-h-screen bg-slate-50 px-3 py-8 dark:bg-zinc-950 sm:px-4 sm:py-10">
+      <article className="mx-auto w-full max-w-2xl space-y-6 rounded-3xl bg-white p-5 shadow-sm dark:bg-zinc-900 sm:p-8">
         <Link href="/assets" className="inline-flex min-h-10 items-center gap-1.5 text-sm font-bold text-sky-600 hover:text-sky-700 dark:text-sky-400">
           <ArrowLeft className="h-4 w-4" aria-hidden /> 앱으로 돌아가기
         </Link>

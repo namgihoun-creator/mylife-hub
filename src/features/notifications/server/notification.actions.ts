@@ -26,10 +26,21 @@ export async function getRecentNotifications(limit = 20): Promise<AppNotificatio
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notifications")
-    .select("id, type, title, body, task_id, asset_id, read_at, created_at")
+    .select("*") // "*": the list keeps working before and after the kitchen_item_id column exists
     .order("created_at", { ascending: false })
     .limit(parsed.success ? parsed.data : 20);
-  return error ? [] : ((data ?? []) as AppNotification[]);
+  if (error) return [];
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    body: r.body,
+    task_id: r.task_id ?? null,
+    asset_id: r.asset_id ?? null,
+    kitchen_item_id: r.kitchen_item_id ?? null,
+    read_at: r.read_at ?? null,
+    created_at: r.created_at,
+  })) as AppNotification[];
 }
 
 export async function markAsRead(notificationId: string): Promise<MarkResult> {

@@ -4,11 +4,14 @@ import { getKitchenBudgetData } from "@/features/kitchen/server/kitchen-budget.a
 import { getKitchenDashboardData } from "@/features/kitchen/server/kitchen.actions";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { AlertTriangle } from "lucide-react";
+import { z } from "zod";
 
 export const metadata: Metadata = { title: "키친" };
 
 // Auth is enforced by (dashboard)/layout.tsx and the middleware; RLS limits every query to this household.
-export default async function KitchenPage() {
+export default async function KitchenPage({ searchParams }: { searchParams: Promise<{ focus?: string }> }) {
+  const { focus } = await searchParams;
+  const focusId = z.uuid().safeParse(focus).success ? (focus as string) : null; // notification deep link: /kitchen?focus=<item id>
   const [res, budget] = await Promise.all([getKitchenDashboardData(), getKitchenBudgetData()]);
   if (!res.ok) {
     return (
@@ -18,5 +21,5 @@ export default async function KitchenPage() {
       </div>
     );
   }
-  return <KitchenDashboard data={res.data} budget={budget.ok ? budget.data : null} />;
+  return <KitchenDashboard data={res.data} budget={budget.ok ? budget.data : null} focusId={focusId} />;
 }

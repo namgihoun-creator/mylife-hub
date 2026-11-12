@@ -273,6 +273,11 @@
 - **LocalLifeRadar:** 사람용 칩 3개(`ShoppingCart` 대형마트 · `Sprout` 전통시장 · `Store` 24시 편의점) + 펫 가구에만 두 번째 줄 3개(Rose `Siren` 24시 동물병원 · `Stethoscope` 동네 동물병원 · `PawPrint` 펫용품점). `h-9 rounded-lg border` 칩, 우측 `ExternalLink` 보조 아이콘. **일반 링크**(`https://m.map.kakao.com/actions/searchView?q=<encodeURIComponent>`, `target="_blank" rel="noopener noreferrer"`) — 스크립트 불필요, 방문자 위치를 묻거나 저장하지 않는다(위치는 카카오맵이 필요할 때 직접 묻는다).
 - **냉장고 자산 칩(`FridgeKitchenChip`, `/assets`):** 카테고리가 `냉장고`이거나 이름에 `냉장고/냉동고`(김치냉장고 포함)가 든 자산 카드의 관리 규칙 줄 아래. `rounded-full` 알약 `ChefHat` + `보관 N개`, 임박(D-3 이하·기한 지남 포함)이 있으면 amber 틴트 + `(임박 M개)` + `TriangleAlert`. 클릭 시 `/kitchen`으로 이동(`next/link`).
 
+### I-2. 알림 종류 · 이동 규칙 (§I 보강, v4)
+- 팝오버: `rounded-3xl bg-white shadow-xl`(보더 없음), 헤더 "알림" + Sky 알약 [모두 읽음], 행은 `rounded-2xl`(안 읽음 `bg-sky-50` + 코랄 점), 하단 푸시 토글은 `rounded-2xl bg-slate-50` 패널. 화면 가장자리와 12px 간격 유지.
+- 집계: 가전 과업 **D-7~D-1**(`DUE_SOON`, "N일 후"), D-Day(`DUE_TODAY`), 지연(`OVERDUE`), 렌탈 약정 D-60/30(`RENTAL_EXPIRING`), 키친 소비기한 **D-3~D-Day + 어제 만료**(`KITCHEN_EXPIRING`, 틸 냉장고 아이콘). 키친은 가구 공유 자원이라 구성원 전원에게 간다.
+- 클릭 이동: 가전 알림 → `/assets?openAssetId=<id>`(상세 패널), 렌탈 → 같은 주소 + `&tab=compare`, 키친 → `/kitchen?focus=<id>`(전체 탭으로 전환·스크롤·Sky `ring-4` 하이라이트 4.5초). 대상이 삭제됐으면 목록 페이지로 이동하고 키친은 "이미 정리된 재료예요." 안내.
+
 ### R. 사용 가이드 뱃지 · 3단계 슬라이드 튜토리얼 — `ui/ContextHelpButton.tsx` · `help/SlideTutorialModal.tsx`
 - 섹션 제목 옆 캡슐 뱃지 `<ContextHelpButton topic="…" />`: `rounded-full border-sky-200/80 bg-sky-50 text-sky-600 text-xs font-semibold shadow-sm`, `HelpCircle` 13px/stroke 2.5 + 라벨("사용 가이드", 등록 흐름은 "등록 튜토리얼"), 높이 32px 이상. `shrink-0 whitespace-nowrap`이며, 자리가 모자라면 부모 `flex-wrap`이 뱃지를 통째로 아래 줄로 내린다(280px 대응).
 - 콘텐츠는 `src/shared/constants/help-content.ts`의 `steps`(정확히 3개: step·title·desc·icon·badge)에서만 관리. 설명은 2줄 안팎(좁은 폭에서는 늘어날 수 있음).

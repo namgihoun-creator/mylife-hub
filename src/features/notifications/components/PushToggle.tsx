@@ -18,9 +18,9 @@ export function PushToggle() {
         : null;
 
   return (
-    <div className="border-t border-slate-100 px-4 py-3 dark:border-zinc-800">
+    <div className="m-2 rounded-2xl bg-slate-50 px-3 py-3 dark:bg-zinc-800/60">
       <div className="flex items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200/70 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700/60">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm dark:bg-zinc-800 dark:text-sky-300">
           <BellRing className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">

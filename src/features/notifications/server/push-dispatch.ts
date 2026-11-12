@@ -3,7 +3,7 @@ import { configureVapid, sendPush } from "@/shared/lib/push/sender";
 import { createAdminClient } from "@/shared/lib/supabase/admin";
 import { notificationHref } from "../utils/notification-links";
 
-type Claimed = { id: string; user_id: string; type: string; title: string; body: string; task_id: string | null; asset_id: string | null };
+type Claimed = { id: string; user_id: string; type: string; title: string; body: string; task_id: string | null; asset_id: string | null; kitchen_item_id?: string | null };
 type Sub = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
 
 export type DispatchStats = {
@@ -66,7 +66,7 @@ export async function runPushDispatch(options: { limit?: number; userIds?: strin
       continue;
     }
 
-    const payload = JSON.stringify({ title: n.title, body: n.body, url: notificationHref(n.type, n.asset_id), tag: n.id });
+    const payload = JSON.stringify({ title: n.title, body: n.body, url: notificationHref(n.type, n.asset_id, n.kitchen_item_id), tag: n.id });
     const results = await Promise.all(subs.map((s) => sendPush(s, payload)));
 
     let delivered = 0;

@@ -15,7 +15,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       title="테마 전환"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       className={cn(
-        "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent text-zinc-600 transition-colors hover:border-zinc-200 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-zinc-50 dark:focus-visible:ring-zinc-100",
+        "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50",
         className,
       )}
     >
