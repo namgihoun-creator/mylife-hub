@@ -4481,6 +4481,68 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
   }
 }
 
+// ---------------------------------------------------------------- generator live check (migration 15): D-7 appliance window + kitchen expiry window
+{
+  const probe = await svc.from("notifications").select("kitchen_item_id").limit(1);
+  const migrated = !probe.error;
+  const taskIds = [], itemIds = [];
+  let assetId = null;
+  try {
+    if (!migrated) {
+      record("gen15", "-", "migration 15 applied (kitchen_item_id column exists)", false, probe.error?.message);
+    } else {
+      const { data: members } = await svc.from("profiles").select("id").eq("household_id", myProfile.household_id);
+      const memberIds = (members ?? []).map((m) => m.id).sort().join(",");
+      const { data: asset, error: aErr } = await sb.from("assets").insert({ household_id: myProfile.household_id, owner_id: me.user.id, name: `${SANDBOX_PREFIX} 생성기 가전` }).select("id").single();
+      if (aErr) throw new Error(aErr.message);
+      assetId = asset.id;
+      const mkTask = async (label, due) => {
+        const { data, error } = await sb.from("tasks").insert({ household_id: myProfile.household_id, owner_id: me.user.id, asset_id: assetId, title: `${SANDBOX_PREFIX} 생성기 ${label}`, due_date: due }).select("id").single();
+        if (error) throw new Error(error.message);
+        taskIds.push(data.id);
+        return data.id;
+      };
+      const mkItem = async (name, d) => {
+        const { data, error } = await svc.from("kitchen_items").insert({ household_id: myProfile.household_id, name: `${SANDBOX_PREFIX} ${name}`, expire_date: shift(d) }).select("id").single();
+        if (error) throw new Error(error.message);
+        itemIds.push(data.id);
+        return data.id;
+      };
+      const t = { d8: await mkTask("D-8", shift(8)), d7: await mkTask("D-7", shift(7)), d5: await mkTask("D-5", shift(5)), d1: await mkTask("D-1", shift(1)) };
+      const k = { d4: await mkItem("두유D4", 4), d3: await mkItem("두부D3", 3), d0: await mkItem("계란D0", 0), y: await mkItem("어제", -1), old: await mkItem("오래전", -5), far: await mkItem("멀리", 20) };
+
+      const gen = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+      const rows = async (col, id) => (await svc.from("notifications").select("user_id, type, title, body, dedupe_key, kitchen_item_id, asset_id").eq(col, id)).data ?? [];
+      const to = async (col, id) => (await rows(col, id)).map((r) => r.user_id).sort().join(",");
+
+      record("gen15", "live", "appliance window: D-7, D-5, D-1 → DUE_SOON for every member; D-8 → nothing", (await rows("task_id", t.d8)).length === 0 && (await to("task_id", t.d7)) === memberIds && (await to("task_id", t.d5)) === memberIds && (await to("task_id", t.d1)) === memberIds, `members=${memberIds.split(",").length}`);
+      const r7 = (await rows("task_id", t.d7))[0], r5 = (await rows("task_id", t.d5))[0];
+      record("gen15", "live", "DUE_SOON text counts the real days (7일 후 / 5일 후), links the appliance, dedupe key due-soon:<task>:<due_date>", r7?.type === "DUE_SOON" && /생성기 가전 · .*D-7 — 7일 후 \(\d\d\/\d\d\)/.test(r7.body) && /5일 후/.test(r5?.body ?? "") && r7.asset_id === assetId && r7.dedupe_key === `due-soon:${t.d7}:${shift(7)}`, r7?.body);
+      record("gen15", "live", "kitchen window: D-3, D-Day, expired-yesterday → KITCHEN_EXPIRING for every member; D-4, 5 days ago, far future → nothing", (await to("kitchen_item_id", k.d3)) === memberIds && (await to("kitchen_item_id", k.d0)) === memberIds && (await to("kitchen_item_id", k.y)) === memberIds && (await rows("kitchen_item_id", k.d4)).length === 0 && (await rows("kitchen_item_id", k.old)).length === 0 && (await rows("kitchen_item_id", k.far)).length === 0);
+      const kd3 = (await rows("kitchen_item_id", k.d3))[0], kd0 = (await rows("kitchen_item_id", k.d0))[0], ky = (await rows("kitchen_item_id", k.y))[0];
+      record("gen15", "live", "kitchen text + keys: ‘3일 후 (MM/DD)’ / ‘오늘까지’ / ‘1일 지났어요’, type KITCHEN_EXPIRING, key kitchen-expiring:<item>:<expire_date>", kd3?.type === "KITCHEN_EXPIRING" && /두부D3 \(1개\) — 3일 후 \(\d\d\/\d\d\)/.test(kd3.body) && /오늘까지/.test(kd0.body) && /1일 지났어요/.test(ky.body) && /소비기한이 임박/.test(kd3.title) && /소비기한이 지난/.test(ky.title) && kd3.dedupe_key === `kitchen-expiring:${k.d3}:${shift(3)}`, `${kd3?.body} | ${kd0?.body} | ${ky?.body}`);
+      record("gen15", "live", "summary reports kitchen_expiring ≥ 3×members and total adds up", typeof gen.data?.kitchen_expiring === "number" && gen.data.kitchen_expiring >= 3 * memberIds.split(",").length && gen.data.total === gen.data.due_soon + gen.data.due_today + gen.data.overdue + gen.data.rental_expiring + gen.data.kitchen_expiring, JSON.stringify(gen.data));
+      const gen2 = await svc.rpc("generate_due_notifications", { p_household_id: myProfile.household_id });
+      record("gen15", "live", "re-running creates nothing new for these items (dedupe)", gen2.data?.total === 0, JSON.stringify(gen2.data));
+      const asMember = await sb.rpc("generate_due_notifications", {});
+      record("gen15", "live", "still service_role only (a signed-in user gets 42501)", asMember.error?.code === "42501", asMember.error?.code);
+      // a deleted ingredient keeps its alert but loses the link → deep link degrades to /kitchen
+      await svc.from("kitchen_items").delete().eq("id", k.d3);
+      const orphan = (await svc.from("notifications").select("kitchen_item_id").eq("dedupe_key", kd3.dedupe_key)).data ?? [];
+      record("gen15", "live", "deleting the ingredient keeps the alert, link set to NULL", orphan.length === memberIds.split(",").length && orphan.every((o) => o.kitchen_item_id === null));
+    }
+  } catch (err) {
+    record("gen15", "-", "generator live suite ran to completion", false, String(err?.stack ?? err).slice(0, 300));
+  } finally {
+    if (taskIds.length) await svc.from("notifications").delete().in("task_id", taskIds);
+    if (itemIds.length) await svc.from("notifications").delete().in("kitchen_item_id", itemIds);
+    await svc.from("notifications").delete().like("dedupe_key", "kitchen-expiring:%").is("kitchen_item_id", null).like("body", `${SANDBOX_PREFIX}%`);
+    if (taskIds.length) await sb.from("tasks").delete().in("id", taskIds);
+    if (itemIds.length) await svc.from("kitchen_items").delete().in("id", itemIds);
+    if (assetId) await sb.from("assets").delete().eq("id", assetId);
+  }
+}
+
 // ---------------------------------------------------------------- invite flow safeguards: remembered invite + "don't create a second household" warning
 {
   const { createHash, randomBytes } = await import("node:crypto");
