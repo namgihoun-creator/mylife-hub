@@ -5596,6 +5596,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         record("phase2", "desktop", "each card has a ♥ toggle with a count (0 at the start), no joint badge", (await card1.getByTestId("wish-like").count()) === 1 && (await card1.getByTestId("wish-like-count").innerText()).trim() === "0" && (await p.getByTestId("joint-pick").count()) === 0);
         await card1.getByTestId("wish-like").click();
         await p.waitForFunction(() => document.querySelector('[data-testid="wish-card"] [data-testid="wish-like"][aria-pressed="true"]'));
+        await until(async () => (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by.length === 1);
         const l1 = (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by;
         record("phase2", "desktop", "♥ stores my user id in liked_by (count 1, pressed) — one vote is not a joint pick", JSON.stringify(l1) === JSON.stringify([uid1]) && (await card1.getByTestId("wish-like-count").innerText()).trim() === "1" && (await p.getByTestId("joint-pick").count()) === 0, JSON.stringify(l1));
         // the partner votes from their own session
@@ -5605,6 +5606,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         record("phase2", "desktop", "the partner sees my vote (♥ 1, not pressed for them)", (await pcard.getByTestId("wish-like-count").innerText()).trim() === "1" && (await pcard.getByTestId("wish-like").getAttribute("aria-pressed")) === "false");
         await pcard.getByTestId("wish-like").click();
         await pcard.getByTestId("joint-pick").waitFor();
+        await until(async () => (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by.length === 2);
         const l2 = (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by;
         record("phase2", "desktop", "both members voted: ‘부부 공동 픽 ♥’ mint badge on the partner’s screen and liked_by holds both ids", l2.length === 2 && l2.includes(uid1) && l2.includes(uid2) && /부부 공동 픽/.test(await pcard.getByTestId("joint-pick").innerText()) && /teal/.test(await pcard.getByTestId("joint-pick").getAttribute("class")));
         await p.evaluate(() => window.dispatchEvent(new Event("focus")));
