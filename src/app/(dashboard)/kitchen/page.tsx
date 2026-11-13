@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { KitchenDashboard } from "@/features/kitchen/components/KitchenDashboard";
 import { getKitchenBudgetData } from "@/features/kitchen/server/kitchen-budget.actions";
 import { getKitchenDashboardData } from "@/features/kitchen/server/kitchen.actions";
+import { getShoppingItems } from "@/features/kitchen/server/shopping.actions";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { AlertTriangle } from "lucide-react";
 import { z } from "zod";
@@ -9,10 +10,10 @@ import { z } from "zod";
 export const metadata: Metadata = { title: "키친" };
 
 // Auth is enforced by (dashboard)/layout.tsx and the middleware; RLS limits every query to this household.
-export default async function KitchenPage({ searchParams }: { searchParams: Promise<{ focus?: string }> }) {
-  const { focus } = await searchParams;
+export default async function KitchenPage({ searchParams }: { searchParams: Promise<{ focus?: string; tab?: string }> }) {
+  const { focus, tab } = await searchParams;
   const focusId = z.uuid().safeParse(focus).success ? (focus as string) : null; // notification deep link: /kitchen?focus=<item id>
-  const [res, budget] = await Promise.all([getKitchenDashboardData(), getKitchenBudgetData()]);
+  const [res, budget, shopping] = await Promise.all([getKitchenDashboardData(), getKitchenBudgetData(), getShoppingItems()]);
   if (!res.ok) {
     return (
       <div className="space-y-6">
@@ -21,5 +22,5 @@ export default async function KitchenPage({ searchParams }: { searchParams: Prom
       </div>
     );
   }
-  return <KitchenDashboard data={res.data} budget={budget.ok ? budget.data : null} focusId={focusId} />;
+  return <KitchenDashboard data={res.data} budget={budget.ok ? budget.data : null} focusId={focusId} shopping={{ items: shopping.ok ? shopping.items : [], notReady: !shopping.ok }} initialView={tab === "shopping" ? "shopping" : "storage"} />;
 }

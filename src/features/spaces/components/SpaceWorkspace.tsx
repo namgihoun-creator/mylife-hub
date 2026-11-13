@@ -150,7 +150,7 @@ export function SpaceWorkspace({ detail }: { detail: SpaceDetail }) {
         onDiagnosis={setDiagnosis}
         onAddToBoard={addFromAi}
       />
-      <WishFurnitureBoard spaceId={space.id} annotations={annotations} candidates={candidates} onCandidates={setCandidates} />
+      <WishFurnitureBoard spaceId={space.id} annotations={annotations} candidates={candidates} onCandidates={setCandidates} memberIds={detail.memberIds} userId={detail.userId} />
     </div>
   );
 }

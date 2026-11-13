@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ArrowRightLeft, Check, Loader2, PawPrint, Pencil, Snowflake, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Check, Loader2, PawPrint, Pencil, Plus, Snowflake, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/shared/components/ui/dropdown-menu";
 import { cn } from "@/shared/lib/utils";
 import { formatDotDate, formatWon } from "@/features/assets/utils/rental";
@@ -10,6 +10,8 @@ import { isPetToxic } from "../rules/pet-safety";
 import { STORAGE_LABEL, STORAGE_TYPES, type StorageType } from "../rules/shelf-life";
 import type { KitchenItem, PetType } from "../schemas/kitchen.schema";
 import { consumeKitchenItem, deleteKitchenItem, moveStorageKitchenItem } from "../server/kitchen.actions";
+import { addKitchenItemToShopping } from "../server/shopping.actions";
+import type { ShoppingItem } from "../schemas/shopping.schema";
 
 const PILL = "inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-extrabold leading-tight";
 const ACTION =
@@ -38,6 +40,7 @@ export function KitchenItemCard({
   onEdit,
   onFossil,
   onNotice,
+  onShoppingAdded,
 }: {
   item: KitchenItem;
   today: string;
@@ -45,6 +48,8 @@ export function KitchenItemCard({
   onEdit: (item: KitchenItem) => void;
   onFossil: (item: KitchenItem) => void;
   onNotice: (message: string) => void;
+  /** the item was put on the shopping list ([+ 장보기]) */
+  onShoppingAdded?: (item: ShoppingItem) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +171,24 @@ export function KitchenItemCard({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <button
+          type="button"
+          data-testid="shop-btn"
+          disabled={pending}
+          onClick={() =>
+            run(async () => {
+              const r = await addKitchenItemToShopping({ id: item.id });
+              if (!r.ok) return r;
+              onShoppingAdded?.(r.item);
+              return { ok: true, message: r.duplicate ? `${item.name}은(는) 이미 장보기 리스트에 있어요.` : `${item.name}을(를) 장보기 리스트에 담았어요.` };
+            })
+          }
+          aria-label={`${item.name} 장보기 리스트에 담기`}
+          className="inline-flex min-h-10 items-center gap-1 rounded-full bg-teal-50 px-3 text-xs font-bold text-teal-700 transition-all hover:bg-teal-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 disabled:opacity-50 motion-reduce:transform-none dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/70"
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden /> 장보기
+        </button>
 
         <button type="button" data-testid="edit-btn" disabled={pending} onClick={() => onEdit(item)} aria-label={`${item.name} 수정`} className={ACTION}>
           <Pencil className="h-3.5 w-3.5" aria-hidden /> 수정

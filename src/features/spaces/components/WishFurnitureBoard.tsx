@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Download, ExternalLink, Heart, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Download, ExternalLink, Heart, Loader2, Pencil, Plus, Trash2, Wallet, X } from "lucide-react";
 import { FitBadge, FitBasis } from "./FitBadge";
 import { ShoppingButtons } from "./ShoppingButtons";
-import { addCandidate, deleteCandidate, setCandidateStatus, updateCandidate } from "../server/space.actions";
+import { addCandidate, deleteCandidate, setCandidateStatus, toggleCandidateLike, updateCandidate } from "../server/space.actions";
 import { CANDIDATE_STATUSES, STATUS_LABEL, type CandidateStatus } from "../schemas/space-constants";
 import type { FurnitureCandidate } from "../schemas/space-board.schema";
 import type { AnnotationInput } from "../schemas/space.schema";
-import { evaluateFurnitureFit } from "@/shared/utils/space-planner";
+import { evaluateFurnitureFit, isJointPick, summarizeBudget } from "@/shared/utils/space-planner";
 import { cn } from "@/shared/lib/utils";
 
 type Draft = { name: string; category: string; w: string; d: string; h: string; price: string; url: string; memo: string; image: string };
@@ -43,8 +43,13 @@ export function WishFurnitureBoard({
   annotations,
   candidates,
   onCandidates,
+  memberIds,
+  userId,
 }: {
   spaceId: string;
+  /** household members (user ids): a wish every one of them ♥-ed is a "부부 공동 픽" */
+  memberIds: string[];
+  userId: string;
   annotations: AnnotationInput[];
   candidates: FurnitureCandidate[];
   onCandidates: (next: FurnitureCandidate[] | ((prev: FurnitureCandidate[]) => FurnitureCandidate[])) => void;
@@ -83,6 +88,21 @@ export function WishFurnitureBoard({
       image: out.imageUrl ?? "",
     }));
     setParseNote({ ok: true, text: [out.title, out.price !== null ? won(out.price) : null].filter(Boolean).join(" · ") || "상품 정보를 불러왔어요.", mall: out.sourceMall });
+  };
+
+  const budget = summarizeBudget(candidates);
+
+  // ♥: optimistic toggle of my own vote, reconciled with the server's row (which also carries the partner's vote)
+  const toggleLike = async (c: FurnitureCandidate) => {
+    const mine = (c.liked_by ?? []).includes(userId);
+    const flip = (likes: string[]) => (mine ? likes.filter((u) => u !== userId) : [...likes.filter((u) => u !== userId), userId]);
+    onCandidates((prev) => prev.map((x) => (x.id === c.id ? { ...x, liked_by: flip(x.liked_by ?? []) } : x)));
+    const res = await toggleCandidateLike(c.id);
+    if (!res.ok) {
+      onCandidates((prev) => prev.map((x) => (x.id === c.id ? { ...x, liked_by: c.liked_by ?? [] } : x)));
+      return setError(res.error);
+    }
+    onCandidates((prev) => prev.map((x) => (x.id === c.id ? { ...x, liked_by: res.candidate.liked_by ?? [] } : x)));
   };
 
   const set = (k: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, [k]: e.target.value }));
@@ -153,6 +173,24 @@ export function WishFurnitureBoard({
           </button>
         )}
       </div>
+
+      {candidates.length > 0 && (
+        <div data-testid="wish-budget" aria-label="예산 합산" className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+          <div className="min-w-0 rounded-2xl bg-sky-50 px-4 py-3 dark:bg-sky-950/40">
+            <p className="flex items-center gap-1.5 text-[11px] font-bold text-sky-700 dark:text-sky-300"><Wallet size={13} aria-hidden /> 최종 픽 합계 <span className="tabular-nums">({budget.selectedCount}개)</span></p>
+            <p data-testid="budget-selected" className="mt-0.5 break-words text-xl font-extrabold tabular-nums text-sky-800 dark:text-sky-200">{won(budget.selectedTotal)}</p>
+          </div>
+          <div className="min-w-0 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-zinc-800/60">
+            <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-zinc-400"><Wallet size={13} aria-hidden /> 전체 후보 합계 <span className="tabular-nums">({budget.candidateCount}개)</span></p>
+            <p data-testid="budget-all" className="mt-0.5 break-words text-xl font-extrabold tabular-nums text-slate-800 dark:text-zinc-100">{won(budget.candidateTotal)}</p>
+            {(budget.unpriced > 0 || budget.purchasedTotal > 0) && (
+              <p data-testid="budget-note" className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+                {[budget.unpriced > 0 ? `가격 미입력 ${budget.unpriced}개 제외` : null, budget.purchasedTotal > 0 ? `구매 완료 ${won(budget.purchasedTotal)} 별도` : null].filter(Boolean).join(" · ")}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {open && (
         <form data-testid="wish-form" onSubmit={submit} className="space-y-3 rounded-2xl bg-slate-50 p-3 dark:bg-zinc-800/60 sm:p-4">
@@ -272,6 +310,32 @@ export function WishFurnitureBoard({
                   <FitBadge fit={fit} />
                 </div>
                 <FitBasis basis={fit.basisLabel} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {(() => {
+                    const likes = c.liked_by ?? [];
+                    const mine = likes.includes(userId);
+                    return (
+                      <button
+                        type="button"
+                        data-testid="wish-like"
+                        aria-pressed={mine}
+                        aria-label={`${c.name} 좋아요 ${likes.length}명${mine ? ", 내가 누름" : ""}`}
+                        onClick={() => void toggleLike(c)}
+                        className={cn(
+                          "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-bold shadow-sm transition-all active:scale-95 motion-reduce:transform-none",
+                          mine ? "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300" : "bg-white text-slate-500 hover:bg-rose-50 dark:bg-zinc-800 dark:text-zinc-300",
+                        )}
+                      >
+                        <Heart size={14} strokeWidth={2.5} className={mine ? "fill-current" : ""} aria-hidden /> <span data-testid="wish-like-count" className="tabular-nums">{likes.length}</span>
+                      </button>
+                    );
+                  })()}
+                  {isJointPick(c.liked_by, memberIds) && (
+                    <span data-testid="joint-pick" className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-teal-50 px-3 py-1.5 text-xs font-extrabold text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+                      부부 공동 픽 <Heart size={12} className="fill-current" aria-hidden />
+                    </span>
+                  )}
+                </div>
                 {c.memo && <p className="break-words rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-600 dark:bg-zinc-900 dark:text-zinc-300">{c.memo}</p>}
 
                 <div role="radiogroup" aria-label="진행 상태" className="flex flex-wrap gap-1.5">

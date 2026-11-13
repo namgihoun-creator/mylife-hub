@@ -150,3 +150,47 @@ export function inferMall(url: string | null | undefined): ShoppingMallId | null
   if (is("ikea.com")) return "ikea";
   return null;
 }
+
+// ---------------------------------------------------------------------------------------------- wish board: budget & couple vote
+export type BudgetCandidate = { status: string; price?: number | null };
+export type BudgetSummary = {
+  /** 최종 픽 (SELECTED) total, won */
+  selectedTotal: number;
+  selectedCount: number;
+  /** 전체 후보 total: CANDIDATE + SELECTED (what is still on the table, 구매 완료 excluded) */
+  candidateTotal: number;
+  candidateCount: number;
+  /** 구매 완료 total (already spent) */
+  purchasedTotal: number;
+  /** how many counted wishes have no price yet (so the total is a floor) */
+  unpriced: number;
+};
+
+/** Live budget of one space's wish list. A missing price counts as 0 and is reported in `unpriced`. */
+export function summarizeBudget(candidates: readonly BudgetCandidate[] | null | undefined): BudgetSummary {
+  const out: BudgetSummary = { selectedTotal: 0, selectedCount: 0, candidateTotal: 0, candidateCount: 0, purchasedTotal: 0, unpriced: 0 };
+  for (const c of candidates ?? []) {
+    const price = typeof c?.price === "number" && Number.isFinite(c.price) && c.price > 0 ? c.price : 0;
+    if (c?.status === "PURCHASED") {
+      out.purchasedTotal += price;
+      continue;
+    }
+    if (c?.status !== "SELECTED" && c?.status !== "CANDIDATE") continue;
+    out.candidateTotal += price;
+    out.candidateCount += 1;
+    if (!price) out.unpriced += 1;
+    if (c.status === "SELECTED") {
+      out.selectedTotal += price;
+      out.selectedCount += 1;
+    }
+  }
+  return out;
+}
+
+/** "부부 공동 픽": at least two household members and every one of them has ♥-ed it. */
+export function isJointPick(likedBy: readonly string[] | null | undefined, memberIds: readonly string[] | null | undefined): boolean {
+  const members = [...new Set(memberIds ?? [])];
+  if (members.length < 2) return false;
+  const likes = new Set(likedBy ?? []);
+  return members.every((m) => likes.has(m));
+}

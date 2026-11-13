@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { annotationAxis, buildShoppingLinks, composeLabel, evaluateFurnitureFit, inferMall, type SpaceAnnotation } from "./space-planner.ts";
+import { annotationAxis, buildShoppingLinks, composeLabel, evaluateFurnitureFit, inferMall, isJointPick, summarizeBudget, type SpaceAnnotation } from "./space-planner.ts";
 
 const wall = (label: string, lengthCm: number): SpaceAnnotation => ({ id: label, x1: 0, y1: 0, x2: 1, y2: 0, label, lengthCm });
 
@@ -119,4 +119,31 @@ test("fit basis label: the worst axis and the shortest matching line are the bas
   assert.equal(evaluateFurnitureFit(ann, { widthCm: 200 }).basisLabel, "가로 벽면 B 250cm 기준 · 50cm 여유");
   assert.equal(evaluateFurnitureFit([], { widthCm: 200 }).basisLabel, "");
   assert.equal(evaluateFurnitureFit(ann, {}).basisLabel, "");
+});
+
+test("budget: SELECTED total, CANDIDATE+SELECTED total, PURCHASED apart, missing prices counted", () => {
+  const b = summarizeBudget([
+    { status: "SELECTED", price: 650000 },
+    { status: "SELECTED", price: 320000 },
+    { status: "CANDIDATE", price: 180000 },
+    { status: "CANDIDATE", price: null },
+    { status: "PURCHASED", price: 99000 },
+    { status: "SOLD", price: 5 },
+  ]);
+  assert.deepEqual(b, { selectedTotal: 970000, selectedCount: 2, candidateTotal: 1150000, candidateCount: 4, purchasedTotal: 99000, unpriced: 1 });
+  assert.deepEqual(summarizeBudget([]), { selectedTotal: 0, selectedCount: 0, candidateTotal: 0, candidateCount: 0, purchasedTotal: 0, unpriced: 0 });
+  assert.equal(summarizeBudget(null).candidateTotal, 0);
+  assert.equal(summarizeBudget([{ status: "SELECTED", price: -5 }, { status: "SELECTED", price: Number.NaN }]).selectedTotal, 0);
+});
+
+test("joint pick: needs 2+ members and all of them to like it", () => {
+  const A = "a", B = "b", C = "c";
+  assert.equal(isJointPick([A, B], [A, B]), true);
+  assert.equal(isJointPick([B, A, C], [A, B]), true); // extra / unknown likes do not matter
+  assert.equal(isJointPick([A], [A, B]), false);
+  assert.equal(isJointPick([], [A, B]), false);
+  assert.equal(isJointPick([A], [A]), false); // a solo household has no "joint"
+  assert.equal(isJointPick([A, A], [A, A]), false);
+  assert.equal(isJointPick(undefined, [A, B]), false);
+  assert.equal(isJointPick([A, B], undefined), false);
 });

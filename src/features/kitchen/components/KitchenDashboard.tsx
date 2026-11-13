@@ -2,7 +2,7 @@
 
 import { ContextHelpButton } from "@/shared/components/ui/ContextHelpButton";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Camera, PawPrint, Plus, Refrigerator } from "lucide-react";
+import { Camera, PawPrint, Plus, Refrigerator, ShoppingBasket } from "lucide-react";
 import { GRADIENT_CTA, GRADIENT_CTA_MINT } from "@/shared/components/ui/gradient-cta";
 import { EmptyState } from "@/shared/components/ui/empty-state";
 import { cn } from "@/shared/lib/utils";
@@ -20,6 +20,8 @@ import { PetToxicAlertBanner } from "./PetToxicAlertBanner";
 import { SmartCheckoutBar } from "./SmartCheckoutBar";
 import { SmartCheckoutDialog } from "./SmartCheckoutDialog";
 import { SnapIngestDialog } from "./SnapIngestDialog";
+import { ShoppingListPanel } from "./ShoppingListPanel";
+import type { ShoppingItem } from "../schemas/shopping.schema";
 import { StorageTabs, type StorageFilter } from "./StorageTabs";
 
 /** Household pet setting: it switches the toxic-food banner and per-card warnings on. */
@@ -55,8 +57,23 @@ function PetTypeSelect({ value }: { value: PetType }) {
   );
 }
 
-export function KitchenDashboard({ data, budget, focusId = null }: { data: KitchenDashboardData; budget: KitchenBudgetData | null; focusId?: string | null }) {
+export function KitchenDashboard({
+  data,
+  budget,
+  focusId = null,
+  shopping,
+  initialView = "storage",
+}: {
+  data: KitchenDashboardData;
+  budget: KitchenBudgetData | null;
+  focusId?: string | null;
+  shopping: { items: ShoppingItem[]; notReady: boolean };
+  initialView?: "storage" | "shopping";
+}) {
   const { today, profile, items, stats, toxicItems } = data;
+  const [view, setView] = useState<"storage" | "shopping">(initialView);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(shopping.items);
+  const openShopping = shoppingItems.filter((s) => !s.is_checked).length;
   const [tab, setTab] = useState<StorageFilter>("ALL");
   const [form, setForm] = useState<KitchenFormTarget | null>(null);
   const [fossilItem, setFossilItem] = useState<KitchenItem | null>(null);
@@ -123,18 +140,45 @@ export function KitchenDashboard({ data, budget, focusId = null }: { data: Kitch
         </div>
       </div>
 
-      <SmartCheckoutBar onSubmit={setCheckoutText} />
-
-      <PetToxicAlertBanner petType={profile.pet_type} toxicItems={toxicItems} />
-      <KitchenPulse stats={stats} profile={profile} />
-      {budget && <KitchenBudgetCard data={budget} onNotice={showNotice} />}
-      <AiChefSection petType={profile.pet_type} itemCount={items.length} onNotice={showNotice} />
+      <div role="radiogroup" aria-label="키친 화면" data-testid="kitchen-view-tabs" className="inline-flex max-w-full gap-1 rounded-full bg-white p-1 shadow-sm dark:bg-zinc-900">
+        {([["storage", "보관함", Refrigerator], ["shopping", "장보기", ShoppingBasket]] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            aria-checked={view === key}
+            data-testid="kitchen-view-tab"
+            data-view={key}
+            onClick={() => setView(key)}
+            className={cn(
+              "inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-5 text-sm font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 motion-reduce:transform-none",
+              view === key ? "bg-sky-600 text-white shadow-sm dark:bg-sky-500" : "text-slate-600 hover:bg-sky-50 dark:text-zinc-300 dark:hover:bg-zinc-800",
+            )}
+          >
+            <Icon size={16} strokeWidth={2.5} aria-hidden /> {label}
+            {key === "shopping" && openShopping > 0 && (
+              <span data-testid="shopping-badge" className={cn("rounded-full px-2 py-0.5 text-xs tabular-nums", view === key ? "bg-white/25 text-white" : "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300")}>{openShopping}</span>
+            )}
+          </button>
+        ))}
+      </div>
 
       {notice && (
         <p role="status" data-testid="kitchen-notice" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
           {notice}
         </p>
       )}
+
+      {view === "shopping" ? (
+        <ShoppingListPanel items={shoppingItems} setItems={setShoppingItems} notReady={shopping.notReady} onNotice={showNotice} />
+      ) : (
+      <>
+      <SmartCheckoutBar onSubmit={setCheckoutText} />
+
+      <PetToxicAlertBanner petType={profile.pet_type} toxicItems={toxicItems} />
+      <KitchenPulse stats={stats} profile={profile} />
+      {budget && <KitchenBudgetCard data={budget} onNotice={showNotice} />}
+      <AiChefSection petType={profile.pet_type} itemCount={items.length} onNotice={showNotice} />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -158,13 +202,15 @@ export function KitchenDashboard({ data, budget, focusId = null }: { data: Kitch
         <ul data-testid="kitchen-list" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((it) => (
             <li key={it.id} id={`kitchen-item-${it.id}`} data-highlight={highlightId === it.id} className={cn("min-w-0 rounded-3xl transition-shadow duration-500", highlightId === it.id && "ring-4 ring-sky-300 dark:ring-sky-500")}>
-              <KitchenItemCard item={it} today={today} petType={profile.pet_type} onEdit={(i) => setForm({ mode: "edit", item: i })} onFossil={setFossilItem} onNotice={showNotice} />
+              <KitchenItemCard item={it} today={today} petType={profile.pet_type} onEdit={(i) => setForm({ mode: "edit", item: i })} onFossil={setFossilItem} onNotice={showNotice} onShoppingAdded={(s) => setShoppingItems((prev) => (prev.some((p) => p.id === s.id) ? prev : [...prev, s]))} />
             </li>
           ))}
         </ul>
       )}
 
       <LocalLifeRadar petType={profile.pet_type} />
+      </>
+      )}
 
       <KitchenItemFormDialog target={form} today={today} petType={profile.pet_type} onClose={() => setForm(null)} onNotice={showNotice} />
       <DefrostGuideDialog item={fossilItem} today={today} onClose={() => setFossilItem(null)} />

@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
 import { copyTextLazy } from "@/shared/lib/clipboard";
+import { IosPwaInstallBanner } from "@/shared/components/IosPwaInstallBanner";
 import { cn } from "@/shared/lib/utils";
 import { exportBackup, importBackup } from "../server/backup.actions";
 import { createInvite } from "../server/household.actions";
@@ -150,6 +151,8 @@ export function HouseholdSettingsModal({
           </div>
           <DialogDescription className={HINT}>구성원을 확인하고 가구 데이터를 백업·복구해요.</DialogDescription>
         </DialogHeader>
+
+        <IosPwaInstallBanner />
 
         <section className={SECTION} aria-label="구성원">
           <h3 className={SECTION_TITLE}>

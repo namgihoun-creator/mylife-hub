@@ -5299,6 +5299,415 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
   }
 }
 
+// ---------------------------------------------------------------- Phase 2: bell one-tap actions · shared shopping list · wish ♥ votes + budget · iOS install banner
+// Runs in a throw-away household with two members. Parts that need migration 18 (shopping_items / liked_by) run their full flow when it is
+// applied and otherwise check the graceful fallback (nothing breaks, friendly "준비 중" messages).
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const has18 = !(await svc.from("shopping_items").select("id").limit(1)).error;
+  const hasLikes = !(await svc.from("space_furniture_candidates").select("liked_by").limit(1)).error;
+  record("phase2", "-", `migration 18 present: shopping_items=${has18}, liked_by=${hasLikes} (full flow runs where present, fallback checks otherwise)`, true);
+  let uid1 = null, uid2 = null, H = null;
+  const until = async (fn, tries = 60) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+  const seoulDay = (n) => new Date(Date.now() + 9 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+  try {
+    const mkUser = async (tag) => {
+      const email = `mylife.e2e.p2${tag}+${rand}@example.com`, pw = `Pw-${rand}-${Date.now()}`;
+      const { data, error } = await svc.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: `E2E ${tag}` } });
+      if (error) throw new Error(`phase2 createUser failed: ${error.message}`);
+      return { id: data.user.id, email, pw };
+    };
+    const u1 = await mkUser("a"), u2 = await mkUser("b");
+    uid1 = u1.id; uid2 = u2.id;
+    const cl1 = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await cl1.auth.signInWithPassword({ email: u1.email, password: u1.pw });
+    await cl1.rpc("create_household", { p_name: "E2E 협업", p_display_name: "E2E a" });
+    H = (await svc.from("profiles").select("household_id").eq("id", uid1).single()).data.household_id;
+    // the partner joins the same household (profile row = membership)
+    const { error: pe } = await svc.from("profiles").insert({ id: uid2, household_id: H, role: "MEMBER", display_name: "E2E b" });
+    if (pe) throw new Error(`phase2 partner profile failed: ${pe.message}`);
+
+    const login = async (u) => {
+      const c = await newContext(VIEWPORTS[0]);
+      const p = await c.newPage();
+      await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+      await p.fill('input[name="email"]', u.email);
+      await p.fill('input[name="password"]', u.pw);
+      await p.click('button[type="submit"]');
+      await p.waitForURL((x) => !x.pathname.startsWith("/login"), { timeout: 20_000 });
+      const st = await c.storageState();
+      await c.close();
+      return st;
+    };
+    const st1 = await login(u1), st2 = await login(u2);
+    const mk = async (vp, { state = st1, ua, scheme = "light", init } = {}) => {
+      const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: state, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme, ...(ua ? { userAgent: ua } : {}) });
+      await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+      if (init) await c.addInitScript(init);
+      const p = await c.newPage();
+      p.__errors = [];
+      p.on("pageerror", (e) => p.__errors.push(String(e)));
+      return { c, p };
+    };
+    const overflowX = (p) => p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+    // ---------------------------------------------------------------- seed (service role)
+    const today = seoulDay(0);
+    const base = { household_id: H, owner_id: uid1, visibility: "FAMILY" };
+    const mkAsset = async (name, preset, dueOffset, ruleDays) => {
+      const a = (await svc.from("assets").insert({ ...base, name, space: "거실", category: "생활·환경가전", preset_key: preset }).select("id").single()).data;
+      const r = (await svc.from("task_rules").insert({ ...base, asset_id: a.id, title: `${name} 관리`, recurring_type: "DAILY", interval_n: ruleDays, anchor: "COMPLETION_DATE", next_iteration_no: 2 }).select("id").single()).data;
+      const t = (await svc.from("tasks").insert({ ...base, asset_id: a.id, rule_id: r.id, iteration_no: 1, title: `${name} 관리`, due_date: seoulDay(dueOffset) }).select("id").single()).data;
+      return { a: a.id, r: r.id, t: t.id };
+    };
+    const A1 = await mkAsset("에어컨", "aircon", 0, 30);
+    const A2 = await mkAsset("정수기", "water_purifier", -3, 180);
+    const mkKitchen = async (name, amount, days = 2) => (await svc.from("kitchen_items").insert({ household_id: H, name, amount, storage_type: "FRIDGE", expire_date: seoulDay(days), added_at: today }).select("id").single()).data.id;
+    const K1 = await mkKitchen("두부", "1모"), K2 = await mkKitchen("대파", "1단");
+    let nseq = 0;
+    const notify = async (type, title, ids = {}) => (await svc.from("notifications").insert({ household_id: H, user_id: uid1, type, title, body: `${title} 본문`, dedupe_key: `e2e-p2-${rand}-${++nseq}`, created_at: new Date(Date.now() - (10 - nseq) * 60_000).toISOString(), ...ids }).select("id").single()).data.id;
+    const N1 = await notify("DUE_TODAY", "에어컨 관리 오늘까지예요", { task_id: A1.t, asset_id: A1.a });
+    const N2 = await notify("OVERDUE", "정수기 관리가 3일 지났어요", { task_id: A2.t, asset_id: A2.a });
+    const N3 = await notify("KITCHEN_EXPIRING", "두부 소비기한이 임박했어요", { kitchen_item_id: K1 });
+    const N4 = await notify("KITCHEN_EXPIRING", "대파 소비기한이 임박했어요", { kitchen_item_id: K2 });
+    const N5 = await notify("INVITE_ACCEPTED", "새 가족이 합류했어요");
+    const readAt = async (id) => (await svc.from("notifications").select("read_at").eq("id", id).single()).data?.read_at;
+
+    // ============================================================ 1. notification bell: one-tap actions
+    const { c: bc, p: bp } = await mk(VIEWPORTS[0]);
+    await bp.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+    const bellBtn = bp.locator('button[title="알림"]');
+    const badge = async () => ((await bp.getByTestId("notification-badge").count()) ? (await bp.getByTestId("notification-badge").innerText()).trim() : "0");
+    const openBell = async () => { await bellBtn.click(); await bp.getByTestId("notification-row").first().waitFor(); };
+    record("phase2", "desktop", "bell shows 5 unread notifications", (await badge()) === "5", await badge());
+    await openBell();
+    const rowOf = (txt) => bp.getByTestId("notification-row").filter({ hasText: txt });
+    const row1 = rowOf("에어컨 관리 오늘까지예요"), row2 = rowOf("정수기 관리가 3일"), row3 = rowOf("두부 소비기한"), row4 = rowOf("대파 소비기한"), row5 = rowOf("새 가족이 합류");
+    record("phase2", "desktop", "appliance alerts carry a Mint ‘교체·점검 완료’ capsule, kitchen alerts a Sky ‘소진 완료’ capsule, other alerts none", (await row1.getByTestId("notification-complete").innerText()).includes("교체·점검 완료") && /teal/.test(await row1.getByTestId("notification-complete").getAttribute("class")) && (await row2.getByTestId("notification-complete").count()) === 1 && (await row3.getByTestId("notification-consume").innerText()).includes("소진 완료") && /sky/.test(await row3.getByTestId("notification-consume").getAttribute("class")) && (await row5.locator("button").count()) === 1);
+    await bp.screenshot({ path: `${OUT}/bell-one-tap-desktop.png` });
+
+    // -- appliance task: complete -> next due date, notification read
+    await row1.getByTestId("notification-complete").click();
+    await row1.getByTestId("notification-result").waitFor();
+    const t1 = (await svc.from("tasks").select("status, completed_at").eq("id", A1.t).single()).data;
+    const next1 = (await svc.from("tasks").select("due_date, status, iteration_no").eq("rule_id", A1.r).eq("iteration_no", 2).maybeSingle()).data;
+    const resText = await row1.getByTestId("notification-result").innerText();
+    record("phase2", "desktop", "[교체·점검 완료]: task COMPLETED, the next iteration exists with due date today + 30, message names it", t1.status === "COMPLETED" && !!t1.completed_at && next1?.status === "PENDING" && next1.due_date === seoulDay(30) && /다음 예정일/.test(resText), `${resText} | ${JSON.stringify(next1)}`);
+    record("phase2", "desktop", "the notification is read at once (DB read_at set, badge 5 -> 4, capsule replaced by the result line)", !!(await readAt(N1)) && (await badge()) === "4" && (await row1.getByTestId("notification-complete").count()) === 0 && (await row1.locator('[data-unread="false"]').count()) === 1, await badge());
+    record("phase2", "desktop", "tapping the capsule did not navigate away (no row-click bubbling): still on /kitchen with the panel open", new URL(bp.url()).pathname === "/kitchen" && (await bp.getByTestId("notification-row").count()) === 5);
+
+    // -- kitchen: use up -> item gone, stats credited, shopping toast
+    const prof0 = (await svc.from("kitchen_profiles").select("rescued_count").eq("household_id", H).maybeSingle()).data?.rescued_count ?? 0;
+    await row3.getByTestId("notification-consume").click();
+    await bp.getByTestId("bell-toast").waitFor();
+    const gone = await until(async () => !(await svc.from("kitchen_items").select("id").eq("id", K1).maybeSingle()).data);
+    const prof1 = (await svc.from("kitchen_profiles").select("rescued_count").eq("household_id", H).maybeSingle()).data?.rescued_count ?? 0;
+    record("phase2", "desktop", "[소진 완료]: the ingredient is gone from the storage, the savings counter went up, the notification is read", !!gone && prof1 === prof0 + 1 && !!(await readAt(N3)), `rescued ${prof0}->${prof1}`);
+    record("phase2", "desktop", "bottom toast asks ‘장보기 리스트에 바로 담을까요?’ with a one-click 담기 button (bottom of the screen, not inside the header)", /장보기 리스트에 바로 담을까요\?/.test(await bp.getByTestId("bell-toast").innerText()) && (await bp.getByTestId("bell-toast-add").count()) === 1 && (await bp.getByTestId("bell-toast").evaluate((e) => e.parentElement === document.body && e.getBoundingClientRect().bottom <= window.innerHeight + 0.5)));
+    await bp.getByTestId("bell-toast-add").click();
+    await bp.waitForFunction(() => /담았어요|준비되지 않았|준비/.test(document.querySelector('[data-testid="bell-toast"]')?.textContent ?? ""), null, { timeout: 10_000 });
+    if (has18) {
+      const sh = (await svc.from("shopping_items").select("name, quantity, source_type, created_by, is_checked").eq("household_id", H)).data ?? [];
+      record("phase2", "desktop", "toast 담기: 두부 (1모) is on the shared shopping list as KITCHEN_CONSUMED by me, unchecked", sh.length === 1 && sh[0].name === "두부" && sh[0].quantity === "1모" && sh[0].source_type === "KITCHEN_CONSUMED" && sh[0].created_by === uid1 && sh[0].is_checked === false && /장보기 리스트에 담았어요/.test(await bp.getByTestId("bell-toast").innerText()), JSON.stringify(sh));
+    } else {
+      record("phase2", "desktop", "migration 18 missing: toast 담기 answers with a friendly message and nothing breaks", /준비/.test(await bp.getByTestId("bell-toast").innerText()) && bp.__errors.length === 0, await bp.getByTestId("bell-toast").innerText());
+    }
+
+    // -- stale targets: deleted / already completed -> only the notification is marked read
+    await bp.getByTestId("bell-toast").getByRole("button", { name: "닫기" }).click().catch(() => {});
+    await bp.getByTestId("bell-toast").waitFor({ state: "detached", timeout: 10_000 }).catch(() => {});
+    await bp.waitForTimeout(500);
+    if (!(await bp.locator('[aria-label="알림 목록"]').isVisible().catch(() => false))) await bellBtn.click();
+    await bp.getByTestId("notification-row").first().waitFor();
+    await bp.waitForTimeout(300);
+    await svc.from("kitchen_items").delete().eq("id", K2); // the partner threw it away while the panel was open
+    await svc.from("tasks").update({ status: "COMPLETED", completed_at: new Date().toISOString() }).eq("id", A2.t);
+    await row4.getByTestId("notification-consume").scrollIntoViewIfNeeded();
+    await row4.getByTestId("notification-consume").click({ timeout: 15_000 });
+    await row4.getByTestId("notification-result").waitFor();
+    const r4 = await row4.getByTestId("notification-result").innerText();
+    record("phase2", "desktop", "already-deleted ingredient: the notification is just marked read with a clear message, no toast, no error", /이미 정리된 재료/.test(r4) && !!(await readAt(N4)) && (await bp.getByTestId("bell-toast").count()) === 0 && (await row4.getByTestId("notification-result").getAttribute("data-ok")) === "true", r4);
+    await row2.getByTestId("notification-complete").click();
+    await row2.getByTestId("notification-result").waitFor();
+    const r2 = await row2.getByTestId("notification-result").innerText();
+    const dupNext = (await svc.from("tasks").select("id").eq("rule_id", A2.r).eq("iteration_no", 2)).data ?? [];
+    record("phase2", "desktop", "already-completed task: only the notification is read (no second completion, no duplicate next task)", /이미 완료/.test(r2) && !!(await readAt(N2)) && dupNext.length === 0, `${r2} | next=${dupNext.length}`);
+    record("phase2", "desktop", "one unread left (the invite) after all taps; no page errors", (await badge()) === "1" && !(await readAt(N5)) && bp.__errors.length === 0, `${await badge()} ${bp.__errors.join("|").slice(0, 120)}`);
+    await bc.close();
+
+    // ---- bell panel responsive (375 / 280): the capsule stays inside the card, nothing overflows
+    for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+      const T = (await svc.from("tasks").insert({ ...base, asset_id: A1.a, title: "에어컨 필터 점검", due_date: today }).select("id").single()).data.id;
+      const KX = await mkKitchen("아주 긴 이름의 재료 " + "가".repeat(30), "1팩");
+      const nA = await notify("DUE_SOON", `에어컨 필터 점검이 곧 와요 (${vp.name})`, { task_id: T, asset_id: A1.a });
+      const nB = await notify("KITCHEN_EXPIRING", `긴 이름 재료 소비기한 임박 (${vp.name})`, { kitchen_item_id: KX });
+      const { c, p } = await mk(vp);
+      await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      await p.locator('button[title="알림"]').click();
+      await p.getByTestId("notification-row").first().waitFor();
+      const geo = await p.getByTestId("notification-row").evaluateAll((rows, w) => rows.filter((r) => r.querySelector("[data-testid^=notification-c]")).map((r) => { const b = r.querySelector("[data-testid^=notification-c]").getBoundingClientRect(); const rr = r.getBoundingClientRect(); return { inside: b.left >= rr.left - 0.5 && b.right <= rr.right + 0.5 && b.right <= w + 0.5, h: b.height }; }), vp.width);
+      const panel = await p.locator('[aria-label="알림 목록"]').evaluate((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, vw: window.innerWidth, over: e.scrollWidth - e.clientWidth }; });
+      record("phase2", vp.name, "bell panel: capsules inside the row and >= 36px tall, panel inside the screen, no sideways scroll", geo.length >= 2 && geo.every((g) => g.inside && g.h >= 36) && panel.l >= -0.5 && panel.r <= panel.vw + 0.5 && panel.over <= 1 && (await overflowX(p)) <= 0, JSON.stringify({ geo, panel }));
+      if (vp.name === "fold280") await p.screenshot({ path: `${OUT}/bell-one-tap-fold280.png` });
+      await c.close();
+      void nA; void nB;
+    }
+
+    // ============================================================ 2. shared shopping list in /kitchen
+    {
+      const { c, p } = await mk(VIEWPORTS[0]);
+      const KF = await mkKitchen("고등어", "2마리", 2);
+      await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+      const tabs = p.getByTestId("kitchen-view-tab");
+      record("phase2", "desktop", "kitchen has a [보관함 | 장보기] segment at the top (v4 white pill, no border)", (await tabs.allInnerTexts()).map((t) => t.replace(/\d+/g, "").trim()).join("|") === "보관함|장보기" && (await tabs.first().getAttribute("aria-checked")) === "true" && (await p.getByTestId("kitchen-list").count()) === 1);
+      if (!has18) {
+        await tabs.nth(1).click();
+        await p.getByTestId("shopping-not-ready").waitFor();
+        record("phase2", "desktop", "migration 18 missing: the 장보기 tab explains it is getting ready — no crash, no error", /준비하고 있어요/.test(await p.getByTestId("shopping-not-ready").innerText()) && p.__errors.length === 0);
+        await tabs.first().click();
+        await p.locator('[data-testid="kitchen-card"][data-name="고등어"]').getByTestId("shop-btn").click();
+        await p.locator('[data-testid="kitchen-card"][data-name="고등어"]').getByRole("alert").waitFor();
+        record("phase2", "desktop", "migration 18 missing: the card’s ‘+ 장보기’ shows a friendly message and the card stays usable", /준비/.test(await p.locator('[data-testid="kitchen-card"][data-name="고등어"]').getByRole("alert").innerText()) && (await p.getByTestId("kitchen-card").count()) >= 1);
+      } else {
+        await tabs.nth(1).click();
+        const panel = p.getByTestId("shopping-panel");
+        await panel.waitFor();
+        record("phase2", "desktop", "장보기 tab: the shared list (with the 두부 the toast added) and the quick-add form", (await panel.getByTestId("shopping-row").count()) === 1 && (await panel.getByTestId("shopping-form").count()) === 1);
+        const add = async (name, qty) => { await panel.getByTestId("shopping-name").fill(name); if (qty) await panel.getByTestId("shopping-qty").fill(qty); await panel.getByTestId("shopping-name").press("Enter"); };
+        await add("우유", "2개");
+        await panel.locator('[data-testid="shopping-row"][data-name="우유"]').waitFor();
+        await add("냉동만두", "1봉");
+        await panel.locator('[data-testid="shopping-row"][data-name="냉동만두"]').waitFor();
+        await add("사과");
+        await panel.locator('[data-testid="shopping-row"][data-name="사과"]').waitFor();
+        const shRows = (await svc.from("shopping_items").select("name, quantity, source_type, created_by, category").eq("household_id", H)).data ?? [];
+        const milk = shRows.find((r) => r.name === "우유"), apple = shRows.find((r) => r.name === "사과");
+        record("phase2", "desktop", "Enter adds an item (name + quantity); empty quantity defaults to 1개; created_by me, MANUAL, category 식재료", milk?.quantity === "2개" && apple?.quantity === "1개" && milk.source_type === "MANUAL" && milk.created_by === uid1 && milk.category === "식재료" && (await panel.getByTestId("shopping-name").inputValue()) === "", JSON.stringify(milk));
+        await add("우유", "1개");
+        await p.getByTestId("kitchen-notice").waitFor();
+        record("phase2", "desktop", "adding the same open item again does not duplicate it (a notice says it is already listed)", /이미 리스트에 있어요/.test(await p.getByTestId("kitchen-notice").innerText()) && (await svc.from("shopping_items").select("id").eq("household_id", H).eq("name", "우유")).data.length === 1);
+        // check -> strike-through + sinks to the bottom
+        const rowM = panel.locator('[data-testid="shopping-row"][data-name="우유"]');
+        await rowM.getByTestId("shopping-check").check();
+        const order = await panel.getByTestId("shopping-row").evaluateAll((els) => els.map((e) => e.getAttribute("data-name")));
+        record("phase2", "desktop", "checking an item strikes it through and moves it below the unchecked ones; the DB is_checked follows", order[order.length - 1] === "우유" && /line-through/.test(await rowM.getByTestId("shopping-row-name").getAttribute("class")) && (await until(async () => (await svc.from("shopping_items").select("is_checked").eq("household_id", H).eq("name", "우유").single()).data.is_checked)) === true, order.join(">"));
+        record("phase2", "desktop", "bulk buttons: enabled once something is checked — top and bottom copies, both labelled", (await panel.getByTestId("shopping-stock-top").isEnabled()) && /장본 품목 보관함으로 바로 입고/.test(await panel.getByTestId("shopping-stock-bottom").innerText()) && /체크된 항목 비우기/.test(await panel.getByTestId("shopping-clear-top").innerText()));
+        // partner adds something: appears after the next sync (focus)
+        await svc.from("shopping_items").insert({ household_id: H, created_by: uid2, name: "파트너가 추가", quantity: "3개", source_type: "MANUAL" });
+        await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await panel.locator('[data-testid="shopping-row"][data-name="파트너가 추가"]').waitFor({ timeout: 10_000 });
+        record("phase2", "desktop", "near-real-time: an item added by the partner shows up after the next sync without reloading", true);
+        // bulk: stock the checked ones into the 보관함
+        await rowM.getByTestId("shopping-check").check().catch(() => {});
+        await panel.locator('[data-testid="shopping-row"][data-name="냉동만두"] [data-testid="shopping-check"]').check();
+        const kBefore = (await svc.from("kitchen_items").select("id").eq("household_id", H)).data.length;
+        await panel.getByTestId("shopping-stock-bottom").click();
+        await p.getByTestId("kitchen-notice").filter({ hasText: "보관함에 입고" }).waitFor({ timeout: 15_000 });
+        const stocked = (await svc.from("kitchen_items").select("name, amount, storage_type, expire_date").eq("household_id", H).in("name", ["우유", "냉동만두"])).data ?? [];
+        const left = (await svc.from("shopping_items").select("name").eq("household_id", H)).data.map((r) => r.name).sort();
+        const dumpling = stocked.find((r) => r.name === "냉동만두"), milkK = stocked.find((r) => r.name === "우유");
+        record("phase2", "desktop", "[장본 품목 보관함으로 바로 입고]: the checked items became ingredients (냉동만두 FREEZER 1봉, 우유 2개), and left the list", stocked.length === 2 && dumpling?.storage_type === "FREEZER" && dumpling.amount === "1봉" && milkK?.amount === "2개" && !left.includes("냉동만두") && !left.includes("우유") && left.includes("사과") && (await svc.from("kitchen_items").select("id").eq("household_id", H)).data.length === kBefore + 2, JSON.stringify({ stocked, left }));
+        // clear checked
+        await panel.locator('[data-testid="shopping-row"][data-name="사과"] [data-testid="shopping-check"]').check();
+        await panel.getByTestId("shopping-clear-bottom").click();
+        await until(async () => !(await svc.from("shopping_items").select("id").eq("household_id", H).eq("name", "사과")).data.length);
+        record("phase2", "desktop", "[체크된 항목 비우기] deletes the checked rows only", (await svc.from("shopping_items").select("name").eq("household_id", H)).data.every((r) => r.name !== "사과") && (await panel.locator('[data-testid="shopping-row"][data-name="파트너가 추가"]').count()) === 1);
+        // storage card pill
+        await tabs.first().click();
+        const card = p.locator('[data-testid="kitchen-card"][data-name="고등어"]');
+        await card.getByTestId("shop-btn").click();
+        await until(async () => (await svc.from("shopping_items").select("source_type").eq("household_id", H).eq("name", "고등어")).data[0]);
+        const mk1 = (await svc.from("shopping_items").select("name, quantity, source_type").eq("household_id", H).eq("name", "고등어")).data[0];
+        record("phase2", "desktop", "보관함 card ‘+ 장보기’ pill sends the ingredient (name + amount) to the list as KITCHEN_EXPIRING; the tab badge counts open items", mk1?.quantity === "2마리" && mk1.source_type === "KITCHEN_EXPIRING" && (await p.getByTestId("shopping-badge").count()) === 1, JSON.stringify(mk1));
+        await card.getByTestId("shop-btn").click();
+        await p.getByTestId("kitchen-notice").filter({ hasText: "이미 장보기 리스트에 있어요" }).waitFor();
+        record("phase2", "desktop", "pressing it again says it is already on the list (no duplicate row)", (await svc.from("shopping_items").select("id").eq("household_id", H).eq("name", "고등어")).data.length === 1);
+        await p.screenshot({ path: `${OUT}/kitchen-shopping-desktop.png`, fullPage: true });
+      }
+      record("phase2", "desktop", "no page errors on the kitchen / shopping flow", p.__errors.length === 0, p.__errors.join(" | ").slice(0, 200));
+      await c.close();
+      void KF;
+      for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+        const { c: c2, p: p2 } = await mk(vp);
+        await p2.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        const ox0 = await overflowX(p2);
+        await p2.getByTestId("kitchen-view-tab").nth(1).click();
+        if (has18) {
+          const pn = p2.getByTestId("shopping-panel");
+          await pn.waitFor();
+          const g = await pn.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            const inside = (sel) => [...el.querySelectorAll(sel)].every((b) => { const x = b.getBoundingClientRect(); return x.left >= r.left - 0.5 && x.right <= r.right + 0.5; });
+            const tall = (sel) => [...el.querySelectorAll(sel)].every((b) => b.getBoundingClientRect().height >= 43.5);
+            return { l: r.left, r: r.right, vw: window.innerWidth, formIn: inside('[data-testid="shopping-form"] input, [data-testid="shopping-form"] button'), btnTall: tall('[data-testid="shopping-add"], [data-testid^="shopping-stock"], [data-testid^="shopping-clear"]'), checkTall: [...el.querySelectorAll('[data-testid="shopping-row"]')].every((b) => b.getBoundingClientRect().height >= 43.5) };
+          });
+          record("phase2", vp.name, "shopping panel: inside the screen, form fields and buttons inside the card, touch targets >= 44px, no sideways scroll", ox0 <= 0 && g.l >= -0.5 && g.r <= g.vw + 0.5 && g.formIn && g.btnTall && g.checkTall && (await overflowX(p2)) <= 0, JSON.stringify(g));
+          if (vp.name === "fold280") await p2.screenshot({ path: `${OUT}/kitchen-shopping-fold280.png`, fullPage: true });
+        } else {
+          record("phase2", vp.name, "migration 18 missing: the 장보기 notice fits the screen", ox0 <= 0 && (await overflowX(p2)) <= 0);
+        }
+        await c2.close();
+      }
+      {
+        const { c: c3, p: p3 } = await mk(VIEWPORTS[1], { scheme: "dark" });
+        await p3.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        await p3.getByTestId("kitchen-view-tab").nth(1).click();
+        if (has18) {
+          await p3.getByTestId("shopping-panel").waitFor();
+          const bg = await p3.getByTestId("shopping-panel").evaluate((e) => getComputedStyle(e).backgroundColor);
+          const m = bg.match(/\d+/g).map(Number);
+          record("phase2", "mobile", "shopping panel in dark mode: dark card, nothing overflows", m[0] < 60 && m[1] < 60 && (await overflowX(p3)) <= 0, bg);
+        }
+        await c3.close();
+      }
+    }
+
+    // ============================================================ 3. wish board: ♥ votes + budget
+    {
+      const sp = (await svc.from("space_projects").insert({ household_id: H, created_by: uid1, name: "거실 소파 자리", room_type: "living", annotations: [{ id: "w1", x1: 0.1, y1: 0.5, x2: 0.9, y2: 0.5, label: "소파 벽면", lengthCm: 300 }] }).select("id").single()).data.id;
+      const wish = async (name, status, price) => (await svc.from("space_furniture_candidates").insert({ space_id: sp, household_id: H, name, status, price, width_cm: 200, created_by: uid1 }).select("id").single()).data.id;
+      const W1 = await wish("아이보리 소파", "SELECTED", 650000);
+      await wish("원목 수납장", "SELECTED", 320000);
+      await wish("라운지 체어", "CANDIDATE", 80000);
+      await wish("가격 모르는 테이블", "CANDIDATE", null);
+      await wish("이미 산 러그", "PURCHASED", 99000);
+      const { c, p } = await mk(VIEWPORTS[0]);
+      await p.goto(`${BASE}/spaces/${sp}`, { waitUntil: "networkidle" });
+      const bud = p.getByTestId("wish-budget");
+      await bud.waitFor();
+      record("phase2", "desktop", "budget summary: 최종 픽 합계 970,000원 (2개) and 전체 후보 합계 1,050,000원 (4개, 가격 없는 1개 포함), live", (await p.getByTestId("budget-selected").innerText()).trim() === "970,000원" && (await p.getByTestId("budget-all").innerText()).trim() === "1,050,000원" && /\(2개\)/.test(await bud.innerText()) && /\(4개\)/.test(await bud.innerText()), (await bud.innerText()).replace(/\s+/g, " "));
+      record("phase2", "desktop", "budget note: unpriced wishes and the already-bought rug are called out, not silently mixed in", /가격 미입력 1개 제외/.test(await p.getByTestId("budget-note").innerText()) && /구매 완료 99,000원 별도/.test(await p.getByTestId("budget-note").innerText()));
+      // the totals follow status changes immediately
+      const cardOf = (n) => p.getByTestId("wish-card").filter({ hasText: n });
+      await cardOf("라운지 체어").locator('[data-status-btn="SELECTED"]').click();
+      await p.waitForFunction(() => document.querySelector('[data-testid="budget-selected"]')?.textContent?.trim() === "1,050,000원");
+      record("phase2", "desktop", "setting a candidate to 최종 픽 moves its price into the 최종 픽 total at once (970,000 -> 1,050,000원)", (await p.getByTestId("budget-selected").innerText()).trim() === "1,050,000원" && (await p.getByTestId("budget-all").innerText()).trim() === "1,050,000원");
+      await cardOf("라운지 체어").locator('[data-status-btn="PURCHASED"]').click();
+      await p.waitForFunction(() => document.querySelector('[data-testid="budget-all"]')?.textContent?.trim() === "970,000원");
+      record("phase2", "desktop", "marking it 구매 완료 drops it from both totals (970,000원) and lists it as bought", (await p.getByTestId("budget-selected").innerText()).trim() === "970,000원" && /구매 완료 179,000원 별도/.test(await p.getByTestId("budget-note").innerText()));
+      await p.screenshot({ path: `${OUT}/spaces-wish-budget-desktop.png` });
+
+      const card1 = cardOf("아이보리 소파");
+      if (!hasLikes) {
+        await card1.getByTestId("wish-like").click();
+        await p.getByTestId("wish-board").getByRole("alert").first().waitFor();
+        record("phase2", "desktop", "migration 18 missing: ♥ shows a friendly ‘준비하고 있어요’ message and the count stays 0 (board still usable)", /준비/.test(await p.getByTestId("wish-board").getByRole("alert").first().innerText()) && (await card1.getByTestId("wish-like-count").innerText()).trim() === "0" && (await p.getByTestId("wish-card").count()) === 5);
+      } else {
+        record("phase2", "desktop", "each card has a ♥ toggle with a count (0 at the start), no joint badge", (await card1.getByTestId("wish-like").count()) === 1 && (await card1.getByTestId("wish-like-count").innerText()).trim() === "0" && (await p.getByTestId("joint-pick").count()) === 0);
+        await card1.getByTestId("wish-like").click();
+        await p.waitForFunction(() => document.querySelector('[data-testid="wish-card"] [data-testid="wish-like"][aria-pressed="true"]'));
+        const l1 = (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by;
+        record("phase2", "desktop", "♥ stores my user id in liked_by (count 1, pressed) — one vote is not a joint pick", JSON.stringify(l1) === JSON.stringify([uid1]) && (await card1.getByTestId("wish-like-count").innerText()).trim() === "1" && (await p.getByTestId("joint-pick").count()) === 0, JSON.stringify(l1));
+        // the partner votes from their own session
+        const { c: pc, p: pp } = await mk(VIEWPORTS[0], { state: st2 });
+        await pp.goto(`${BASE}/spaces/${sp}`, { waitUntil: "networkidle" });
+        const pcard = pp.getByTestId("wish-card").filter({ hasText: "아이보리 소파" });
+        record("phase2", "desktop", "the partner sees my vote (♥ 1, not pressed for them)", (await pcard.getByTestId("wish-like-count").innerText()).trim() === "1" && (await pcard.getByTestId("wish-like").getAttribute("aria-pressed")) === "false");
+        await pcard.getByTestId("wish-like").click();
+        await pcard.getByTestId("joint-pick").waitFor();
+        const l2 = (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by;
+        record("phase2", "desktop", "both members voted: ‘부부 공동 픽 ♥’ mint badge on the partner’s screen and liked_by holds both ids", l2.length === 2 && l2.includes(uid1) && l2.includes(uid2) && /부부 공동 픽/.test(await pcard.getByTestId("joint-pick").innerText()) && /teal/.test(await pcard.getByTestId("joint-pick").getAttribute("class")));
+        await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await card1.getByTestId("joint-pick").waitFor({ timeout: 10_000 });
+        record("phase2", "desktop", "my screen shows the joint pick after the next sync", (await card1.getByTestId("wish-like-count").innerText()).trim() === "2");
+        await p.screenshot({ path: `${OUT}/spaces-wish-joint-pick-desktop.png` });
+        // the DB only lets a member change their own vote
+        const forged = await cl1.from("space_furniture_candidates").update({ liked_by: [uid1, uid2, "00000000-0000-0000-0000-000000000009"] }).eq("id", W1).select("id");
+        const stolen = await cl1.from("space_furniture_candidates").update({ liked_by: [uid1] }).eq("id", W1).select("id"); // removes the partner's vote
+        const afterForge = (await svc.from("space_furniture_candidates").select("liked_by").eq("id", W1).single()).data.liked_by;
+        record("phase2", "desktop", "DB trigger: forging a vote for someone else or removing the partner’s vote is rejected (liked_by unchanged)", !!forged.error && !!stolen.error && afterForge.length === 2, `${forged.error?.message} | ${stolen.error?.message}`);
+        await pcard.getByTestId("wish-like").click(); // partner withdraws
+        await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await p.waitForFunction(() => !document.querySelector('[data-testid="joint-pick"]'), null, { timeout: 10_000 });
+        record("phase2", "desktop", "the partner withdrawing the ♥ removes the badge for both (count back to 1)", (await card1.getByTestId("wish-like-count").innerText()).trim() === "1" && (await pcard.getByTestId("joint-pick").count()) === 0);
+        await pc.close();
+      }
+      record("phase2", "desktop", "no page errors on the wish board", p.__errors.length === 0, p.__errors.join(" | ").slice(0, 200));
+      await c.close();
+      for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+        const { c: c2, p: p2 } = await mk(vp);
+        await p2.goto(`${BASE}/spaces/${sp}`, { waitUntil: "networkidle" });
+        await p2.getByTestId("wish-budget").waitFor();
+        const g = await p2.getByTestId("wish-board").evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const bud = el.querySelector('[data-testid="wish-budget"]').getBoundingClientRect();
+          const like = [...el.querySelectorAll('[data-testid="wish-like"]')].every((b) => b.getBoundingClientRect().height >= 35.5 && b.getBoundingClientRect().right <= r.right + 0.5);
+          return { l: r.left, r: r.right, vw: window.innerWidth, budIn: bud.left >= r.left - 0.5 && bud.right <= r.right + 0.5, like };
+        });
+        record("phase2", vp.name, "wish board: budget cards and ♥ buttons fit the card (>= 36px), nothing overflows", g.l >= -0.5 && g.r <= g.vw + 0.5 && g.budIn && g.like && (await overflowX(p2)) <= 0, JSON.stringify(g));
+        if (vp.name === "fold280") await p2.screenshot({ path: `${OUT}/spaces-wish-budget-fold280.png`, fullPage: true });
+        await c2.close();
+      }
+    }
+
+    // ============================================================ 4. iOS Safari install banner
+    {
+      const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+      const IPHONE_CHROME = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/123.0.6312.52 Mobile/15E148 Safari/604.1";
+      const KAKAO = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 KAKAOTALK 10.4.5";
+      const bellPanel = async (p) => { await p.locator('button[title="알림"]').click(); await p.locator('[aria-label="알림 목록"]').waitFor(); };
+      // plain desktop browser: nothing
+      {
+        const { c, p } = await mk(VIEWPORTS[0]);
+        await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        await bellPanel(p);
+        record("phase2", "desktop", "iOS banner: not shown in an ordinary desktop browser", (await p.getByTestId("ios-pwa-banner").count()) === 0);
+        await c.close();
+      }
+      for (const [label, ua, init] of [["iPhone Chrome (CriOS)", IPHONE_CHROME], ["KakaoTalk in-app", KAKAO], ["iPhone Safari installed (standalone)", IPHONE, () => Object.defineProperty(navigator, "standalone", { value: true, configurable: true })]]) {
+        const { c, p } = await mk({ width: 375, height: 812 }, { ua, init });
+        await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        await bellPanel(p);
+        record("phase2", "mobile", `iOS banner: hidden for ${label}`, (await p.getByTestId("ios-pwa-banner").count()) === 0);
+        await c.close();
+      }
+      for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+        const { c, p } = await mk(vp, { ua: IPHONE });
+        await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        await bellPanel(p);
+        const ban = p.getByTestId("ios-pwa-banner");
+        await ban.waitFor();
+        const txt = (await ban.innerText()).replace(/\s+/g, " ");
+        const g = await ban.evaluate((e) => { const r = e.getBoundingClientRect(); const pr = e.closest('[aria-label="알림 목록"]').getBoundingClientRect(); const cb = e.querySelector("button").getBoundingClientRect(); return { inside: r.left >= pr.left - 0.5 && r.right <= pr.right + 0.5, over: e.scrollWidth - e.clientWidth, btnIn: cb.right <= r.right + 0.5, btnH: cb.height, cls: e.className }; });
+        record("phase2", vp.name, "iOS banner (iPhone Safari, browser tab): top of the bell panel with the share-sheet guidance and a 닫기 button, inside the card, no overflow", /공유\(□↑\)/.test(txt) && /홈 화면에 추가/.test(txt) && /아침 9시 알림/.test(txt) && g.inside && g.over <= 1 && g.btnIn && g.btnH >= 36 && /rounded-3xl/.test(g.cls) && /sky/.test(g.cls) && (await overflowX(p)) <= 0, `${txt.slice(0, 60)} ${JSON.stringify(g)}`);
+        if (vp.name === "fold280") await p.screenshot({ path: `${OUT}/ios-banner-bell-fold280.png` });
+        if (vp.name === "mobile") {
+          await p.keyboard.press("Escape");
+          await p.getByRole("button", { name: "가구 설정" }).click();
+          const sb = p.getByRole("dialog").getByTestId("ios-pwa-banner");
+          await sb.waitFor();
+          record("phase2", "mobile", "iOS banner also sits in the 가구 설정 dialog", /홈 화면에 추가/.test(await sb.innerText()));
+          await sb.getByTestId("ios-pwa-banner-close").click();
+          const stored = await p.evaluate(() => localStorage.getItem("mylife:ios-pwa-banner-dismissed"));
+          record("phase2", "mobile", "[닫기] hides it and remembers that in localStorage", (await p.getByTestId("ios-pwa-banner").count()) === 0 && stored === "1");
+          await p.reload({ waitUntil: "networkidle" });
+          await p.keyboard.press("Escape");
+          await bellPanel(p);
+          record("phase2", "mobile", "after a reload the banner stays dismissed (bell panel too)", (await p.getByTestId("ios-pwa-banner").count()) === 0);
+        }
+        await c.close();
+      }
+      {
+        const { c, p } = await mk({ width: 375, height: 812 }, { ua: IPHONE, scheme: "dark" });
+        await p.goto(`${BASE}/kitchen`, { waitUntil: "networkidle" });
+        await bellPanel(p);
+        const bg = await p.getByTestId("ios-pwa-banner").evaluate((e) => getComputedStyle(e).backgroundImage + getComputedStyle(e).backgroundColor);
+        record("phase2", "mobile", "iOS banner in dark mode uses the dark tint (no bright slab)", !/rgb\(240, 249, 255\)/.test(bg), bg.slice(0, 100));
+        await c.close();
+      }
+    }
+  } catch (err) {
+    record("phase2", "-", "phase2 suite ran to completion", false, String(err?.stack ?? err).slice(0, 600));
+  } finally {
+    if (H) {
+      await svc.from("space_projects").delete().eq("household_id", H);
+      await svc.from("households").delete().eq("id", H);
+    }
+    for (const id of [uid1, uid2]) if (id) await svc.auth.admin.deleteUser(id).catch(() => {});
+    if (H) await svc.from("households").delete().eq("id", H);
+  }
+}
+
 await browser.close();
 
 // ---------------------------------------------------------------- report

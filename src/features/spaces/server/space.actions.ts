@@ -29,15 +29,20 @@ const BUCKET = "space-photos";
 const SIGNED_URL_SECONDS = 60 * 60;
 const SPACE_COLUMNS = "id, name, room_type, photo_path, annotations, style_preference, ai_diagnosis, created_at, updated_at";
 const CANDIDATE_COLUMNS = "id, space_id, name, category, price, width_cm, depth_cm, height_cm, product_url, source_mall, status, memo, created_at";
-const IMAGE_COLUMN = ", image_url";
+const OPTIONAL_COLUMNS = ["image_url", "liked_by"] as const; // migrations 17 and 18: both optional
 /**
  * `image_url` comes from the optional migration 17. Run the query with the column first; when the database does not have it
  * yet (the error names image_url) run it again without, so reading and creating wishes never break before the migration.
  */
 async function withImageColumn<T extends { error: { message?: string } | null }>(run: (cols: string, withImage: boolean) => PromiseLike<T>): Promise<T> {
-  const first = await run(CANDIDATE_COLUMNS + IMAGE_COLUMN, true);
-  if (!first.error || !/image_url/i.test(first.error.message ?? "")) return first;
-  return run(CANDIDATE_COLUMNS, false);
+  let have: string[] = [...OPTIONAL_COLUMNS];
+  for (;;) {
+    const r = await run([CANDIDATE_COLUMNS, ...have].join(", "), have.includes("image_url"));
+    const msg = r.error?.message ?? "";
+    const missing = r.error ? have.find((col) => msg.includes(col)) : undefined; // the error names the column that is not there yet
+    if (!missing) return r;
+    have = have.filter((col) => col !== missing);
+  }
 }
 
 const NOT_READY = "공간 플래너 데이터베이스가 아직 준비되지 않았어요.";
@@ -60,6 +65,7 @@ const toCandidate = (r: Record<string, unknown>): FurnitureCandidate => ({
   depth_cm: num(r.depth_cm),
   height_cm: num(r.height_cm),
   image_url: typeof r.image_url === "string" ? r.image_url : null,
+  liked_by: Array.isArray(r.liked_by) ? (r.liked_by as string[]) : [],
 });
 const toSpace = (r: Record<string, unknown>): SpaceProject => {
   const ann = annotationsSchema.safeParse(r.annotations);
@@ -104,16 +110,17 @@ export async function getSpaceDetail(id: string): Promise<SpaceActionResult<{ de
   const c = await context();
   if (!c.ok) return c;
   if (!spaceIdSchema.safeParse(id).success) return { ok: false, error: "공간을 찾을 수 없어요." };
-  const { supabase, householdId } = c.ctx;
-  const [sp, cands] = await Promise.all([
+  const { supabase, householdId, userId } = c.ctx;
+  const [sp, cands, members] = await Promise.all([
     supabase.from("space_projects").select(SPACE_COLUMNS).eq("id", id).maybeSingle(),
     withImageColumn((cols) => supabase.from("space_furniture_candidates").select(cols).eq("space_id", id).order("created_at", { ascending: true })),
+    supabase.from("profiles").select("id"), // RLS: the members of this household
   ]);
   if (sp.error || cands.error) return { ok: false, error: NOT_READY };
   if (!sp.data) return { ok: false, error: "공간을 찾을 수 없어요." };
   const space = toSpace(sp.data);
   const [photoUrl] = await signedUrls(supabase, [space.photo_path]);
-  return { ok: true, detail: { space, photoUrl, candidates: ((cands.data ?? []) as unknown as Record<string, unknown>[]).map(toCandidate), householdId } };
+  return { ok: true, detail: { space, photoUrl, candidates: ((cands.data ?? []) as unknown as Record<string, unknown>[]).map(toCandidate), householdId, userId, memberIds: (members.data ?? []).map((m) => m.id as string) } };
 }
 
 /** Light read for the near-real-time sync between the two partners' phones. */
@@ -252,6 +259,31 @@ export async function updateCandidate(id: string, input: CandidateInput): Promis
   if (error || !data) return { ok: false, error: "저장하지 못했어요." };
   revalidatePath("/spaces");
   return { ok: true, candidate: toCandidate(data as unknown as Record<string, unknown>) };
+}
+
+/**
+ * ♥ toggle: add / remove the caller's own user_id in liked_by. The DB trigger (migration 18) only lets a member change their own
+ * vote, so a lost race with the partner's simultaneous vote is rejected there and simply re-read and retried here.
+ * Before the migration the column does not exist: the answer is a "준비 중" message, never a crash.
+ */
+export async function toggleCandidateLike(id: string): Promise<SpaceActionResult<{ candidate: FurnitureCandidate }>> {
+  const c = await context();
+  if (!c.ok) return c;
+  if (!spaceIdSchema.safeParse(id).success) return { ok: false, error: "잘못된 요청입니다." };
+  const { supabase, userId } = c.ctx;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cur = await supabase.from("space_furniture_candidates").select("id, liked_by").eq("id", id).maybeSingle();
+    if (cur.error) return { ok: false, error: "좋아요 기능을 준비하고 있어요. 잠시 후 다시 시도해 주세요." };
+    if (!cur.data) return { ok: false, error: "가구를 찾을 수 없어요." };
+    const likes: string[] = Array.isArray(cur.data.liked_by) ? cur.data.liked_by : [];
+    const next = likes.includes(userId) ? likes.filter((u) => u !== userId) : [...likes, userId];
+    const { data, error } = await withImageColumn((cols) => supabase.from("space_furniture_candidates").update({ liked_by: next }).eq("id", id).select(cols).maybeSingle());
+    if (!error && data) {
+      revalidatePath("/spaces");
+      return { ok: true, candidate: toCandidate(data as unknown as Record<string, unknown>) };
+    }
+  }
+  return { ok: false, error: "좋아요를 반영하지 못했어요. 다시 눌러 주세요." };
 }
 
 export async function setCandidateStatus(id: string, status: string): Promise<SpaceActionResult<{ candidate: FurnitureCandidate }>> {

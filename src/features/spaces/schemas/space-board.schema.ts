@@ -32,13 +32,15 @@ export type FurnitureCandidate = {
   source_mall: string | null;
   /** product thumbnail (migration 17, optional: null when absent or the column is not there yet) */
   image_url?: string | null;
+  /** user_ids of the household members who ♥-ed this (migration 18, optional: [] when absent) */
+  liked_by?: string[];
   status: CandidateStatus;
   memo: string | null;
   created_at: string;
 };
 
 export type SpaceListItem = Omit<SpaceProject, "ai_diagnosis" | "annotations"> & { photoUrl: string | null; annotationCount: number; candidateCount: number };
-export type SpaceDetail = { space: SpaceProject; photoUrl: string | null; candidates: FurnitureCandidate[]; householdId: string };
+export type SpaceDetail = { space: SpaceProject; photoUrl: string | null; candidates: FurnitureCandidate[]; householdId: string; userId: string; memberIds: string[] };
 
 export type SpaceActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
