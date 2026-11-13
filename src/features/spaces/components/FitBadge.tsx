@@ -12,6 +12,16 @@ const STYLE: Record<FitStatus, string> = {
 };
 const cm = (n: number) => `${Math.round(Math.abs(n) * 10) / 10}cm`;
 
+/** Why the verdict is what it is: the measured line it was compared against ("가로 소파 벽면 240cm 기준 · 30cm 여유"). Empty -> nothing. */
+export function FitBasis({ basis, className }: { basis: string | undefined; className?: string }) {
+  if (!basis) return null;
+  return (
+    <p data-testid="fit-basis" className={cn("break-words text-[11px] font-bold leading-snug text-slate-500 dark:text-zinc-400", className)}>
+      {basis}
+    </p>
+  );
+}
+
 /** Placement verdict pill: FIT mint "여유 Ncm" · TIGHT amber "딱 맞음" · OVERFLOW rose "치수 초과" · UNKNOWN slate. Always text + icon, never colour alone. */
 export function FitBadge({ fit, className }: { fit: Fit; className?: string }) {
   const Icon = fit.status === "FIT" ? CheckCircle2 : fit.status === "TIGHT" ? Ruler : fit.status === "OVERFLOW" ? AlertTriangle : HelpCircle;

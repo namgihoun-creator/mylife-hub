@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Check, Loader2, Plus, RefreshCw, Sparkles } from "lucide-react";
-import { FitBadge } from "./FitBadge";
+import { FitBadge, FitBasis } from "./FitBadge";
+import { evaluateFurnitureFit } from "@/shared/utils/space-planner";
 import { ShoppingButtons } from "./ShoppingButtons";
 import { updateSpaceMeta } from "../server/space.actions";
 import { ROOM_OPTIONS, STYLE_OPTIONS, type RoomType } from "../schemas/space-constants";
@@ -150,6 +151,7 @@ export function SpaceAiCoordinator({
                     <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">{r.category}</span>
                     <FitBadge fit={r.fit} />
                   </div>
+                  <FitBasis basis={evaluateFurnitureFit(annotations, r.recommendedSize).basisLabel} className="-mt-1.5" />
                   <h3 className="text-base font-extrabold leading-snug text-slate-900 dark:text-zinc-50">{r.title}</h3>
                   <p className="text-sm font-medium leading-relaxed text-slate-600 dark:text-zinc-300">{r.reason}</p>
                   <dl className="grid grid-cols-1 gap-1.5 text-sm min-[360px]:grid-cols-2">

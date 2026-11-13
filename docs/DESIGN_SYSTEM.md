@@ -295,6 +295,17 @@
 - **쇼핑 버튼:** 오늘의집 · 네이버 쇼핑 · 쿠팡 · 이케아 코리아, `rounded-full bg-slate-100`, `target="_blank" rel="noopener noreferrer"`, 높이 36px 이상.
 - **위시 보드(`WishFurnitureBoard`):** 직접 추가 폼(이름 · 카테고리 · 가로/깊이/높이 · 가격 · 링크 · 메모, 현재 공간 기준 적합도 미리보기) + 카드 그리드(`md` 2열). 상태 알약 `후보 / 최종 픽 / 구매 완료`(`role="radiogroup"`, 활성은 Slate · Sky · Mint 채움). 파트너의 변경은 15초 폴링과 탭 복귀 시 동기화한다(그리는 중인 치수는 덮어쓰지 않음).
 
+- **URL 자동 채움(위시 폼):** 상품 링크 입력란 옆에 `정보 불러오기` Sky 캡슐(`bg-sky-50 text-sky-700`, `min-h-11`). 결과는 폼 안의 흰 안내 카드(썸네일 `h-14 w-14 rounded-xl` + 쇼핑몰 Sky 알약 + 제목·가격); 실패는 Amber 안내 카드로 메시지만 보여 주고 수동 입력을 막지 않는다. 카드의 상품 썸네일은 `object-cover`, `referrerPolicy="no-referrer"`.
+- **적합도 근거(`FitBasis`):** 적합도 뱃지 바로 아래 `text-[11px] font-bold text-slate-500` 한 줄(예: `가로 소파 벽면 250cm 기준 · 40cm 여유`). 줄바꿈 허용, 판정 불가(UNKNOWN)면 표시하지 않는다.
+
+### T. 기본 가전 1분 세팅 (`/assets`)
+- `기본 가전 1분 세팅`은 `/assets` 헤더에서 `가전 추가` 옆의 Sky 캡슐(`rounded-full bg-sky-50 text-sky-700 shadow-sm`)이며, 가전이 0개일 때는 빈 상태 카드 안에도 같은 버튼을 둔다(모달 인스턴스는 하나, 이벤트로 연다).
+- 모달: `rounded-3xl bg-slate-50`, 가전 8종은 `grid-cols-1 min-[420px]:grid-cols-2`의 흰 카드(`rounded-3xl shadow-sm`, 선택 시 `ring-2 ring-sky-400`). 카드 = 체크박스 행(`min-h-11`) + `자가 / 렌탈` 세그먼트(`min-h-9`, 선택 전에는 비활성 톤). 이미 등록된 가전은 흐리게 `이미 등록됨`. 하단 CTA는 `GRADIENT_CTA`(`선택한 N개 가전 한 번에 등록`).
+
+### U. 영수증 일괄 검수 (키친 찰칵 입고)
+- 상단 요약 바: `rounded-3xl bg-sky-50`에 `선택 N개 / 전체 M개`와 지출 합계(품목 금액이 있으면 선택 품목 합계, 없으면 영수증 총액).
+- 품목 행: 흰 `rounded-3xl` 카드. 보관 위치 알약(냉장/냉동/실온, 선택은 Sky 채움), 소비기한 빠른 조정 Mint 알약 `-3일 / +3일 / +7일` + 날짜 입력, 오인식 품목을 바로 빼는 휴지통 버튼(Rose, 36px 이상).
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

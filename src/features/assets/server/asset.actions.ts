@@ -12,6 +12,7 @@ import {
   type ActionResult,
   type UpdateAssetResult,
 } from "../schemas/asset.schema";
+import { QUICK_APPLIANCES, quickApplianceInputSchema, type QuickApplianceResult } from "../constants/quick-appliances";
 
 /**
  * Registers an asset from a preset together with its recommended task_rules and the
@@ -202,4 +203,66 @@ export async function updateAsset(input: unknown): Promise<UpdateAssetResult> {
   revalidatePath("/assets");
   revalidatePath("/timeline"); // task cards show the asset name / place
   return { ok: true };
+}
+
+/**
+ * 1-minute setup: registers the chosen standard appliances (owned or rental) with their basic cleaning/consumable task rule and
+ * first task each. The catalog is the server's own constant (only keys + ownership come from the client). Rental details are left
+ * empty (the provider can be filled in later by editing the asset). Compensating cleanup on failure (no multi-table transaction).
+ */
+export async function addQuickAppliances(input: unknown): Promise<QuickApplianceResult> {
+  const parsed = quickApplianceInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "잘못된 요청입니다." };
+  const { user, profile } = await getSessionProfile();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+  if (!profile) return { ok: false, error: "가구 설정이 필요합니다." };
+  if (profile.role !== "ADMIN") return { ok: false, error: "자산 등록은 관리자만 할 수 있습니다." };
+
+  const supabase = await createClient();
+  const nowIso = new Date().toISOString();
+  const chosen = parsed.data.items.map((i) => ({ ...i, def: QUICK_APPLIANCES.find((a) => a.key === i.key)! }));
+
+  const dueByDays = new Map<number, string>();
+  try {
+    for (const days of new Set(chosen.flatMap((c) => c.def.tasks.map((t) => t.days)))) {
+      const { data, error } = await supabase.rpc("calculate_next_due_date", { p_current_due: nowIso, p_recurring_type: "DAILY", p_interval: days });
+      if (error || typeof data !== "string") throw new Error(error?.message ?? "due");
+      dueByDays.set(days, toSeoulDate(data));
+    }
+  } catch {
+    return { ok: false, error: "다음 예정일 계산에 실패했습니다." };
+  }
+
+  const base = { household_id: profile.householdId, owner_id: user.id, visibility: "FAMILY" as const };
+  const { data: assets, error: assetError } = await supabase
+    .from("assets")
+    .insert(chosen.map((c) => ({ ...base, name: c.def.name, space: c.def.space, category: c.def.category, preset_key: c.def.key, ownership_type: c.ownership })))
+    .select("id, preset_key");
+  if (assetError || !assets || assets.length !== chosen.length) return { ok: false, error: `자산 등록 실패: ${assetError?.message ?? "unknown"}` };
+  const ids = assets.map((a) => a.id);
+  const rollback = async () => {
+    await supabase.from("tasks").delete().in("asset_id", ids);
+    await supabase.from("assets").delete().in("id", ids); // task_rules cascade
+  };
+
+  const ruleRows = assets.flatMap((a) =>
+    QUICK_APPLIANCES.find((q) => q.key === a.preset_key)!.tasks.map((t) => ({
+      ...base, asset_id: a.id, title: t.title, recurring_type: "DAILY" as const, interval_n: t.days, anchor: "COMPLETION_DATE" as const, next_iteration_no: 2,
+    })),
+  );
+  const { data: rules, error: ruleError } = await supabase.from("task_rules").insert(ruleRows).select("id, asset_id, title, interval_n");
+  if (ruleError || !rules || rules.length !== ruleRows.length) {
+    await rollback();
+    return { ok: false, error: `관리 규칙 등록 실패: ${ruleError?.message ?? "unknown"}` };
+  }
+  const { error: taskError } = await supabase.from("tasks").insert(
+    rules.map((r) => ({ ...base, asset_id: r.asset_id, rule_id: r.id, iteration_no: 1, title: r.title, due_date: dueByDays.get(r.interval_n as number) })),
+  );
+  if (taskError) {
+    await rollback();
+    return { ok: false, error: `첫 과업 생성 실패: ${taskError.message}` };
+  }
+  revalidatePath("/assets");
+  revalidatePath("/timeline");
+  return { ok: true, assetCount: assets.length, ruleCount: rules.length };
 }

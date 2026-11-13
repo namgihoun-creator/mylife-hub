@@ -106,6 +106,20 @@ test("requests: key is never in the URL or body; image sent as inlineData; user 
   assert.ok(buildCheckoutRequest("x", []).contents[0].parts[0].text.includes("(없음)"));
 });
 
+test("vision: per-item price is kept only when it is a sane positive integer (else 0)", () => {
+  const r = parseVisionReply(
+    reply({ total_price: 20000, items: [
+      { name: "두부", amount: "1모", category: "냉장", is_pet: false, price: 2500 },
+      { name: "우유", amount: "1개", category: "냉장", is_pet: false, price: "3,200" },
+      { name: "대파", amount: "1단", category: "냉장", is_pet: false, price: -5 },
+      { name: "달걀", amount: "30구", category: "냉장", is_pet: false },
+      { name: "쌀", amount: "10kg", category: "실온", is_pet: false, price: 1.5 },
+    ] }),
+    T,
+  );
+  assert.deepEqual(r.items.map((i) => i.price), [2500, 3200, 0, 0, 0]);
+}); 
+
 // ---------------------------------------------------------------------------------------------- vision parsing
 test("vision: items normalised, storage + expiry from the 50-ingredient dictionary, pets flagged, total parsed", () => {
   const r = parseVisionReply(

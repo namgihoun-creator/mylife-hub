@@ -3315,6 +3315,27 @@ const CRON_SECRET = process.env.CRON_SECRET;
       await mackerel.locator('[data-storage="FREEZER"]').click();
       record("kitchen-zt", "desktop", "moving 고등어 to 냉동 recalculates its expiry (frozen 60일 from the dictionary)", /60일/.test(await mackerel.getByTestId("snap-row-expire").innerText()));
       await mackerel.getByTestId("snap-row-amount").fill("1마리");
+      {
+        const sum = sd.getByTestId("snap-summary");
+        record("kitchen-zt", "desktop", "receipt review: summary bar shows the selected count (3 of 4) and the receipt total 33,000원, live", (await sum.getByTestId("snap-summary-count").innerText()).trim() === "3" && /전체 4개/.test(await sum.innerText()) && (await sum.getByTestId("snap-summary-total").innerText()).trim() === "33,000원");
+        record("kitchen-zt", "desktop", "every row has one-tap storage pills (냉장·냉동·실온), quick expiry buttons -3일/+3일/+7일, a date field and a remove button", (await mackerel.getByTestId("snap-row-storage").count()) === 3 && (await mackerel.getByTestId("snap-row-shift").allInnerTexts()).join() === "-3일,+3일,+7일" && (await mackerel.getByTestId("snap-row-date").count()) === 1 && (await mackerel.getByTestId("snap-row-remove").count()) === 1);
+        await mackerel.locator('[data-shift="7"]').click();
+        const t67 = await mackerel.getByTestId("snap-row-expire").innerText();
+        await mackerel.locator('[data-shift="-3"]').click();
+        const t64 = await mackerel.getByTestId("snap-row-expire").innerText();
+        await mackerel.locator('[data-shift="3"]').click();
+        const t67b = await mackerel.getByTestId("snap-row-expire").innerText();
+        record("kitchen-zt", "desktop", "+7일 / -3일 / +3일 move the expiry date (60 -> 67 -> 64 -> 67 days)", /67일/.test(t67) && /64일/.test(t64) && /67일/.test(t67b), `${t67} | ${t64} | ${t67b}`);
+        await mackerel.getByTestId("snap-row-date").fill(shift(60));
+        record("kitchen-zt", "desktop", "the date can be edited directly (back to today + 60)", /60일/.test(await mackerel.getByTestId("snap-row-expire").innerText()) && (await mackerel.getByTestId("snap-row-date").inputValue()) === shift(60));
+        await mackerel.locator('[data-storage="FRIDGE"]').click();
+        record("kitchen-zt", "desktop", "switching the storage pill resets the expiry to that place's dictionary default (냉장 2일)", /2일/.test(await mackerel.getByTestId("snap-row-expire").innerText()));
+        await mackerel.locator('[data-storage="FREEZER"]').click();
+        await mackerel.getByTestId("snap-row-date").fill(shift(60));
+        await sd.locator('[data-testid="snap-row"][data-name="숙주"] [data-testid="snap-row-remove"]').click();
+        record("kitchen-zt", "desktop", "the X button drops a mis-read row at once (4 -> 3 rows, summary ‘전체 3개’), the CTA stays at 3개", (await sd.getByTestId("snap-row").count()) === 3 && /전체 3개/.test(await sd.getByTestId("snap-summary").innerText()) && (await sd.getByTestId("snap-submit").innerText()).includes("3개 품목 한 번에 입고"));
+        await p.screenshot({ path: `${OUT}/kitchen-snap-review-batch-edit-desktop.png` });
+      }
 
       // ---- one-tap intake
       await sd.getByTestId("snap-submit").click();
@@ -4809,6 +4830,8 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
       const fits = await recs.evaluateAll((els) => els.map((e) => e.querySelector('[data-testid="fit-badge"]')?.getAttribute("data-fit")));
       const fitTexts = await recs.evaluateAll((els) => els.map((e) => e.querySelector('[data-testid="fit-badge"]')?.textContent?.trim()));
       record("spaces", "desktop", "server fit verdicts vs the 250 cm wall: FIT ‘여유 40cm’ · FIT ‘여유 14cm’ · OVERFLOW ‘치수 초과’", fits.join() === "FIT,FIT,OVERFLOW" && fitTexts[0] === "여유 40cm" && fitTexts[1] === "여유 14cm" && /^치수 초과/.test(fitTexts[2]), fitTexts.join(" | "));
+      const bases = await dp.getByTestId("ai-rec").evaluateAll((els) => els.map((e) => e.querySelector('[data-testid="fit-basis"]')?.textContent?.trim() ?? ""));
+      record("phase1", "desktop", "AI recommendation cards show the comparison basis next to the badge (measured line, its length, margin)", bases.length === 3 && bases.every((b) => /^가로 .*250cm 기준 · /.test(b)) && /40cm 여유/.test(bases[0]) && /10cm 초과/.test(bases[2]), bases.join(" | "));
       const links0 = await recs.nth(0).locator('[data-testid="shop-links"] a').evaluateAll((as) => as.map((a) => ({ mall: a.dataset.mall, href: a.href, target: a.target, rel: a.rel, text: a.textContent.trim() })));
       const kw = encodeURIComponent("아이보리 패브릭 3인 소파 2100");
       record("spaces", "desktop", "one-click shopping: 오늘의집 · 네이버 쇼핑 · 쿠팡 · 이케아 (new tab, noopener) with the keyword", links0.map((l) => l.text).join("|") === "오늘의집|네이버 쇼핑|쿠팡|이케아 코리아" && links0.every((l) => l.target === "_blank" && /noopener/.test(l.rel)) && links0[0].href === `https://ohou.se/store/search?query=${kw}` && links0[1].href === `https://search.shopping.naver.com/search/all?query=${kw}` && links0[2].href === `https://www.coupang.com/np/search?q=${kw}` && links0[3].href === `https://www.ikea.com/kr/ko/search/?q=${kw}`, links0.map((l) => l.mall).join());
@@ -4868,6 +4891,9 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
       await until(async () => (await candRows()).length === 4);
       const fitOf = async (name) => dp.getByTestId("wish-card").filter({ hasText: name }).getByTestId("fit-badge").getAttribute("data-fit");
       record("spaces", "desktop", "live fit badges on the board: FIT / TIGHT / OVERFLOW (300 > 250) / UNKNOWN (no size)", (await fitOf("웜 아이보리")) === "FIT" && (await fitOf("딱 맞는 수납장")) === "TIGHT" && (await fitOf("큰 수납장")) === "OVERFLOW" && (await fitOf("치수 모르는 의자")) === "UNKNOWN");
+      const wishBases = await dp.getByTestId("wish-card").evaluateAll((els) => els.map((e) => [e.querySelector("h3")?.textContent ?? "", e.querySelector('[data-testid="fit-basis"]')?.textContent?.trim() ?? ""]));
+      const basisOfCard = (n) => wishBases.find(([t]) => t.includes(n))?.[1] ?? null;
+      record("phase1", "desktop", "wish cards show the basis per verdict: ‘… 250cm 기준 · N cm 여유|초과’, and none when the size is unknown", /250cm 기준 · 4cm 여유/.test(basisOfCard("딱 맞는") ?? "") && /250cm 기준 · 50cm 초과/.test(basisOfCard("큰 수납장") ?? "") && basisOfCard("치수 모르는") === "", JSON.stringify(wishBases));
 
       // editing a measurement re-computes the badges at once
       await dp.getByRole("button", { name: "소파 벽면 수정" }).click();
@@ -5016,6 +5042,182 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
         record("spaces", vp.name, "no page errors", p.__errors.length === 0, p.__errors.join(" | ").slice(0, 200));
         await c.close();
       }
+
+      // ============================================================ Phase 1: 기본 가전 1분 세팅 · 위시 URL 자동 채움 · parse-url SSRF
+      {
+        const seoulDay = (n) => new Date(Date.now() + 9 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+        const assetRows = async () => (await svc.from("assets").select("id, name, space, ownership_type, preset_key").eq("household_id", H).order("created_at")).data ?? [];
+        const { c: wc, p: wp } = await mk(VIEWPORTS[0]);
+        await wp.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+        const headerBtn = wp.getByTestId("quick-wizard-open");
+        record("phase1", "desktop", "/assets header: Sky capsule ‘기본 가전 1분 세팅’ next to ‘가전 추가’, and the empty-state card has the same CTA", (await headerBtn.count()) === 1 && /기본 가전 1분 세팅/.test(await headerBtn.innerText()) && /bg-sky-50/.test((await headerBtn.getAttribute("class")) ?? "") && (await wp.getByRole("button", { name: /가전 추가/ }).count()) >= 1 && (await wp.getByTestId("quick-wizard-empty-cta").count()) === 1);
+        await wp.getByTestId("quick-wizard-empty-cta").click();
+        const wz = wp.getByTestId("quick-wizard");
+        await wz.waitFor();
+        const names = await wz.getByTestId("quick-item").evaluateAll((els) => els.map((e) => e.querySelector("span.block")?.textContent?.trim()));
+        const subs = (await wz.getByTestId("quick-item").allInnerTexts()).join("|");
+        record("phase1", "desktop", "wizard lists the 8 standard appliances with place and cycle", names.join(",") === "냉장고,정수기,인덕션/전기레인지,세탁기,건조기,에어컨,공기청정기,비데" && /주방 · 90일마다/.test(subs) && /주방 · 180일마다/.test(subs) && /주방 · 30일마다/.test(subs) && /다용도실 · 60일마다/.test(subs) && /다용도실 · 30일마다/.test(subs) && /거실 · 30일마다/.test(subs) && /거실 · 180일마다/.test(subs) && /화장실 · 30일마다/.test(subs), names.join());
+        record("phase1", "desktop", "submit is disabled until something is picked", (await wz.getByTestId("quick-submit").isDisabled()) && /가전을 골라/.test(await wz.getByTestId("quick-submit").innerText()));
+        for (const n of ["냉장고", "세탁기", "정수기"]) await wz.getByRole("checkbox", { name: `${n} 선택` }).click();
+        await wz.getByRole("radiogroup", { name: "정수기 소유 형태" }).getByRole("radio", { name: "렌탈" }).click();
+        record("phase1", "desktop", "multi-select cards + per-item 자가/렌탈 toggle; CTA reads ‘선택한 3개 가전 한 번에 등록’", /선택한 3개 가전 한 번에 등록/.test(await wz.getByTestId("quick-submit").innerText()) && (await wz.getByRole("radiogroup", { name: "정수기 소유 형태" }).getByRole("radio", { name: "렌탈" }).getAttribute("aria-checked")) === "true" && (await wz.getByRole("radiogroup", { name: "냉장고 소유 형태" }).getByRole("radio", { name: "자가" }).getAttribute("aria-checked")) === "true");
+        await wp.screenshot({ path: `${OUT}/assets-quick-wizard-desktop.png` });
+        await wz.getByTestId("quick-submit").click();
+        await wz.waitFor({ state: "detached", timeout: 20_000 });
+        const ar = await until(async () => { const r = await assetRows(); return r.length === 3 ? r : null; });
+        const own = Object.fromEntries((ar ?? []).map((a) => [a.name, a.ownership_type]));
+        record("phase1", "desktop", "3 assets created in one go: 냉장고 OWNED · 세탁기 OWNED · 정수기 RENTAL (place and preset key set)", !!ar && own["냉장고"] === "OWNED" && own["세탁기"] === "OWNED" && own["정수기"] === "RENTAL" && ar.find((a) => a.name === "냉장고")?.space === "주방" && ar.find((a) => a.name === "세탁기")?.preset_key === "washer", JSON.stringify(own));
+        const rules = (await svc.from("task_rules").select("asset_id, title, recurring_type, interval_n, anchor").eq("household_id", H)).data ?? [];
+        const taskRows = (await svc.from("tasks").select("asset_id, rule_id, title, due_date, status, iteration_no").eq("household_id", H)).data ?? [];
+        const idOf = (n) => ar?.find((a) => a.name === n)?.id;
+        const ruleOf = (n) => rules.find((r) => r.asset_id === idOf(n));
+        record("phase1", "desktop", "each asset got its basic care rule: 냉장고 90일 · 세탁기 60일 · 정수기 180일 (DAILY, completion-date anchor)", rules.length === 3 && ruleOf("냉장고")?.interval_n === 90 && ruleOf("세탁기")?.interval_n === 60 && ruleOf("정수기")?.interval_n === 180 && rules.every((r) => r.recurring_type === "DAILY" && r.anchor === "COMPLETION_DATE") && /냉장고/.test(ruleOf("냉장고")?.title ?? ""), JSON.stringify(rules.map((r) => [r.title, r.interval_n])));
+        const due = (n) => taskRows.find((t) => t.asset_id === idOf(n))?.due_date;
+        record("phase1", "desktop", "first task of each rule exists (iteration 1, PENDING) due today + interval", taskRows.length === 3 && taskRows.every((t) => t.status === "PENDING" && t.iteration_no === 1 && t.rule_id) && due("냉장고") === seoulDay(90) && due("세탁기") === seoulDay(60) && due("정수기") === seoulDay(180), JSON.stringify(taskRows.map((t) => [t.title, t.due_date])));
+        await wp.waitForFunction(() => /정수기/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 15_000 }).catch(() => undefined);
+        const cardText = await wp.locator("main").innerText();
+        record("phase1", "desktop", "/assets shows the new appliances without a manual reload", /냉장고/.test(cardText) && /세탁기/.test(cardText) && /정수기/.test(cardText) && (await wp.getByTestId("quick-wizard-empty-cta").count()) === 0);
+        await headerBtn.click();
+        const wz2 = wp.getByTestId("quick-wizard");
+        await wz2.waitFor();
+        const doneCount = await wz2.getByText("이미 등록됨").count();
+        record("phase1", "desktop", "reopening: already registered appliances are marked and cannot be picked twice", doneCount === 3 && (await wz2.getByRole("checkbox", { name: "냉장고 선택" }).isDisabled()) && !(await wz2.getByRole("checkbox", { name: "비데 선택" }).isDisabled()));
+        await wp.keyboard.press("Escape");
+        record("phase1", "desktop", "no page errors in the wizard flow", wp.__errors.length === 0, wp.__errors.join(" | ").slice(0, 200));
+        await wc.close();
+
+        for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+          const { c, p } = await mk(vp);
+          await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+          const ox0 = await overflowX(p);
+          await p.getByTestId("quick-wizard-open").click();
+          const dlg = p.getByTestId("quick-wizard");
+          await dlg.waitFor();
+          await p.waitForTimeout(300);
+          const m = await dlg.evaluate((d) => { const r = d.getBoundingClientRect(); const sub = d.querySelector('[data-testid="quick-submit"]').getBoundingClientRect(); return { l: r.left, r: r.right, w: window.innerWidth, h: r.height, vh: window.innerHeight, subIn: sub.left >= r.left - 0.5 && sub.right <= r.right + 0.5 && sub.bottom <= window.innerHeight + 0.5, sw: d.scrollWidth - d.clientWidth }; });
+          record("phase1", vp.name, "wizard: page and dialog stay inside the screen, submit button visible, no sideways scroll", ox0 <= 0 && m.l >= -0.5 && m.r <= m.w + 0.5 && m.subIn && m.sw <= 1 && (await overflowX(p)) <= 0, JSON.stringify(m));
+          const touch = await dlg.getByRole("checkbox", { name: "비데 선택" }).evaluate((b) => b.getBoundingClientRect().height);
+          record("phase1", vp.name, "wizard cards are touch-sized (>= 44px)", touch >= 44, `h=${Math.round(touch)}`);
+          if (vp.name === "fold280") await p.screenshot({ path: `${OUT}/assets-quick-wizard-fold280.png` });
+          await c.close();
+        }
+        {
+          const { c, p } = await mk(VIEWPORTS[1], { scheme: "dark" });
+          await p.goto(`${BASE}/assets`, { waitUntil: "networkidle" });
+          await p.getByTestId("quick-wizard-open").click();
+          await p.getByTestId("quick-wizard").waitFor();
+          const bg = await p.getByTestId("quick-item").first().locator(":scope > div").evaluate((e) => getComputedStyle(e).backgroundColor);
+          const mm = bg.match(/\d+/g).map(Number);
+          record("phase1", "mobile", "wizard in dark mode: cards are dark", mm[0] < 80 && mm[1] < 80, bg);
+          await c.close();
+        }
+
+        // ---- parse-url API: auth, SSRF refusals, rate limit
+        const { c: ac, p: ap } = await mk(VIEWPORTS[0]);
+        await ap.goto(`${BASE}/spaces`, { waitUntil: "networkidle" });
+        const post = (url) => ap.request.post(`${BASE}/api/spaces/parse-url`, { data: { url } });
+        let calls = 0;
+        const blockedCases = ["http://127.0.0.1:4010/x", "http://localhost:3000/", "http://169.254.169.254/latest/meta-data/", "http://192.168.0.1/", "http://10.0.0.1/", "http://172.16.5.5/", "http://[::1]/", "http://[fe80::1]/", "http://2130706433/"];
+        const statuses = [];
+        for (const u of blockedCases) {
+          const r = await post(u); calls++;
+          const j = await r.json();
+          statuses.push(`${r.status()}:${j.error}`);
+        }
+        record("phase1", "desktop", "parse-url refuses localhost / loopback / private / link-local / IPv6 / decimal-IP hosts with 400 BLOCKED_URL", statuses.every((s) => s === "400:BLOCKED_URL"), statuses.join(" "));
+        const bad = [];
+        for (const u of ["ftp://example.com/file", "file:///etc/passwd", "javascript:alert(1)", "nonsense"]) { const r = await post(u); calls++; bad.push(`${r.status()}:${(await r.json()).error}`); }
+        record("phase1", "desktop", "parse-url: non-http(s) schemes and junk are 400 INVALID_URL", bad.every((s) => s === "400:INVALID_URL"), bad.join(" "));
+        const nb = await ap.request.post(`${BASE}/api/spaces/parse-url`, { data: {} }); calls++;
+        record("phase1", "desktop", "parse-url: empty body -> 400 BAD_REQUEST", nb.status() === 400 && (await nb.json()).error === "BAD_REQUEST");
+        const anon = await browser.newContext();
+        const ar2 = await anon.request.post(`${BASE}/api/spaces/parse-url`, { data: { url: "https://www.ikea.com/kr/ko/" } });
+        record("phase1", "desktop", "parse-url: signed-out request is 401", ar2.status() === 401);
+        await anon.close();
+        let first429 = -1, retryAfter = null;
+        for (let i = 0; i < 20 && first429 < 0; i++) {
+          const r = await post("http://127.0.0.1/"); calls++;
+          if (r.status() === 429) { first429 = calls; retryAfter = r.headers()["retry-after"]; }
+        }
+        record("phase1", "desktop", "parse-url rate limit: the 16th request within a minute is 429 with Retry-After", first429 === 16 && Number(retryAfter) > 0, `first429 at call ${first429}, retry-after=${retryAfter}`);
+        await ac.close();
+      }
+
+      // ---- wish board: URL -> auto-fill (the page's /api/spaces/parse-url is stubbed: the real endpoint refuses local hosts and tests must not depend on shop sites)
+      {
+        const cols = await svc.from("space_furniture_candidates").select("image_url").limit(1);
+        const hasImageColumn = !cols.error;
+        const { c: uc, p: up } = await mk(VIEWPORTS[0]);
+        let mode = "ok";
+        await up.route("**/api/spaces/parse-url", (route) => {
+          const body = route.request().postDataJSON();
+          if (mode === "ok") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, title: "모크 아이보리 3인 소파", imageUrl: "https://cdn.example.com/sofa.jpg", price: 1290000, sourceMall: "이케아", mallId: "ikea", url: body.url }) });
+          return route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ ok: false, error: "NO_METADATA", message: "이 링크에서 상품 정보를 읽지 못했어요. 직접 입력해 주세요." }) });
+        });
+        await up.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+        await up.getByTestId("wish-board").scrollIntoViewIfNeeded();
+        await up.getByTestId("wish-add-open").click();
+        const form = up.getByTestId("wish-form");
+        record("phase1", "desktop", "wish form: ‘정보 불러오기’ is disabled until a valid http(s) link is typed", await form.getByTestId("wish-parse").isDisabled());
+        await form.getByTestId("wish-url").fill("https://www.ikea.com/kr/ko/p/mock-sofa-123/");
+        await form.getByTestId("wish-parse").click();
+        const note = form.getByTestId("wish-parse-note");
+        await note.waitFor();
+        record("phase1", "desktop", "정보 불러오기 fills name + price, shows the mall badge ‘이케아’ and a thumbnail preview", (await form.getByTestId("wish-name").inputValue()) === "모크 아이보리 3인 소파" && (await form.getByTestId("wish-price").inputValue()) === "1290000" && /이케아/.test(await note.innerText()) && (await note.getAttribute("data-ok")) === "true" && (await form.getByTestId("wish-thumb-preview").getAttribute("src")) === "https://cdn.example.com/sofa.jpg");
+        await form.getByTestId("wish-w").fill("200");
+        await form.getByTestId("wish-d").fill("90");
+        const basis = await form.getByTestId("fit-basis").first().innerText();
+        record("phase1", "desktop", "live fit preview in the form names its basis line (‘… cm 기준 · …’)", /기준 · \d+(\.\d+)?cm (여유|초과)/.test(basis), basis);
+        await form.getByTestId("wish-save").click();
+        await form.waitFor({ state: "detached" });
+        const saved = (await candRows()).find((r) => r.name === "모크 아이보리 3인 소파");
+        record("phase1", "desktop", "saved: product_url, price 1290000 and source_mall ikea are stored — works with or without migration 17", !!saved && saved.product_url === "https://www.ikea.com/kr/ko/p/mock-sofa-123/" && saved.price === 1290000 && saved.source_mall === "ikea", JSON.stringify({ ...saved, hasImageColumn }));
+        if (hasImageColumn) {
+          const row = await svc.from("space_furniture_candidates").select("image_url").eq("id", saved.id).single();
+          const card = up.getByTestId("wish-card").filter({ hasText: "모크 아이보리 3인 소파" });
+          record("phase1", "desktop", "migration 17 present: image_url stored and the thumbnail shows on the card (no-referrer)", row.data.image_url === "https://cdn.example.com/sofa.jpg" && (await card.getByTestId("wish-thumb").getAttribute("src")) === "https://cdn.example.com/sofa.jpg" && (await card.getByTestId("wish-thumb").getAttribute("referrerpolicy")) === "no-referrer");
+        } else {
+          record("phase1", "desktop", "migration 17 not applied: graceful fallback — reading and saving wishes work without image_url (no thumbnail)", !!saved && (await up.getByTestId("wish-card").count()) >= 1 && (await up.getByTestId("wish-thumb").count()) === 0, "image_url column missing");
+        }
+        const cardBasis = await up.getByTestId("wish-card").filter({ hasText: "모크 아이보리 3인 소파" }).getByTestId("fit-basis").innerText();
+        record("phase1", "desktop", "wish card shows the comparison basis next to the badge (e.g. ‘가로 … cm 기준 · … cm 여유’)", /기준 · \d+(\.\d+)?cm (여유|초과)/.test(cardBasis) && /(가로|깊이|높이)/.test(cardBasis), cardBasis);
+
+        // failure keeps the form manual
+        await up.getByTestId("wish-add-open").click();
+        mode = "fail";
+        await form.getByTestId("wish-name").fill("직접 쓴 이름");
+        await form.getByTestId("wish-url").fill("https://blocked.example.com/p/1");
+        await form.getByTestId("wish-parse").click();
+        await form.getByTestId("wish-parse-note").waitFor();
+        record("phase1", "desktop", "a failed lookup shows a guidance message and keeps the typed values (manual entry still works)", (await form.getByTestId("wish-parse-note").getAttribute("data-ok")) === "false" && /직접 입력/.test(await form.getByTestId("wish-parse-note").innerText()) && (await form.getByTestId("wish-name").inputValue()) === "직접 쓴 이름" && (await form.getByTestId("wish-save").isEnabled()));
+        // paste detection
+        mode = "ok";
+        await form.getByTestId("wish-name").fill("");
+        await form.getByTestId("wish-url").fill("");
+        await form.getByTestId("wish-url").evaluate((el, t) => { const dt = new DataTransfer(); dt.setData("text", t); el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); }, "https://www.ikea.com/kr/ko/p/pasted-456/");
+        await up.waitForFunction(() => document.querySelector('[data-testid="wish-name"]')?.value === "모크 아이보리 3인 소파", null, { timeout: 10_000 });
+        record("phase1", "desktop", "pasting a valid link auto-runs the lookup (no button press) and keeps the pasted URL in the field", (await form.getByTestId("wish-url").inputValue()) === "https://www.ikea.com/kr/ko/p/pasted-456/" && (await form.getByTestId("wish-parse-note").getAttribute("data-ok")) === "true");
+        await up.screenshot({ path: `${OUT}/spaces-wish-url-autofill-desktop.png` });
+        record("phase1", "desktop", "no page errors in the wish URL flow", up.__errors.length === 0, up.__errors.join(" | ").slice(0, 200));
+        await uc.close();
+
+        for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+          const { c, p } = await mk(vp);
+          await p.route("**/api/spaces/parse-url", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, title: "아주 긴 이름의 모크 상품 " + "가".repeat(60), imageUrl: "https://cdn.example.com/sofa.jpg", price: 1290000, sourceMall: "이케아", mallId: "ikea", url: "https://www.ikea.com/kr/ko/p/x/" }) }));
+          await p.goto(`${BASE}/spaces/${spaceId}`, { waitUntil: "networkidle" });
+          await p.getByTestId("wish-add-open").click();
+          await p.getByTestId("wish-url").fill("https://www.ikea.com/kr/ko/p/x/");
+          await p.getByTestId("wish-parse").click();
+          await p.getByTestId("wish-parse-note").waitFor();
+          const f = await p.getByTestId("wish-form").evaluate((el) => { const r = el.getBoundingClientRect(); const b = el.querySelector('[data-testid="wish-parse"]').getBoundingClientRect(); return { l: r.left, r: r.right, vw: window.innerWidth, bIn: b.left >= r.left - 0.5 && b.right <= r.right + 0.5, bh: b.height }; });
+          record("phase1", vp.name, "wish form with URL lookup: no overflow, ‘정보 불러오기’ inside the card and >= 44px tall, long title wraps", f.l >= -0.5 && f.r <= f.vw + 0.5 && f.bIn && f.bh >= 44 && (await overflowX(p)) <= 0, JSON.stringify(f));
+          const cb = await p.getByTestId("wish-card").filter({ hasText: "모크 아이보리" }).getByTestId("fit-basis").first().evaluate((e) => ({ over: e.scrollWidth - e.clientWidth, w: e.getBoundingClientRect().right <= window.innerWidth + 0.5 }));
+          record("phase1", vp.name, "comparison basis text wraps inside the card (no clipping)", cb.over <= 1 && cb.w, JSON.stringify(cb));
+          if (vp.name === "fold280") await p.screenshot({ path: `${OUT}/spaces-wish-url-fold280.png`, fullPage: true });
+          await c.close();
+        }
+      }
+
 
       // AR camera measuring (WebXR immersive-ar): hidden unless the browser says it can do AR
       {

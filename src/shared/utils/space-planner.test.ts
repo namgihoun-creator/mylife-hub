@@ -102,3 +102,21 @@ test("inferMall: the four malls (and subdomains) are recognised, anything else i
   assert.equal(inferMall("not a url"), null);
   assert.equal(inferMall(null), null);
 });
+
+test("fit basis label: names the measured line, its length and the margin", () => {
+  const wall = [{ label: "소파 벽면", lengthCm: 240 }];
+  assert.equal(evaluateFurnitureFit(wall, { widthCm: 210 }).basisLabel, "가로 소파 벽면 240cm 기준 · 30cm 여유");
+  assert.equal(evaluateFurnitureFit([{ label: "가로", lengthCm: 240 }], { widthCm: 210 }).basisLabel, "가로 240cm 기준 · 30cm 여유");
+  assert.equal(evaluateFurnitureFit([{ label: "깊이", lengthCm: 90 }], { depthCm: 95 }).basisLabel, "깊이 90cm 기준 · 5cm 초과");
+  assert.equal(evaluateFurnitureFit([{ label: "창가 깊이", lengthCm: 90 }], { depthCm: 86 }).basisLabel, "창가 깊이 90cm 기준 · 4cm 여유");
+});
+
+test("fit basis label: the worst axis and the shortest matching line are the basis; UNKNOWN has none", () => {
+  const ann = [{ label: "벽면 A", lengthCm: 300 }, { label: "벽면 B", lengthCm: 250 }, { label: "천장 높이", lengthCm: 235 }];
+  const r = evaluateFurnitureFit(ann, { widthCm: 240, heightCm: 240 });
+  assert.equal(r.status, "OVERFLOW");
+  assert.equal(r.basisLabel, "천장 높이 235cm 기준 · 5cm 초과");
+  assert.equal(evaluateFurnitureFit(ann, { widthCm: 200 }).basisLabel, "가로 벽면 B 250cm 기준 · 50cm 여유");
+  assert.equal(evaluateFurnitureFit([], { widthCm: 200 }).basisLabel, "");
+  assert.equal(evaluateFurnitureFit(ann, {}).basisLabel, "");
+});

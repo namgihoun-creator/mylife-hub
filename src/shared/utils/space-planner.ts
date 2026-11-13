@@ -28,13 +28,15 @@ export type FurnitureSize = { widthCm?: number | null; depthCm?: number | null; 
 
 export type FitStatus = "FIT" | "TIGHT" | "OVERFLOW" | "UNKNOWN";
 export type FitAxis = "width" | "depth" | "height";
-export type AxisFit = { axis: FitAxis; availableCm: number; furnitureCm: number; slackCm: number; status: Exclude<FitStatus, "UNKNOWN"> };
+export type AxisFit = { axis: FitAxis; /** label of the measured line used as the basis */ basis: string; availableCm: number; furnitureCm: number; slackCm: number; status: Exclude<FitStatus, "UNKNOWN"> };
 export type FitResult = {
   status: FitStatus;
   /** Smallest remaining space over the compared axes (negative = by how much it overflows); null when nothing was comparable. */
   slackCm: number | null;
   axes: AxisFit[];
   message: string;
+  /** Which measured line the verdict compares against, e.g. "가로 소파 벽면 240cm 기준 · 30cm 여유"; "" when UNKNOWN. */
+  basisLabel: string;
 };
 
 /** Slack up to this many cm (and at least 0) counts as "tight". */
@@ -73,10 +75,14 @@ export function evaluateFurnitureFit(spaceAnnotations: readonly SpaceAnnotation[
     height: usable(furnitureSize?.heightCm) ? furnitureSize!.heightCm! : null,
   };
   const available: Partial<Record<FitAxis, number>> = {};
+  const basisOf: Partial<Record<FitAxis, string>> = {};
   for (const a of spaceAnnotations ?? []) {
     if (!a || !usable(a.lengthCm)) continue;
     const axis = annotationAxis(String(a.label ?? ""));
-    available[axis] = Math.min(available[axis] ?? Infinity, a.lengthCm);
+    if (a.lengthCm < (available[axis] ?? Infinity)) {
+      available[axis] = a.lengthCm;
+      basisOf[axis] = String(a.label ?? "").trim();
+    }
   }
 
   const axes: AxisFit[] = [];
@@ -85,11 +91,11 @@ export function evaluateFurnitureFit(spaceAnnotations: readonly SpaceAnnotation[
     const availableCm = available[axis];
     if (furnitureCm === null || availableCm === undefined) continue;
     const slackCm = round1(availableCm - furnitureCm);
-    axes.push({ axis, availableCm, furnitureCm, slackCm, status: slackCm < 0 ? "OVERFLOW" : slackCm <= TIGHT_MARGIN_CM ? "TIGHT" : "FIT" });
+    axes.push({ axis, basis: basisOf[axis] ?? "", availableCm, furnitureCm, slackCm, status: slackCm < 0 ? "OVERFLOW" : slackCm <= TIGHT_MARGIN_CM ? "TIGHT" : "FIT" });
   }
 
   if (axes.length === 0) {
-    return { status: "UNKNOWN", slackCm: null, axes, message: "비교할 치수가 부족해요. 공간 실측과 가구 크기를 입력해 주세요." };
+    return { status: "UNKNOWN", slackCm: null, axes, message: "비교할 치수가 부족해요. 공간 실측과 가구 크기를 입력해 주세요.", basisLabel: "" };
   }
   const worst = axes.reduce((w, a) => (RANK[a.status] > RANK[w.status] ? a : w));
   const slackCm = Math.min(...axes.map((a) => a.slackCm));
@@ -100,7 +106,15 @@ export function evaluateFurnitureFit(spaceAnnotations: readonly SpaceAnnotation[
       : worst.status === "TIGHT"
         ? `${where} 여유가 ${worst.slackCm}cm뿐이에요. 5cm 이내로 빠듯해요.`
         : `${where} ${worst.slackCm}cm 여유가 있어요.`;
-  return { status: worst.status, slackCm, axes, message };
+  return { status: worst.status, slackCm, axes, message, basisLabel: fitBasisLabel(worst) };
+}
+
+/** "가로 소파 벽면 240cm 기준 · 30cm 여유" / "깊이 90cm 기준 · 5cm 초과": the measured line the verdict is based on. */
+export function fitBasisLabel(a: Pick<AxisFit, "axis" | "basis" | "availableCm" | "slackCm" | "status">): string {
+  const word = AXIS_KO[a.axis];
+  const name = !a.basis ? word : a.basis.includes(word) ? a.basis : `${word} ${a.basis}`;
+  const tail = a.status === "OVERFLOW" ? `${round1(Math.abs(a.slackCm))}cm 초과` : `${a.slackCm}cm 여유`;
+  return `${name} ${a.availableCm}cm 기준 · ${tail}`;
 }
 
 // ---------------------------------------------------------------------------------------------- labels & malls

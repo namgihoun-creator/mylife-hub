@@ -30,6 +30,8 @@ export type FurnitureCandidate = {
   height_cm: number | null;
   product_url: string | null;
   source_mall: string | null;
+  /** product thumbnail (migration 17, optional: null when absent or the column is not there yet) */
+  image_url?: string | null;
   status: CandidateStatus;
   memo: string | null;
   created_at: string;
@@ -69,6 +71,14 @@ export const candidateInputSchema = z.object({
     .optional()
     .refine((v) => v == null || /^https?:\/\/\S+$/i.test(v), "상품 링크는 http(s)://로 시작해야 해요."),
   memo: optText(300),
+  imageUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional()
+    .refine((v) => v == null || /^https?:\/\/\S+$/i.test(v), "이미지 주소가 올바르지 않아요."),
 });
 export type CandidateInput = z.input<typeof candidateInputSchema>;
 export const candidateStatusSchema = z.enum(CANDIDATE_STATUSES);

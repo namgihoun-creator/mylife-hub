@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Heart, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { FitBadge } from "./FitBadge";
+import { Download, ExternalLink, Heart, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { FitBadge, FitBasis } from "./FitBadge";
 import { ShoppingButtons } from "./ShoppingButtons";
 import { addCandidate, deleteCandidate, setCandidateStatus, updateCandidate } from "../server/space.actions";
 import { CANDIDATE_STATUSES, STATUS_LABEL, type CandidateStatus } from "../schemas/space-constants";
@@ -11,11 +11,13 @@ import type { AnnotationInput } from "../schemas/space.schema";
 import { evaluateFurnitureFit } from "@/shared/utils/space-planner";
 import { cn } from "@/shared/lib/utils";
 
-type Draft = { name: string; category: string; w: string; d: string; h: string; price: string; url: string; memo: string };
-const EMPTY: Draft = { name: "", category: "", w: "", d: "", h: "", price: "", url: "", memo: "" };
+type Draft = { name: string; category: string; w: string; d: string; h: string; price: string; url: string; memo: string; image: string };
+const EMPTY: Draft = { name: "", category: "", w: "", d: "", h: "", price: "", url: "", memo: "", image: "" };
+const isHttpUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim());
+type Parsed = { ok: true; title: string | null; imageUrl: string | null; price: number | null; sourceMall: string } | { ok: false; message: string };
 const fromCandidate = (c: FurnitureCandidate): Draft => ({
   name: c.name, category: c.category ?? "", w: c.width_cm?.toString() ?? "", d: c.depth_cm?.toString() ?? "", h: c.height_cm?.toString() ?? "",
-  price: c.price?.toString() ?? "", url: c.product_url ?? "", memo: c.memo ?? "",
+  price: c.price?.toString() ?? "", url: c.product_url ?? "", memo: c.memo ?? "", image: c.image_url ?? "",
 });
 const numOrNull = (s: string) => {
   const t = s.replace(/,/g, "").trim();
@@ -53,6 +55,35 @@ export function WishFurnitureBoard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [parseNote, setParseNote] = useState<{ ok: boolean; text: string; mall?: string } | null>(null);
+
+  // Product link -> name, price, mall and thumbnail through /api/spaces/parse-url. Never overwrites what the couple already typed
+  // into name/price; on any failure the form simply stays manual.
+  const parseUrl = async (raw: string) => {
+    const url = raw.trim();
+    if (!isHttpUrl(url)) return setParseNote({ ok: false, text: "http(s)로 시작하는 상품 링크를 넣어 주세요." });
+    setParsing(true);
+    setParseNote(null);
+    let out: Parsed;
+    try {
+      const res = await fetch("/api/spaces/parse-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const j = await res.json().catch(() => null);
+      out = res.ok && j?.ok ? { ok: true, title: j.title ?? null, imageUrl: j.imageUrl ?? null, price: typeof j.price === "number" ? j.price : null, sourceMall: j.sourceMall ?? "" } : { ok: false, message: j?.message ?? "정보를 불러오지 못했어요. 직접 입력해 주세요." };
+    } catch {
+      out = { ok: false, message: "정보를 불러오지 못했어요. 직접 입력해 주세요." };
+    }
+    setParsing(false);
+    if (!out.ok) return setParseNote({ ok: false, text: out.message });
+    setDraft((d) => ({
+      ...d,
+      url,
+      name: d.name.trim() ? d.name : (out.title ?? ""),
+      price: d.price.trim() || out.price === null ? d.price : String(out.price),
+      image: out.imageUrl ?? "",
+    }));
+    setParseNote({ ok: true, text: [out.title, out.price !== null ? won(out.price) : null].filter(Boolean).join(" · ") || "상품 정보를 불러왔어요.", mall: out.sourceMall });
+  };
 
   const set = (k: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, [k]: e.target.value }));
   const livePreview = evaluateFurnitureFit(annotations, { widthCm: numOrNull(draft.w) || null, depthCm: numOrNull(draft.d) || null, heightCm: numOrNull(draft.h) || null });
@@ -60,12 +91,14 @@ export function WishFurnitureBoard({
   const openNew = () => {
     setEditId(null);
     setDraft(EMPTY);
+    setParseNote(null);
     setError(null);
     setOpen(true);
   };
   const openEdit = (c: FurnitureCandidate) => {
     setEditId(c.id);
     setDraft(fromCandidate(c));
+    setParseNote(null);
     setError(null);
     setOpen(true);
   };
@@ -80,7 +113,7 @@ export function WishFurnitureBoard({
     const w = numOrNull(draft.w), d = numOrNull(draft.d), h = numOrNull(draft.h), price = numOrNull(draft.price);
     if ([w, d, h, price].some((n) => Number.isNaN(n))) return setError("크기와 가격은 숫자로 적어 주세요.");
     if (price !== null && !Number.isInteger(price)) return setError("가격은 원 단위 정수로 적어 주세요.");
-    const input = { name: draft.name, category: draft.category, widthCm: w, depthCm: d, heightCm: h, price, productUrl: draft.url, memo: draft.memo };
+    const input = { name: draft.name, category: draft.category, widthCm: w, depthCm: d, heightCm: h, price, productUrl: draft.url, memo: draft.memo, imageUrl: draft.image };
     setSaving(true);
     setError(null);
     const res = editId ? await updateCandidate(editId, input) : await addCandidate(spaceId, input);
@@ -154,9 +187,46 @@ export function WishFurnitureBoard({
             </label>
             <label className="block min-w-0 space-y-1">
               <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">상품 링크</span>
-              <input data-testid="wish-url" type="url" inputMode="url" maxLength={2000} value={draft.url} onChange={set("url")} placeholder="https://…" className={field} />
+              <span className="flex gap-2">
+                <input
+                  data-testid="wish-url"
+                  type="url"
+                  inputMode="url"
+                  maxLength={2000}
+                  value={draft.url}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDraft((d) => ({ ...d, url: v, image: v.trim() === d.url.trim() ? d.image : "" }));
+                  }}
+                  onPaste={(e) => {
+                    const t = e.clipboardData.getData("text").trim();
+                    if (isHttpUrl(t)) {
+                      e.preventDefault();
+                      setDraft((d) => ({ ...d, url: t, image: "" }));
+                      void parseUrl(t);
+                    }
+                  }}
+                  placeholder="https://…"
+                  className={cn(field, "min-w-0 flex-1")}
+                />
+                <button type="button" data-testid="wish-parse" disabled={parsing || !isHttpUrl(draft.url)} onClick={() => void parseUrl(draft.url)} className="inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-sky-50 px-3 text-xs font-bold text-sky-700 shadow-sm transition-all hover:bg-sky-100 active:scale-95 disabled:opacity-50 dark:bg-sky-950/40 dark:text-sky-300">
+                  {parsing ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Download size={14} strokeWidth={2.5} aria-hidden />} 정보 불러오기
+                </button>
+              </span>
             </label>
           </div>
+          {parseNote && (
+            <div data-testid="wish-parse-note" data-ok={parseNote.ok} role={parseNote.ok ? "status" : "alert"} className={cn("flex min-w-0 items-center gap-3 rounded-2xl p-3 text-xs font-bold", parseNote.ok ? "bg-white text-slate-700 shadow-sm dark:bg-zinc-900 dark:text-zinc-200" : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300")}>
+              {parseNote.ok && draft.image && (
+                // eslint-disable-next-line @next/next/no-img-element -- external product thumbnail, no referrer
+                <img data-testid="wish-thumb-preview" src={draft.image} alt="" referrerPolicy="no-referrer" loading="lazy" className="h-14 w-14 shrink-0 rounded-xl bg-slate-100 object-cover dark:bg-zinc-800" />
+              )}
+              <span className="min-w-0 flex-1 break-words">
+                {parseNote.ok && parseNote.mall && <span className="mr-1.5 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-extrabold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">{parseNote.mall}</span>}
+                {parseNote.text}
+              </span>
+            </div>
+          )}
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">부부 공유 메모</span>
             <input data-testid="wish-memo" maxLength={300} value={draft.memo} onChange={set("memo")} placeholder="예: 색상은 아이보리로, 배송 2주" className={field} />
@@ -165,6 +235,7 @@ export function WishFurnitureBoard({
             <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">현재 공간 기준</span>
             <FitBadge fit={livePreview} />
           </div>
+          <FitBasis basis={livePreview.basisLabel} />
           {error && <p role="alert" data-testid="wish-error" className="rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{error}</p>}
           <div className="flex flex-wrap gap-2">
             <button type="submit" data-testid="wish-save" disabled={saving} className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-sky-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-sky-500 active:scale-95 disabled:opacity-60 dark:bg-sky-500">
@@ -187,6 +258,10 @@ export function WishFurnitureBoard({
             const size = sizeText(c);
             return (
               <li key={c.id} data-testid="wish-card" data-status={c.status} className="flex min-w-0 flex-col gap-2.5 rounded-2xl bg-slate-50 p-4 dark:bg-zinc-800/60">
+                {c.image_url && (
+                  // eslint-disable-next-line @next/next/no-img-element -- external product thumbnail, no referrer
+                  <img data-testid="wish-thumb" src={c.image_url} alt="" referrerPolicy="no-referrer" loading="lazy" className="h-32 w-full rounded-xl bg-slate-100 object-cover dark:bg-zinc-800" />
+                )}
                 <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1 basis-32">
                     <h3 className="break-words text-base font-extrabold leading-snug text-slate-900 dark:text-zinc-50">{c.name}</h3>
@@ -196,6 +271,7 @@ export function WishFurnitureBoard({
                   </div>
                   <FitBadge fit={fit} />
                 </div>
+                <FitBasis basis={fit.basisLabel} />
                 {c.memo && <p className="break-words rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-600 dark:bg-zinc-900 dark:text-zinc-300">{c.memo}</p>}
 
                 <div role="radiogroup" aria-label="진행 상태" className="flex flex-wrap gap-1.5">

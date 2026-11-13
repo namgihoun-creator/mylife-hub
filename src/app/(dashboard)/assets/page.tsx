@@ -7,6 +7,8 @@ import { getAssets, getPresets } from "@/features/assets/server/asset.queries";
 import { AssetList } from "@/features/assets/components/AssetList";
 import { AssetSummaryBanner } from "@/features/assets/components/AssetSummaryBanner";
 import { OpenPresetModalButton } from "@/features/assets/components/OpenPresetModalButton";
+import { OpenQuickWizardButton } from "@/features/assets/components/OpenQuickWizardButton";
+import { QuickApplianceWizardModal } from "@/features/assets/components/QuickApplianceWizardModal";
 import { PresetAddModal } from "@/features/assets/components/PresetAddModal";
 import { summarizeAssets } from "@/features/assets/utils/asset-summary";
 import { toSeoulDate } from "@/shared/lib/recurrence";
@@ -36,11 +38,16 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
           </p>
         </div>
         {/* Always rendered at this position: one stable modal instance for both empty and filled states. */}
-        {isAdmin && <PresetAddModal presets={presets} />}
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <QuickApplianceWizardModal registeredKeys={assets.map((a) => a.preset_key).filter((k): k is string => !!k)} />
+            <PresetAddModal presets={presets} />
+          </div>
+        )}
       </div>
 
       {assets.length > 0 && <AssetSummaryBanner summary={summarizeAssets(assets, today)} />}
-      <AssetList assets={assets} today={today} canEdit={isAdmin} deepLink={deepLink} fridgeStock={fridgeStock} emptyAction={isAdmin ? <OpenPresetModalButton /> : null} />
+      <AssetList assets={assets} today={today} canEdit={isAdmin} deepLink={deepLink} fridgeStock={fridgeStock} emptyAction={isAdmin ? (<div className="flex flex-wrap items-center justify-center gap-2"><OpenQuickWizardButton /><OpenPresetModalButton /></div>) : null} />
     </div>
   );
 }

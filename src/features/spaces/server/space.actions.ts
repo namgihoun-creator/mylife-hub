@@ -29,6 +29,17 @@ const BUCKET = "space-photos";
 const SIGNED_URL_SECONDS = 60 * 60;
 const SPACE_COLUMNS = "id, name, room_type, photo_path, annotations, style_preference, ai_diagnosis, created_at, updated_at";
 const CANDIDATE_COLUMNS = "id, space_id, name, category, price, width_cm, depth_cm, height_cm, product_url, source_mall, status, memo, created_at";
+const IMAGE_COLUMN = ", image_url";
+/**
+ * `image_url` comes from the optional migration 17. Run the query with the column first; when the database does not have it
+ * yet (the error names image_url) run it again without, so reading and creating wishes never break before the migration.
+ */
+async function withImageColumn<T extends { error: { message?: string } | null }>(run: (cols: string, withImage: boolean) => PromiseLike<T>): Promise<T> {
+  const first = await run(CANDIDATE_COLUMNS + IMAGE_COLUMN, true);
+  if (!first.error || !/image_url/i.test(first.error.message ?? "")) return first;
+  return run(CANDIDATE_COLUMNS, false);
+}
+
 const NOT_READY = "공간 플래너 데이터베이스가 아직 준비되지 않았어요.";
 
 const friendly = (msg?: string) => (msg && /[가-힣]/.test(msg) ? msg : "잘못된 요청입니다.");
@@ -48,6 +59,7 @@ const toCandidate = (r: Record<string, unknown>): FurnitureCandidate => ({
   width_cm: num(r.width_cm),
   depth_cm: num(r.depth_cm),
   height_cm: num(r.height_cm),
+  image_url: typeof r.image_url === "string" ? r.image_url : null,
 });
 const toSpace = (r: Record<string, unknown>): SpaceProject => {
   const ann = annotationsSchema.safeParse(r.annotations);
@@ -95,13 +107,13 @@ export async function getSpaceDetail(id: string): Promise<SpaceActionResult<{ de
   const { supabase, householdId } = c.ctx;
   const [sp, cands] = await Promise.all([
     supabase.from("space_projects").select(SPACE_COLUMNS).eq("id", id).maybeSingle(),
-    supabase.from("space_furniture_candidates").select(CANDIDATE_COLUMNS).eq("space_id", id).order("created_at", { ascending: true }),
+    withImageColumn((cols) => supabase.from("space_furniture_candidates").select(cols).eq("space_id", id).order("created_at", { ascending: true })),
   ]);
   if (sp.error || cands.error) return { ok: false, error: NOT_READY };
   if (!sp.data) return { ok: false, error: "공간을 찾을 수 없어요." };
   const space = toSpace(sp.data);
   const [photoUrl] = await signedUrls(supabase, [space.photo_path]);
-  return { ok: true, detail: { space, photoUrl, candidates: (cands.data ?? []).map(toCandidate), householdId } };
+  return { ok: true, detail: { space, photoUrl, candidates: ((cands.data ?? []) as unknown as Record<string, unknown>[]).map(toCandidate), householdId } };
 }
 
 /** Light read for the near-real-time sync between the two partners' phones. */
@@ -112,11 +124,11 @@ export async function getSpaceSync(id: string): Promise<SpaceActionResult<{ anno
   const { supabase } = c.ctx;
   const [sp, cands] = await Promise.all([
     supabase.from("space_projects").select("annotations, ai_diagnosis").eq("id", id).maybeSingle(),
-    supabase.from("space_furniture_candidates").select(CANDIDATE_COLUMNS).eq("space_id", id).order("created_at", { ascending: true }),
+    withImageColumn((cols) => supabase.from("space_furniture_candidates").select(cols).eq("space_id", id).order("created_at", { ascending: true })),
   ]);
   if (sp.error || cands.error || !sp.data) return { ok: false, error: "동기화하지 못했어요." };
   const ann = annotationsSchema.safeParse(sp.data.annotations);
-  return { ok: true, annotations: ann.success ? ann.data : [], candidates: (cands.data ?? []).map(toCandidate), diagnosis: (sp.data.ai_diagnosis as SpaceProject["ai_diagnosis"]) ?? null };
+  return { ok: true, annotations: ann.success ? ann.data : [], candidates: ((cands.data ?? []) as unknown as Record<string, unknown>[]).map(toCandidate), diagnosis: (sp.data.ai_diagnosis as SpaceProject["ai_diagnosis"]) ?? null };
 }
 
 // ---------------------------------------------------------------------------------------------- spaces
@@ -198,7 +210,7 @@ export async function deleteSpace(id: string): Promise<SpaceActionResult> {
 }
 
 // ---------------------------------------------------------------------------------------------- wish board
-const candidateRow = (d: ReturnType<typeof candidateInputSchema.parse>) => ({
+const candidateRow = (d: ReturnType<typeof candidateInputSchema.parse>, withImage = false) => ({
   name: d.name,
   category: d.category ?? null,
   price: d.price ?? null,
@@ -208,6 +220,7 @@ const candidateRow = (d: ReturnType<typeof candidateInputSchema.parse>) => ({
   product_url: d.productUrl ?? null,
   source_mall: inferMall(d.productUrl),
   memo: d.memo ?? null,
+  ...(withImage ? { image_url: d.imageUrl ?? null } : {}),
 });
 
 export async function addCandidate(spaceId: string, input: CandidateInput): Promise<SpaceActionResult<{ candidate: FurnitureCandidate }>> {
@@ -217,14 +230,16 @@ export async function addCandidate(spaceId: string, input: CandidateInput): Prom
   if (!spaceIdSchema.safeParse(spaceId).success) return { ok: false, error: "공간을 찾을 수 없어요." };
   if (!parsed.success) return { ok: false, error: friendly(parsed.error.issues[0]?.message) };
   const { supabase, householdId, userId } = c.ctx;
-  const { data, error } = await supabase
-    .from("space_furniture_candidates")
-    .insert({ space_id: spaceId, household_id: householdId, created_by: userId, ...candidateRow(parsed.data) })
-    .select(CANDIDATE_COLUMNS)
-    .single();
+  const { data, error } = await withImageColumn((cols, img) =>
+    supabase
+      .from("space_furniture_candidates")
+      .insert({ space_id: spaceId, household_id: householdId, created_by: userId, ...candidateRow(parsed.data, img) })
+      .select(cols)
+      .single(),
+  );
   if (error || !data) return { ok: false, error: "위시 보드에 담지 못했어요." };
   revalidatePath("/spaces");
-  return { ok: true, candidate: toCandidate(data) };
+  return { ok: true, candidate: toCandidate(data as unknown as Record<string, unknown>) };
 }
 
 export async function updateCandidate(id: string, input: CandidateInput): Promise<SpaceActionResult<{ candidate: FurnitureCandidate }>> {
@@ -233,10 +248,10 @@ export async function updateCandidate(id: string, input: CandidateInput): Promis
   const parsed = candidateInputSchema.safeParse(input);
   if (!spaceIdSchema.safeParse(id).success) return { ok: false, error: "가구를 찾을 수 없어요." };
   if (!parsed.success) return { ok: false, error: friendly(parsed.error.issues[0]?.message) };
-  const { data, error } = await c.ctx.supabase.from("space_furniture_candidates").update(candidateRow(parsed.data)).eq("id", id).select(CANDIDATE_COLUMNS).maybeSingle();
+  const { data, error } = await withImageColumn((cols, img) => c.ctx.supabase.from("space_furniture_candidates").update(candidateRow(parsed.data, img)).eq("id", id).select(cols).maybeSingle());
   if (error || !data) return { ok: false, error: "저장하지 못했어요." };
   revalidatePath("/spaces");
-  return { ok: true, candidate: toCandidate(data) };
+  return { ok: true, candidate: toCandidate(data as unknown as Record<string, unknown>) };
 }
 
 export async function setCandidateStatus(id: string, status: string): Promise<SpaceActionResult<{ candidate: FurnitureCandidate }>> {
@@ -244,10 +259,10 @@ export async function setCandidateStatus(id: string, status: string): Promise<Sp
   if (!c.ok) return c;
   const st = candidateStatusSchema.safeParse(status);
   if (!spaceIdSchema.safeParse(id).success || !st.success) return { ok: false, error: "잘못된 요청입니다." };
-  const { data, error } = await c.ctx.supabase.from("space_furniture_candidates").update({ status: st.data }).eq("id", id).select(CANDIDATE_COLUMNS).maybeSingle();
+  const { data, error } = await withImageColumn((cols) => c.ctx.supabase.from("space_furniture_candidates").update({ status: st.data }).eq("id", id).select(cols).maybeSingle());
   if (error || !data) return { ok: false, error: "상태를 바꾸지 못했어요." };
   revalidatePath("/spaces");
-  return { ok: true, candidate: toCandidate(data) };
+  return { ok: true, candidate: toCandidate(data as unknown as Record<string, unknown>) };
 }
 
 export async function deleteCandidate(id: string): Promise<SpaceActionResult> {
