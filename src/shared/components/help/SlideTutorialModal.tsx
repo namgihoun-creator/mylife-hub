@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
-  CalendarClock, Camera, CheckCircle2, ChefHat, CircleDollarSign, Lock, Mic, PawPrint, Plus, Receipt, Refrigerator, Ruler, ShieldCheck, Sofa, Sparkles, Timer, Users, Wallet,
+  BarChart3, Bell, CalendarClock, Camera, CheckCircle2, ChefHat, CircleDollarSign, Link2, Lock, Mic, PawPrint, Plus, Receipt, Refrigerator, Ruler, ShieldCheck, ShoppingBasket, Sofa, Sparkles, Timer, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
@@ -13,6 +13,7 @@ import { cn } from "@/shared/lib/utils";
 const ICONS: Record<HelpIconKey, LucideIcon> = {
   plus: Plus, calendar: CalendarClock, check: CheckCircle2, camera: Camera, fridge: Refrigerator, wallet: Wallet, ring: CircleDollarSign, receipt: Receipt,
   chef: ChefHat, paw: PawPrint, sparkles: Sparkles, users: Users, lock: Lock, mic: Mic, timer: Timer, shield: ShieldCheck, ruler: Ruler, sofa: Sofa,
+  bell: Bell, cart: ShoppingBasket, chart: BarChart3, link: Link2,
 };
 
 const SWIPE_PX = 40;

@@ -312,6 +312,13 @@
 - **위시 ♥ 투표:** 카드의 `♥ N` 토글(`min-h-9 rounded-full`, 내가 누르면 Rose 틴트 + 채운 하트). 구성원 전원이 누르면 Mint `부부 공동 픽 ♥` 알약. 예산 합산기는 보드 상단 2칸 카드: `최종 픽 합계`(Sky 틴트)와 `전체 후보 합계`(Slate), 가격 미입력·구매 완료는 작은 보조 문구로 따로 표시한다.
 - **iOS 설치 배너(`IosPwaInstallBanner`):** iOS/iPadOS Safari의 브라우저 탭에서만(설치된 앱·다른 iOS 브라우저·인앱 브라우저 제외). Sky→Mint 그라데이션 틴트 `rounded-3xl`(다크는 `from-sky-950/40 to-teal-950/30`), 공유 아이콘 박스 + 안내 문구 + `닫기` 흰 알약. 알림 벨 패널 맨 위와 가구 설정 모달에 같은 배너가 뜨고, `닫기`는 `localStorage`에 저장되어 둘 다 사라진다.
 
+### W. Phase 3 가정 운영 자동화 · 결산 · 가이드 현행화
+- **리포트 상단 월 선택(`MonthStepper`):** `‹ 2026년 11월 ›` 흰 원형 버튼 2개(44px) + 월 라벨(이번 달이면 Sky `이번 달` 알약). 미래 월은 선택할 수 없고 `?month=YYYY-MM`이 잘못되면 이번 달로 돌아간다. 결산·공과금 카드가 같은 월을 쓴다.
+- **월말 부부 살림 결산(`MonthlySettlementCard`):** `ReportSection`(`rounded-3xl bg-white shadow-sm`) 안에 3칸 블록(`lg:grid-cols-3`, 모바일은 세로) — 식비 예산 방어율(Sky 막대: 80%↑ Amber, 초과 Rose), 기한 만료·폐기 손실 추산(재료 가격을 저장하지 않으므로 건당 3,000원 추정임을 문구로 밝힌다), 부부 공동 살림 달성도(Mint 숫자 + 항목 알약 3개 + 한 줄 메시지). 기록 테이블이 아직 없으면 해당 부분만 `준비 중` 문구로 대체하고 카드는 항상 그려진다.
+- **공과금·관리비(`UtilityBillsCard` / `BillScanDialog`):** 월 합계 큰 숫자 + 전월 대비(`+12,300원 (▲ 8.4%)`, 오른 달 Rose · 내린 달 Mint) + 종류별 Sky 알약 + 고지서 행(종류 알약 · 기관 · 금액 · 2단계 삭제). `고지서 찰칵 등록`은 Sky 채움 캡슐(`min-h-11`). 다이얼로그는 사진(카메라·갤러리) 또는 `사진 없이 직접 입력` → AI가 읽은 값을 폼에 채워 확인 → 저장. 못 읽은 값은 비워 두고 Amber 안내를 띄운다. 테이블 미적용이면 카드 전체가 Sky `준비하고 있어요` 배너.
+- **쇼핑몰 제휴 파라미터:** `NEXT_PUBLIC_AFFILIATE_{COUPANG,OHHOUSE,NAVER,IKEA}_TAG`에 `lptag=AF123` 같은 쿼리 조각을 넣으면 해당 몰 검색 URL 뒤에 병합된다(없거나 형식이 틀리면 기본 검색 URL 그대로, 검색어 파라미터는 건드리지 않음).
+- **사용 가이드 현행화 원칙:** 탭마다 대표 3단계 가이드(`HELP_CONTENT`)를 두고(자산 `appliance_dday` · 키친 `zero_typing` · 타임라인 `timeline_actions` · 리포트 `analytics_report` · 공간 `space_planner`), 새 기능을 넣을 때 해당 탭 문구를 같은 커밋에서 고친다. 새 아이콘 키는 `SlideTutorialModal`의 `ICONS`에 함께 추가한다.
+
 ### E. 모달 (Dialog)
 - 콘텐츠 `rounded-2xl`, 목록 항목은 카드 패턴 C의 축약형(아이콘 박스 `h-10 w-10`). 헤더에 제목 + 보조 설명 필수.
 

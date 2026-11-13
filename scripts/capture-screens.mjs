@@ -4198,11 +4198,13 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
 // ---------------------------------------------------------------- contextual help: "사용 가이드" capsule badges + 3-step slide tutorial
 {
   const spots = [
-    { path: "/assets", topic: "appliance_dday", label: "사용 가이드", step1: "1. 가전·렌탈 추가", step3: "3. 교체 완료로 자동 갱신" },
+    { path: "/assets", topic: "appliance_dday", label: "사용 가이드", step1: "1. 기본 가전 1분 세팅", step3: "3. 렌탈 약정 D-90 방어 알림" },
     { path: "/kitchen", topic: "daily_budget", label: "사용 가이드", step1: "1. 월 식비 예산 설정", step3: "3. 지출 기록 시 실시간 방어" },
-    { path: "/kitchen", topic: "smart_stock", label: "사용 가이드", step1: "1. 찰칵 영수증 입고", step3: "3. 다 쓰면 소진 체크" },
-    { path: "/kitchen", topic: "zero_typing", label: "등록 튜토리얼", step1: "1. 영수증·재료 찰칵", step3: "3. 냉장고와 장부에 자동 등록" },
+    { path: "/kitchen", topic: "smart_stock", label: "사용 가이드", step1: "1. 찰칵 영수증 입고", step3: "3. 소진 체크 & + 장보기" },
+    { path: "/kitchen", topic: "zero_typing", label: "사용 가이드", step1: "1. 영수증 찰칵 입고 & 일괄 검수", step3: "3. 부부 공동 장보기 리스트" },
     { path: "/kitchen", topic: "ai_chef", label: "사용 가이드", step1: "1. 임박 재료 자동 선택", step3: "3. 반려동물 독성 안전 체크" },
+    { path: "/timeline", topic: "timeline_actions", label: "사용 가이드", step1: "1. 오늘 할 일 한눈에", step3: "3. 딥링크 바로가기 & 푸시" },
+    { path: "/analytics", topic: "analytics_report", label: "사용 가이드", step1: "1. 일일 권장 식비 방어", step3: "3. 월말 부부 살림 결산" },
   ];
   const settle = (p) => p.waitForTimeout(450); // let the open / slide animation finish before measuring
   for (const vp of [...VIEWPORTS, { name: "fold280", width: 280, height: 800 }]) {
@@ -4211,7 +4213,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
     const errs = [];
     p.on("pageerror", (e) => errs.push(e.message));
     try {
-      for (const path of ["/assets", "/kitchen"]) {
+      for (const path of ["/assets", "/kitchen", "/timeline", "/analytics"]) {
         await p.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
         record("help", vp.name, `${path}: no horizontal overflow`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
         for (const s of spots.filter((x) => x.path === path)) {
@@ -4747,7 +4749,7 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
       await dp.keyboard.press("ArrowRight");
       await dp.waitForTimeout(450);
       const s3 = (await helpDlg.innerText()).replace(/\s+/g, " ");
-      record("spaces", "desktop", "‘사용 가이드’ badge opens the space_planner 3-step slide tutorial (Step 1/3 … 3/3, final CTA)", /Step 1 \/ 3/.test(s1) && /사진 찍고 실측 치수 표시/.test(s1) && /Step 3 \/ 3/.test(s3) && /위시 보드/.test(s3) && /직접 해보기/.test(s3), s1.slice(0, 80));
+      record("spaces", "desktop", "‘사용 가이드’ badge opens the space_planner 3-step slide tutorial (Step 1/3 … 3/3, final CTA)", /Step 1 \/ 3/.test(s1) && /사진 위 치수 마킹/.test(s1) && /Step 3 \/ 3/.test(s3) && /위시 보드/.test(s3) && /직접 해보기/.test(s3), s1.slice(0, 80));
       await dp.keyboard.press("Escape");
       await dp.waitForTimeout(300);
 
@@ -5705,6 +5707,331 @@ function ctxPopup(context) { return new Promise((resolve) => { const t = setTime
       await svc.from("space_projects").delete().eq("household_id", H);
       await svc.from("households").delete().eq("id", H);
     }
+    for (const id of [uid1, uid2]) if (id) await svc.auth.admin.deleteUser(id).catch(() => {});
+    if (H) await svc.from("households").delete().eq("id", H);
+  }
+}
+
+// ---------------------------------------------------------------- Phase 3: month-end settlement · utility bills (고지서 찰칵) · rental D-90 · refreshed guides
+// Throw-away household with two members. The bill flow and the activity-log / D-90 parts need migration 19; without it the full flow is
+// replaced by the graceful-fallback checks (friendly "준비 중" banner, settlement card still rendering). Needs `npm run dev:e2e` (mock Gemini on :4010).
+{
+  const rand = Math.random().toString(36).slice(2, 10);
+  const http = await import("node:http");
+  const sharp = (await import("sharp")).default;
+  const has19 = !(await svc.from("utility_bills").select("id").limit(1)).error;
+  const hasLog = !(await svc.from("kitchen_activity").select("id").limit(1)).error;
+  record("phase3", "-", `migration 19 present: utility_bills=${has19}, kitchen_activity=${hasLog} (full flow where present, fallback checks otherwise)`, true);
+
+  const seoulDay = (n = 0) => new Date(Date.now() + 9 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+  const curMonth = seoulDay().slice(0, 7);
+  const shiftM = (m, d) => { const [y, mo] = m.split("-").map(Number); const i = y * 12 + (mo - 1) + d; return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`; };
+  const prevM = shiftM(curMonth, -1);
+
+  const BILL = { bill_type: "ELECTRICITY", billing_month: curMonth, amount: 48230, due_date: `${curMonth}-25`, provider_name: "한국전력" };
+  const aiReply = (payload) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] });
+  const mock = { hits: [], reply: BILL };
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let body = {};
+      try { body = JSON.parse(raw || "{}"); } catch { /* ignore */ }
+      const parts = body.contents?.[0]?.parts ?? [];
+      const text = parts.find((p) => p.text)?.text ?? "";
+      mock.hits.push({ key: req.headers["x-goog-api-key"], text, image: parts.find((p) => p.inlineData)?.inlineData?.data ?? null });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(aiReply(text.includes("고지서 분석기") ? mock.reply : []));
+    });
+  });
+  let listening = true;
+  await new Promise((resolve) => { server.once("error", () => { listening = false; resolve(); }); server.listen(4010, "127.0.0.1", resolve); });
+
+  let uid1 = null, uid2 = null, H = null;
+  const until = async (fn, tries = 60) => { for (let i = 0; i < tries; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 250)); } return null; };
+  try {
+    if (!listening) throw new Error("port 4010 busy (mock Gemini could not start)");
+    const mkUser = async (tag) => {
+      const email = `mylife.e2e.p3${tag}+${rand}@example.com`, pw = `Pw-${rand}-${Date.now()}`;
+      const { data, error } = await svc.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: `E2E ${tag}` } });
+      if (error) throw new Error(`phase3 createUser failed: ${error.message}`);
+      return { id: data.user.id, email, pw };
+    };
+    const u1 = await mkUser("a"), u2 = await mkUser("b");
+    uid1 = u1.id; uid2 = u2.id;
+    const cl1 = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    await cl1.auth.signInWithPassword({ email: u1.email, password: u1.pw });
+    await cl1.rpc("create_household", { p_name: "E2E 결산", p_display_name: "E2E a" });
+    H = (await svc.from("profiles").select("household_id").eq("id", uid1).single()).data.household_id;
+    const { error: pe } = await svc.from("profiles").insert({ id: uid2, household_id: H, role: "MEMBER", display_name: "E2E b" });
+    if (pe) throw new Error(`phase3 partner profile failed: ${pe.message}`);
+
+    const c0 = await newContext(VIEWPORTS[0]);
+    const p0 = await c0.newPage();
+    await p0.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+    await p0.fill('input[name="email"]', u1.email);
+    await p0.fill('input[name="password"]', u1.pw);
+    await p0.click('button[type="submit"]');
+    await p0.waitForURL((x) => !x.pathname.startsWith("/login"), { timeout: 20_000 });
+    const st1 = await c0.storageState();
+    await c0.close();
+    const mk = async (vp, { scheme = "light" } = {}) => {
+      const c = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, storageState: st1, locale: "ko-KR", timezoneId: "Asia/Seoul", colorScheme: scheme });
+      await c.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch {} }, scheme);
+      const p = await c.newPage();
+      p.__errors = [];
+      p.on("pageerror", (e) => p.__errors.push(String(e)));
+      return { c, p };
+    };
+    const overflowX = (p) => p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+    // ---------------------------------------------------------------- seed the PREVIOUS month (a finished month: stable whatever today's date is)
+    await svc.from("kitchen_profiles").upsert({ household_id: H, human_monthly_budget: 400000 }, { onConflict: "household_id" });
+    await svc.from("kitchen_expenses").insert([
+      { household_id: H, expense_date: `${prevM}-05`, category: "human_groceries", amount: 150000, memo: "장보기" },
+      { household_id: H, expense_date: `${prevM}-12`, category: "human_delivery", amount: 50000, memo: "배달" },
+      { household_id: H, expense_date: `${prevM}-12`, category: "pet_care", amount: 99999, memo: "펫(식비 아님)" },
+    ]);
+    await svc.from("kitchen_items").insert([
+      { household_id: H, name: "시든 시금치", amount: "1단", storage_type: "FRIDGE", expire_date: `${prevM}-10`, added_at: `${prevM}-01` },
+      { household_id: H, name: "곰팡이 빵", amount: "1봉", storage_type: "ROOM_TEMP", expire_date: `${prevM}-20`, added_at: `${prevM}-01` },
+    ]);
+    const asset = (await svc.from("assets").insert({ household_id: H, owner_id: uid1, visibility: "FAMILY", name: "에어컨", space: "거실", category: "생활·환경가전", preset_key: "aircon" }).select("id").single()).data;
+    await svc.from("event_logs").insert([
+      { household_id: H, owner_id: uid1, asset_id: asset.id, event_type: "TASK_COMPLETED", actor_identifier: `user:${uid1}`, created_at: `${prevM}-05T03:00:00Z` },
+      { household_id: H, owner_id: uid1, asset_id: asset.id, event_type: "TASK_COMPLETED", actor_identifier: `user:${uid2}`, created_at: `${prevM}-15T03:00:00Z` },
+      { household_id: H, owner_id: uid1, asset_id: asset.id, event_type: "TASK_COMPLETED", actor_identifier: `user:${uid1}`, created_at: new Date().toISOString() }, // this month: must not count in prevM
+    ]);
+    if (hasLog) {
+      await svc.from("kitchen_activity").insert([
+        { household_id: H, created_by: uid1, kind: "DISCARDED", name: "상한 우유", est_amount: 3000, created_at: `${prevM}-08T03:00:00Z` },
+        { household_id: H, created_by: uid1, kind: "CONSUMED", name: "두부", est_amount: 0, created_at: `${prevM}-09T03:00:00Z` },
+        { household_id: H, created_by: uid2, kind: "CONSUMED", name: "대파", est_amount: 0, created_at: `${prevM}-09T04:00:00Z` },
+        { household_id: H, created_by: uid1, kind: "SHOPPED", name: "우유", est_amount: 0, created_at: `${prevM}-10T03:00:00Z` },
+        { household_id: H, created_by: uid2, kind: "SHOPPED", name: "계란", est_amount: 0, created_at: `${prevM}-10T04:00:00Z` },
+        { household_id: H, created_by: uid2, kind: "SHOPPED", name: "사과", est_amount: 0, created_at: `${prevM}-10T05:00:00Z` },
+        { household_id: H, created_by: uid1, kind: "SHOPPED", name: "이번 달 장보기", est_amount: 0, created_at: new Date().toISOString() }, // this month: not in prevM
+      ]);
+    }
+
+    // ============================================================ 1. /analytics: month stepper + settlement card
+    const { c: dc, p: dp } = await mk(VIEWPORTS[0]);
+    await dp.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+    record("phase3", "desktop", "/analytics defaults to this month: stepper shows it with an ‘이번 달’ tag, ‘다음’ is disabled, the settlement card says it is in progress", /이번 달/.test(await dp.getByTestId("month-label").innerText()) && (await dp.getByTestId("month-next").count()) === 0 && (await dp.getByTestId("month-next-disabled").count()) === 1 && /진행 중/.test(await dp.getByTestId("settlement-card").innerText()));
+    await dp.getByTestId("month-prev").click();
+    await dp.waitForURL(new RegExp(`month=${prevM}`));
+    await dp.getByTestId("settlement-card").waitFor();
+    record("phase3", "desktop", "‹ moves to last month (?month=YYYY-MM) and ‘다음’ comes back", (await dp.getByTestId("month-label").innerText()).includes(`${Number(prevM.slice(5))}월`) && (await dp.getByTestId("month-next").count()) === 1);
+    const food = dp.getByTestId("settle-food");
+    record("phase3", "desktop", "식비 예산 방어율: 150,000 groceries + 50,000 delivery of a 400,000 budget (pet spend excluded) → ‘200,000원 절약했어요’, 50% used, 방어율 50%", /200,000원 절약했어요/.test(await dp.getByTestId("settle-food-headline").innerText()) && /200,000원/.test(await dp.getByTestId("settle-food-detail").innerText()) && /\(50%\)/.test(await dp.getByTestId("settle-food-detail").innerText()) && /방어율 50%/.test(await dp.getByTestId("settle-food-defense").innerText()) && (await food.getAttribute("data-status")) === "SAVED", (await food.innerText()).replace(/\s+/g, " ").slice(0, 160));
+    const wasteTxt = (await dp.getByTestId("settle-waste").innerText()).replace(/\s+/g, " ");
+    if (hasLog) {
+      record("phase3", "desktop", "폐기 손실 추산: 1 logged discard (3,000원) + 2 expired items still in the storage → ‘3건 · 약 9,000원’, per-item estimate explained", /3건 · 약 9,000원/.test(wasteTxt) && /폐기 기록 1건/.test(wasteTxt) && /남은 만료 재료 2건/.test(wasteTxt) && /건당 3,000원으로 추정/.test(wasteTxt), wasteTxt);
+      const teamTxt = (await dp.getByTestId("settle-team").innerText()).replace(/\s+/g, " ");
+      record("phase3", "desktop", "부부 공동 살림 달성도: 2 tasks + 2 used-up + 3 shopping = 7건, ‘2명이 함께’; this month’s rows are not counted", /7건 달성/.test(teamTxt) && /가전 점검·청소 2/.test(teamTxt) && /소진 완료 2/.test(teamTxt) && /장보기 3/.test(teamTxt) && /2명이 함께 7건/.test(teamTxt), teamTxt);
+    } else {
+      record("phase3", "desktop", "migration 19 missing: waste block counts only expired items left in the storage (2건 · 약 6,000원) and says the log is getting ready", /2건 · 약 6,000원/.test(wasteTxt) && /폐기 기록은 준비 중/.test(wasteTxt), wasteTxt);
+      const teamTxt = (await dp.getByTestId("settle-team").innerText()).replace(/\s+/g, " ");
+      record("phase3", "desktop", "migration 19 missing: teamwork block still shows the appliance care count (2건) with a ‘준비 중’ note, no error", /2건 달성/.test(teamTxt) && /가전 점검·청소 2/.test(teamTxt) && /준비 중/.test(teamTxt) && dp.__errors.length === 0, teamTxt);
+    }
+    await dp.screenshot({ path: `${OUT}/analytics-settlement-desktop.png`, fullPage: true });
+    // an empty month renders calmly
+    await dp.goto(`${BASE}/analytics?month=${shiftM(curMonth, -5)}`, { waitUntil: "networkidle" });
+    record("phase3", "desktop", "a month with no data: friendly zero states, nothing breaks", /버린 재료가 없어요|0건/.test(await dp.getByTestId("settle-waste").innerText()) && /0건 달성/.test(await dp.getByTestId("settle-team").innerText()) && dp.__errors.length === 0);
+    await dp.goto(`${BASE}/analytics?month=2999-01`, { waitUntil: "networkidle" });
+    record("phase3", "desktop", "a future / junk ?month falls back to this month", /이번 달/.test(await dp.getByTestId("month-label").innerText()));
+    await dp.goto(`${BASE}/analytics?month=junk`, { waitUntil: "networkidle" });
+    record("phase3", "desktop", "?month=junk is ignored (this month)", /이번 달/.test(await dp.getByTestId("month-label").innerText()));
+
+    // ============================================================ 2. utility bills
+    // API (independent of the migration): auth, validation, mock AI reading, rate limit
+    const apiCtx = await browser.newContext({ storageState: st1 });
+    const png = await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 250, g: 250, b: 245 } } }).jpeg({ quality: 80 }).toBuffer();
+    const b64 = png.toString("base64");
+    const post = (ctx, data) => ctx.request.post(`${BASE}/api/bills/analyze`, { data });
+    const anon = await browser.newContext();
+    const r401 = await post(anon, { imageBase64: b64, mimeType: "image/jpeg" });
+    await anon.close();
+    record("phase3", "desktop", "bills/analyze: signed-out request is 401", r401.status() === 401);
+    const rBad = await post(apiCtx, { imageBase64: "x", mimeType: "image/jpeg" });
+    const rMime = await post(apiCtx, { imageBase64: b64, mimeType: "application/pdf" });
+    record("phase3", "desktop", "bills/analyze: junk body / unsupported type are 400", rBad.status() === 400 && rMime.status() === 400, `${rBad.status()} ${rMime.status()}`);
+    const rOk = await post(apiCtx, { imageBase64: b64, mimeType: "image/jpeg" });
+    const jOk = await rOk.json();
+    const hit = mock.hits[mock.hits.length - 1];
+    record("phase3", "desktop", "bills/analyze: the mock AI reading comes back normalised (ELECTRICITY, month, 48,230원, due date, issuer); key in the header only", rOk.status() === 200 && jOk.ok && jOk.bill.billType === "ELECTRICITY" && jOk.bill.billingMonth === curMonth && jOk.bill.amount === 48230 && jOk.bill.dueDate === `${curMonth}-25` && jOk.bill.providerName === "한국전력" && hit?.key?.length >= 20 && !!hit.image, JSON.stringify(jOk.bill));
+    mock.reply = { bill_type: "ELECTRICITY", billing_month: "2026-13", amount: "garbage", due_date: "2026-02-31", provider_name: "한국전력" };
+    const rLow = await (await post(apiCtx, { imageBase64: b64, mimeType: "image/jpeg" })).json();
+    record("phase3", "desktop", "bills/analyze: impossible month / amount / date come back as null (never guessed)", rLow.ok && rLow.bill.billingMonth === null && rLow.bill.amount === null && rLow.bill.dueDate === null && rLow.bill.providerName === "한국전력", JSON.stringify(rLow.bill));
+    mock.reply = BILL;
+
+    if (!has19) {
+      await dp.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+      record("phase3", "desktop", "migration 19 missing: the 공과금 card is a friendly ‘준비하고 있어요’ banner (no scan button, no error) and the rest of /analytics works", /준비하고 있어요/.test(await dp.getByTestId("bills-not-ready").innerText()) && (await dp.getByTestId("bill-open").count()) === 0 && (await dp.getByTestId("settlement-card").count()) === 1 && dp.__errors.length === 0);
+    } else {
+      await svc.from("utility_bills").insert([
+        { household_id: H, created_by: uid1, bill_type: "ELECTRICITY", billing_month: prevM, amount: 40000, provider_name: "한국전력" },
+        { household_id: H, created_by: uid1, bill_type: "MAINTENANCE", billing_month: prevM, amount: 150000, provider_name: "OO아파트" },
+      ]);
+      await dp.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+      record("phase3", "desktop", "no bills this month yet: empty note, ‘전월 대비’ has last month to compare with (190,000원 before)", /등록한 고지서가 없어요/.test(await dp.getByTestId("bills-empty").innerText()) && (await dp.getByTestId("bills-total").innerText()).trim() === "0원" && /-190,000원/.test(await dp.getByTestId("bills-diff").innerText()));
+      await dp.getByTestId("bill-open").click();
+      const dlg = dp.getByTestId("bill-dialog");
+      await dlg.waitFor();
+      record("phase3", "desktop", "[고지서 찰칵 등록]: camera input has capture=environment, gallery none; ‘직접 입력’ is offered", (await dlg.getByTestId("bill-camera-input").getAttribute("capture")) === "environment" && (await dlg.getByTestId("bill-gallery-input").getAttribute("capture")) === null && (await dlg.getByTestId("bill-manual").count()) === 1);
+      await dlg.getByTestId("bill-camera-input").setInputFiles({ name: "bill.jpg", mimeType: "image/jpeg", buffer: png });
+      await dlg.getByTestId("bill-form").waitFor({ timeout: 30_000 });
+      record("phase3", "desktop", "the AI reading fills the form (전기 pill selected, month, 48230, due date, 한국전력) for review", (await dlg.locator('[data-bill-type="ELECTRICITY"]').getAttribute("aria-checked")) === "true" && (await dlg.getByTestId("bill-month").inputValue()) === curMonth && (await dlg.getByTestId("bill-amount").inputValue()) === "48230" && (await dlg.getByTestId("bill-due").inputValue()) === `${curMonth}-25` && (await dlg.getByTestId("bill-provider").inputValue()) === "한국전력" && /AI가 읽은 내용/.test(await dlg.getByTestId("bill-ai-note").innerText()));
+      await dp.screenshot({ path: `${OUT}/analytics-bill-form-desktop.png` });
+      await dlg.getByTestId("bill-amount").fill("48,300");
+      await dlg.getByTestId("bill-save").click();
+      await dlg.waitFor({ state: "detached", timeout: 15_000 });
+      const saved = await until(async () => (await svc.from("utility_bills").select("*").eq("household_id", H).eq("billing_month", curMonth)).data?.[0]);
+      record("phase3", "desktop", "saved with the corrected amount: bill_type, month, 48,300원, due date, provider, created_by me", !!saved && saved.bill_type === "ELECTRICITY" && saved.amount === 48300 && saved.due_date === `${curMonth}-25` && saved.provider_name === "한국전력" && saved.created_by === uid1, JSON.stringify(saved));
+      await dp.getByTestId("bills-notice").waitFor();
+      await dp.waitForFunction(() => document.querySelector('[data-testid="bills-total"]')?.textContent?.trim() === "48,300원", null, { timeout: 15_000 });
+      record("phase3", "desktop", "the card updates at once: total 48,300원, row listed, change vs last month (190,000 -> 48,300 = -141,700원 ▼ 74.6%), by-type chips", (await dp.getByTestId("bill-row").count()) === 1 && (await dp.getByTestId("bills-diff").innerText()).trim() === "-141,700원 (▼ 74.6%)" && (await dp.getByTestId("bills-by-type").innerText()).includes("전기") && (await dp.getByTestId("bills-diff").getAttribute("data-dir")) === "down", (await dp.getByTestId("bills-diff").innerText()));
+      // AI could not read the amount: the form says so
+      mock.reply = { ...BILL, amount: 0, billing_month: "" };
+      await dp.getByTestId("bill-open").click();
+      await dlg.waitFor();
+      await dlg.getByTestId("bill-gallery-input").setInputFiles({ name: "bill2.jpg", mimeType: "image/jpeg", buffer: png });
+      await dlg.getByTestId("bill-form").waitFor({ timeout: 30_000 });
+      record("phase3", "desktop", "an unreadable amount / month is flagged (‘금액은(는) 읽지 못했어요’), the field stays empty for the person to fill", /읽지 못했어요/.test(await dlg.getByTestId("bill-ai-note").innerText()) && (await dlg.getByTestId("bill-amount").inputValue()) === "");
+      mock.reply = BILL;
+      // manual entry
+      await dlg.getByRole("button", { name: "다시 찍기" }).click();
+      await dlg.getByTestId("bill-manual").click();
+      await dlg.locator('[data-bill-type="MAINTENANCE"]').click();
+      await dlg.getByTestId("bill-month").fill(curMonth);
+      await dlg.getByTestId("bill-amount").fill("155000");
+      await dlg.getByTestId("bill-provider").fill("OO아파트");
+      await dlg.getByTestId("bill-save").click();
+      await dlg.waitFor({ state: "detached", timeout: 15_000 });
+      const manual = await until(async () => (await svc.from("utility_bills").select("*").eq("household_id", H).eq("billing_month", curMonth).eq("bill_type", "MAINTENANCE")).data?.[0]);
+      await dp.waitForFunction(() => document.querySelector('[data-testid="bills-total"]')?.textContent?.trim() === "203,300원", null, { timeout: 15_000 });
+      record("phase3", "desktop", "manual entry works without a photo: 아파트 관리비 155,000원 saved, month total 203,300원", !!manual && manual.amount === 155000 && (await dp.getByTestId("bill-row").count()) === 2);
+      // bad input
+      await dp.getByTestId("bill-open").click();
+      await dlg.waitFor();
+      await dlg.getByTestId("bill-manual").click();
+      await dlg.getByTestId("bill-amount").fill("abc");
+      await dlg.getByTestId("bill-save").click();
+      await dlg.getByTestId("bill-error").waitFor();
+      record("phase3", "desktop", "a non-numeric amount is refused with a message (nothing saved)", /숫자/.test(await dlg.getByTestId("bill-error").innerText()) && (await svc.from("utility_bills").select("id").eq("household_id", H).eq("billing_month", curMonth)).data.length === 2);
+      await dp.keyboard.press("Escape");
+      await dlg.waitFor({ state: "detached" });
+      // delete (2-step)
+      const row = dp.getByTestId("bill-row").filter({ hasText: "아파트 관리비" });
+      await row.getByTestId("bill-delete").click();
+      await row.getByTestId("bill-delete").click();
+      await until(async () => (await svc.from("utility_bills").select("id").eq("household_id", H).eq("billing_month", curMonth).eq("bill_type", "MAINTENANCE")).data?.length === 0);
+      await dp.waitForFunction(() => document.querySelector('[data-testid="bills-total"]')?.textContent?.trim() === "48,300원", null, { timeout: 15_000 });
+      record("phase3", "desktop", "bill delete is two-step (‘삭제 확인’) and the total follows (48,300원)", (await dp.getByTestId("bill-row").count()) === 1);
+      // the partner's view is the same data (shared household)
+      record("phase3", "desktop", "no page errors in the bill flow", dp.__errors.length === 0, dp.__errors.join(" | ").slice(0, 200));
+    }
+    // rate limit last: calls so far this minute are counted, so loop until the first 429
+    let first429 = -1, ra = null;
+    for (let i = 0; i < 14 && first429 < 0; i++) {
+      const r = await post(apiCtx, { imageBase64: b64, mimeType: "image/jpeg" });
+      if (r.status() === 429) { first429 = i; ra = r.headers()["retry-after"]; }
+    }
+    record("phase3", "desktop", "bills/analyze rate limit: a burst ends in 429 with Retry-After (10 per minute)", first429 >= 0 && Number(ra) > 0, `first 429 after ${first429} extra calls, retry-after=${ra}`);
+    await apiCtx.close();
+    await dc.close();
+
+    // ============================================================ 3. rental D-90 defence alert (needs migration 19's generator)
+    if (has19) {
+      const rental = (await svc.from("assets").insert({ household_id: H, owner_id: uid1, visibility: "FAMILY", name: "정수기 렌탈", space: "주방", category: "주방가전", preset_key: "water_purifier", ownership_type: "RENTAL", obligation_end_date: seoulDay(88) }).select("id").single()).data;
+      const gen = await svc.rpc("generate_due_notifications", { p_household_id: H });
+      const ns = (await svc.from("notifications").select("user_id, type, title, dedupe_key, asset_id").eq("asset_id", rental.id)).data ?? [];
+      record("phase3", "desktop", "D-90 rental alert: both members get one RENTAL_EXPIRING ‘렌탈 약정 만료 3개월 전’ (88 days left is inside D-90…D-85)", ns.length === 2 && ns.every((n) => n.type === "RENTAL_EXPIRING" && /3개월 전/.test(n.title) && /:d90$/.test(n.dedupe_key)) && !gen.error, JSON.stringify(ns[0]));
+      await svc.rpc("generate_due_notifications", { p_household_id: H });
+      record("phase3", "desktop", "running it again (next day's cron) does not repeat the alert", ((await svc.from("notifications").select("id").eq("asset_id", rental.id)).data ?? []).length === 2);
+      const { c, p } = await mk(VIEWPORTS[0]);
+      await p.goto(`${BASE}/analytics`, { waitUntil: "networkidle" });
+      await p.locator('button[title="알림"]').click();
+      const nrow = p.getByTestId("notification-row").filter({ hasText: "3개월 전" });
+      await nrow.waitFor();
+      await nrow.locator("button").first().click();
+      await p.waitForURL(new RegExp(`/assets\\?openAssetId=${rental.id}&tab=compare`), { timeout: 15_000 });
+      record("phase3", "desktop", "clicking the alert deep-links to the appliance’s 환승 비교 tab (/assets?openAssetId=…&tab=compare)", true, p.url());
+      await c.close();
+    } else {
+      record("phase3", "-", "SKIPPED (needs migration 19): rental D-90 alert generation — verified against PGlite in check19 instead", true);
+    }
+
+    // ============================================================ 4. responsive + dark: /analytics at 375 / 280
+    for (const vp of [{ name: "mobile", width: 375, height: 812 }, { name: "fold280", width: 280, height: 800 }]) {
+      const { c, p } = await mk(vp);
+      await p.goto(`${BASE}/analytics?month=${prevM}`, { waitUntil: "networkidle" });
+      const g = await p.evaluate(() => {
+        const out = {};
+        for (const id of ["month-stepper", "settlement-card", "bills-card"]) {
+          const el = document.querySelector(`[data-testid="${id}"]`);
+          if (!el) { out[id] = null; continue; }
+          const r = el.getBoundingClientRect();
+          out[id] = { l: Math.round(r.left), r: Math.round(r.right), over: el.scrollWidth - el.clientWidth };
+        }
+        const small = [...document.querySelectorAll('[data-testid="month-prev"], [data-testid="bill-open"]')].map((b) => Math.round(b.getBoundingClientRect().height));
+        const blocks = [...document.querySelectorAll('[data-testid^="settle-"][data-testid$="food"], [data-testid="settle-waste"], [data-testid="settle-team"]')].map((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 0.5; });
+        return { out, small, blocks, vw: window.innerWidth };
+      });
+      record("phase3", vp.name, "analytics: stepper, settlement blocks and bills card inside the screen, nothing overflows, buttons >= 44px", Object.values(g.out).every((x) => x === null || (x.l >= -0.5 && x.r <= g.vw + 0.5 && x.over <= 1)) && g.blocks.length === 3 && g.blocks.every(Boolean) && g.small.every((h) => h >= 43) && (await overflowX(p)) <= 0, JSON.stringify(g));
+      if (vp.name === "fold280") await p.screenshot({ path: `${OUT}/analytics-settlement-fold280.png`, fullPage: true });
+      if (has19) {
+        await p.getByTestId("bill-open").click();
+        const dlg = p.getByTestId("bill-dialog");
+        await dlg.waitFor();
+        await dlg.getByTestId("bill-manual").click();
+        const m = await dlg.evaluate((d) => { const r = d.getBoundingClientRect(); const inside = [...d.querySelectorAll("input, button")].every((b) => { const x = b.getBoundingClientRect(); return x.width === 0 || (x.left >= r.left - 0.5 && x.right <= r.right + 0.5); }); return { l: r.left, r: r.right, vw: window.innerWidth, inside, over: d.scrollWidth - d.clientWidth }; });
+        record("phase3", vp.name, "bill dialog form: inside the screen, fields and pills inside the card, no sideways scroll", m.l >= -0.5 && m.r <= m.vw + 0.5 && m.inside && m.over <= 1 && (await overflowX(p)) <= 0, JSON.stringify(m));
+        if (vp.name === "fold280") await p.screenshot({ path: `${OUT}/analytics-bill-form-fold280.png` });
+      }
+      await c.close();
+    }
+    {
+      const { c, p } = await mk(VIEWPORTS[1], { scheme: "dark" });
+      await p.goto(`${BASE}/analytics?month=${prevM}`, { waitUntil: "networkidle" });
+      const bg = await p.getByTestId("settlement-card").evaluate((e) => getComputedStyle(e).backgroundColor);
+      const mm = bg.match(/\d+/g).map(Number);
+      record("phase3", "mobile", "analytics in dark mode: settlement card is dark, nothing overflows", mm[0] < 60 && mm[1] < 60 && (await overflowX(p)) <= 0, bg);
+      await c.close();
+    }
+
+    // ============================================================ 5. refreshed guides: every tab's 3 steps carry the new features
+    {
+      const { c, p } = await mk(VIEWPORTS[0]);
+      const guides = [
+        ["/assets", "appliance_dday", ["기본 가전 1분 세팅", "D-7", "D-90"]],
+        ["/kitchen", "zero_typing", ["일괄 검수", "냉동", "D-3", "공동 장보기", "+ 장보기"]],
+        ["/timeline", "timeline_actions", ["원탭", "교체·점검 완료", "소진 완료", "딥링크", "홈 화면에 추가"]],
+        ["/analytics", "analytics_report", ["일일 권장 식비", "고지서", "월말 부부 살림 결산"]],
+        ["/spaces", "space_planner", ["선 긋기", "AR 카메라", "쇼핑몰", "URL", "♥", "예산"]],
+      ];
+      // /spaces has a help badge on the list page only when a space exists: open one through the detail page
+      const spaceId = (await svc.from("space_projects").insert({ household_id: H, created_by: uid1, name: "가이드 확인용", room_type: "living" }).select("id").single()).data.id;
+      for (const [path, topic, phrases] of guides) {
+        await p.goto(`${BASE}${path === "/spaces" ? `/spaces/${spaceId}` : path}`, { waitUntil: "networkidle" });
+        await p.locator(`[data-help-topic="${topic}"]`).first().click();
+        const dlg = p.getByTestId("help-dialog");
+        await dlg.waitFor();
+        await p.waitForTimeout(400);
+        const all = (await dlg.locator('[data-testid="help-slide"]').allInnerTexts()).join(" ");
+        const missing = phrases.filter((ph) => !all.includes(ph));
+        record("phase3", "desktop", `${path} guide (${topic}): 3 steps mention ${phrases.join(" · ")}`, (await dlg.locator('[data-testid="help-slide"]').count()) === 3 && missing.length === 0, missing.length ? `missing: ${missing.join(",")}` : "");
+        await p.keyboard.press("Escape");
+        await dlg.waitFor({ state: "detached" }).catch(() => {});
+      }
+      await svc.from("space_projects").delete().eq("household_id", H);
+      await c.close();
+    }
+  } catch (err) {
+    record("phase3", "-", "phase3 suite ran to completion", false, String(err?.stack ?? err).slice(0, 600));
+  } finally {
+    server.close();
+    if (H) await svc.from("households").delete().eq("id", H);
     for (const id of [uid1, uid2]) if (id) await svc.auth.admin.deleteUser(id).catch(() => {});
     if (H) await svc.from("households").delete().eq("id", H);
   }

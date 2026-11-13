@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { annotationAxis, buildShoppingLinks, composeLabel, evaluateFurnitureFit, inferMall, isJointPick, summarizeBudget, type SpaceAnnotation } from "./space-planner.ts";
+import { annotationAxis, buildShoppingLinks, composeLabel, evaluateFurnitureFit, inferMall, isJointPick, parseAffiliateTag, readAffiliateTags, summarizeBudget, type SpaceAnnotation } from "./space-planner.ts";
 
 const wall = (label: string, lengthCm: number): SpaceAnnotation => ({ id: label, x1: 0, y1: 0, x2: 1, y2: 0, label, lengthCm });
 
@@ -146,4 +146,55 @@ test("joint pick: needs 2+ members and all of them to like it", () => {
   assert.equal(isJointPick([A, A], [A, A]), false);
   assert.equal(isJointPick(undefined, [A, B]), false);
   assert.equal(isJointPick([A, B], undefined), false);
+});
+
+test("affiliate: no tags -> the plain search URLs (unchanged behaviour)", () => {
+  const plain = buildShoppingLinks("소파 3인", {});
+  assert.equal(plain[2].url, `https://www.coupang.com/np/search?q=${encodeURIComponent("소파 3인")}`);
+  assert.equal(plain[0].url, `https://ohou.se/store/search?query=${encodeURIComponent("소파 3인")}`);
+  assert.deepEqual(buildShoppingLinks("소파 3인", { coupang: "", naver: undefined }).map((l) => l.url), plain.map((l) => l.url));
+});
+
+test("affiliate: a tag is merged into that mall's URL only, keeping the keyword encoding", () => {
+  const q = encodeURIComponent("소파 3인");
+  const links = buildShoppingLinks("소파 3인", { coupang: "lptag=AF1234567", ikea: "?cid=kr-aff&subid=couple" });
+  const by = Object.fromEntries(links.map((l) => [l.mall, l.url]));
+  assert.equal(by.coupang, `https://www.coupang.com/np/search?q=${q}&lptag=AF1234567`);
+  assert.equal(by.ikea, `https://www.ikea.com/kr/ko/search/?q=${q}&cid=kr-aff&subid=couple`);
+  assert.equal(by.ohouse, `https://ohou.se/store/search?query=${q}`);
+  assert.equal(by.naver, `https://search.shopping.naver.com/search/all?query=${q}`);
+});
+
+test("affiliate: malformed / unsafe tags are ignored, never injected", () => {
+  const q = encodeURIComponent("소파");
+  const base = `https://www.coupang.com/np/search?q=${q}`;
+  for (const bad of ["AF1234567", "=x", "a=", "a=b c", "a=<script>", "javascript:alert(1)", "a=1&b", "x".repeat(400), "a=b&c=d e", "q=hijack&", "a=https://evil.example/", "a b=c"]) {
+    const url = buildShoppingLinks("소파", { coupang: bad })[2].url;
+    assert.ok(url === base || (bad === "q=hijack&" && url === base), `${bad} -> ${url}`);
+  }
+});
+
+test("affiliate: the search keyword parameter can never be overridden, a repeated key is set once", () => {
+  const q = encodeURIComponent("소파");
+  assert.equal(buildShoppingLinks("소파", { coupang: "q=evil&lptag=AF9" })[2].url, `https://www.coupang.com/np/search?q=${q}&lptag=AF9`);
+  assert.equal(buildShoppingLinks("소파", { naver: "a=1&a=2" })[1].url, `https://search.shopping.naver.com/search/all?query=${q}&a=2`);
+  assert.deepEqual(parseAffiliateTag("lptag=AF1&subid=x"), [["lptag", "AF1"], ["subid", "x"]]);
+  assert.deepEqual(parseAffiliateTag(null), []);
+});
+
+test("affiliate: tags are read from the NEXT_PUBLIC_AFFILIATE_* environment variables", () => {
+  const keys = ["NEXT_PUBLIC_AFFILIATE_COUPANG_TAG", "NEXT_PUBLIC_AFFILIATE_OHHOUSE_TAG", "NEXT_PUBLIC_AFFILIATE_NAVER_TAG", "NEXT_PUBLIC_AFFILIATE_IKEA_TAG"];
+  const saved = keys.map((k) => process.env[k]);
+  try {
+    for (const k of keys) delete process.env[k];
+    assert.deepEqual(Object.values(readAffiliateTags()).filter(Boolean), []);
+    process.env.NEXT_PUBLIC_AFFILIATE_COUPANG_TAG = "lptag=AF1";
+    process.env.NEXT_PUBLIC_AFFILIATE_OHHOUSE_TAG = "ref=couple";
+    process.env.NEXT_PUBLIC_AFFILIATE_NAVER_TAG = "np=n1";
+    process.env.NEXT_PUBLIC_AFFILIATE_IKEA_TAG = "cid=i1";
+    const urls = buildShoppingLinks("책장").map((l) => l.url);
+    assert.ok(urls[0].endsWith("&ref=couple") && urls[1].endsWith("&np=n1") && urls[2].endsWith("&lptag=AF1") && urls[3].endsWith("&cid=i1"), urls.join("\n"));
+  } finally {
+    keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+  }
 });

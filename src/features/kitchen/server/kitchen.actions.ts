@@ -6,6 +6,7 @@ import { toxicMatch } from "../rules/pet-safety";
 import { defaultExpireDate, STORAGE_LABEL, type StorageType } from "../rules/shelf-life";
 import { moveStorage, SAVED_WON_PER_RESCUE } from "../rules/storage-move";
 import { adjustProfileCounters, kitchenContext as context, seoulToday } from "./kitchen-context";
+import { EST_WASTE_WON, logKitchenActivity } from "./kitchen-activity";
 import {
   DEFAULT_KITCHEN_PROFILE,
   createKitchenItemSchema,
@@ -122,9 +123,12 @@ export async function deleteKitchenItem(input: unknown): Promise<KitchenActionRe
   if (!parsed.success) return { ok: false, error: "잘못된 요청입니다." };
   const c = await context();
   if (!c.ok) return c;
-  const { data, error } = await c.ctx.supabase.from("kitchen_items").delete().eq("id", parsed.data.id).select("id");
+  const { data, error } = await c.ctx.supabase.from("kitchen_items").delete().eq("id", parsed.data.id).select("id, name, expire_date");
   if (error) return { ok: false, error: "재료를 삭제하지 못했어요." };
   if (!data || data.length === 0) return { ok: false, error: "재료를 찾을 수 없어요." };
+  // throwing away something that is already past its date counts as waste in the month-end settlement
+  const gone = data[0] as { name: string; expire_date: string };
+  if (gone.expire_date < seoulToday()) await logKitchenActivity(c.ctx.supabase, c.ctx.householdId, c.ctx.userId, [{ kind: "DISCARDED", name: gone.name, estAmount: EST_WASTE_WON }]);
   revalidate();
   return { ok: true };
 }
@@ -138,9 +142,10 @@ export async function consumeKitchenItem(input: unknown): Promise<KitchenActionR
   if (!c.ok) return c;
 
   // Delete first and use its result as proof: a row that is gone / not ours can never be credited twice.
-  const { data, error } = await c.ctx.supabase.from("kitchen_items").delete().eq("id", parsed.data.id).select("id");
+  const { data, error } = await c.ctx.supabase.from("kitchen_items").delete().eq("id", parsed.data.id).select("id, name");
   if (error) return { ok: false, error: "재료를 처리하지 못했어요." };
   if (!data || data.length === 0) return { ok: false, error: "재료를 찾을 수 없어요. 이미 처리됐을 수 있어요." };
+  await logKitchenActivity(c.ctx.supabase, c.ctx.householdId, c.ctx.userId, [{ kind: "CONSUMED", name: (data[0] as { name: string }).name }]);
 
   const credited = await adjustProfileCounters(c.ctx.supabase, c.ctx.householdId, { rescued: 1, savedWon: SAVED_WON_PER_RESCUE });
   if (!credited) console.error("kitchen: item consumed but the savings credit could not be written", parsed.data.id);

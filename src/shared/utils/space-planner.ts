@@ -13,12 +13,72 @@ export type ShoppingLink = { mall: ShoppingMallId; label: string; url: string };
 
 export const MAX_KEYWORD_LENGTH = 100;
 
-/** One search URL per mall for a Korean keyword (trimmed, whitespace collapsed, URL-encoded). Empty keyword -> no links. */
-export function buildShoppingLinks(keyword: string): ShoppingLink[] {
+// ---- optional affiliate parameters --------------------------------------------------------------------------------------
+// NEXT_PUBLIC_AFFILIATE_{COUPANG,OHHOUSE,NAVER,IKEA}_TAG hold a query fragment such as "lptag=AF1234567" (or "a=1&b=2"). When set it is
+// merged into that mall's search URL; unset / malformed values leave the plain search URL untouched. The four variables are read
+// with literal `process.env.NAME` expressions on purpose: that is the only form Next.js inlines into the browser bundle.
+export type AffiliateTags = Partial<Record<ShoppingMallId, string | undefined>>;
+
+export function readAffiliateTags(): AffiliateTags {
+  try {
+    // no `typeof process` guard: the bundler replaces each literal expression below at build time, even in the browser
+    return {
+      coupang: process.env.NEXT_PUBLIC_AFFILIATE_COUPANG_TAG,
+      ohouse: process.env.NEXT_PUBLIC_AFFILIATE_OHHOUSE_TAG,
+      naver: process.env.NEXT_PUBLIC_AFFILIATE_NAVER_TAG,
+      ikea: process.env.NEXT_PUBLIC_AFFILIATE_IKEA_TAG,
+    };
+  } catch {
+    return {};
+  }
+}
+
+const PARAM_NAME = /^[A-Za-z0-9_.\-]{1,40}$/;
+const PARAM_VALUE = /^[A-Za-z0-9_.\-~%+,]{1,120}$/; // no ":" "/" "@": a value can never smuggle in another URL
+
+/** "lptag=AF1&subid=x" (a leading "?" / "&" is tolerated) -> [["lptag","AF1"],["subid","x"]]; anything unsafe or malformed -> []. */
+export function parseAffiliateTag(raw: string | null | undefined): [string, string][] {
+  const text = String(raw ?? "").trim().replace(/^[?&]+/, "");
+  if (!text || text.length > 300) return [];
+  const out: [string, string][] = [];
+  for (const part of text.split("&")) {
+    const i = part.indexOf("=");
+    if (i < 1) return []; // a bare value has no parameter name: refuse the whole tag rather than guess
+    const key = part.slice(0, i), value = part.slice(i + 1);
+    if (!PARAM_NAME.test(key) || !PARAM_VALUE.test(value)) return [];
+    out.push([key, value]);
+  }
+  return out;
+}
+
+/**
+ * Merge affiliate pairs into a URL's query by appending `&key=value` to the text as it is: the keyword keeps its exact encoding (a
+ * re-serialising URLSearchParams would turn %20 into "+"). The search keyword parameter is never touched, a key the URL already has is
+ * not duplicated, and a key repeated inside the tag counts once (the last value wins).
+ */
+export function withAffiliate(url: string, tag: string | null | undefined, protectedKeys: readonly string[] = ["q", "query"]): string {
+  const pairs = parseAffiliateTag(tag);
+  if (pairs.length === 0) return url;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return url;
+  }
+  const have = new Set([...u.searchParams.keys()]);
+  const add = new Map<string, string>();
+  for (const [k, v] of pairs) if (!protectedKeys.includes(k) && !have.has(k)) add.set(k, v);
+  if (add.size === 0) return url;
+  const extra = [...add].map(([k, v]) => `${k}=${v}`).join("&");
+  return u.search ? `${url}&${extra}` : `${url}?${extra}`;
+}
+
+/** One search URL per mall for a Korean keyword (trimmed, whitespace collapsed, URL-encoded). Empty keyword -> no links. Affiliate tags (env) are merged when set. */
+export function buildShoppingLinks(keyword: string, tags: AffiliateTags = readAffiliateTags()): ShoppingLink[] {
   const clean = String(keyword ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_KEYWORD_LENGTH).trim();
   if (!clean) return [];
   const q = encodeURIComponent(clean);
-  return SHOPPING_MALLS.map((m) => ({ mall: m.id, label: m.label, url: m.url(q) }));
+  return SHOPPING_MALLS.map((m) => ({ mall: m.id, label: m.label, url: withAffiliate(m.url(q), tags[m.id]) }));
 }
 
 // ---------------------------------------------------------------------------------------------- fit check

@@ -15,6 +15,7 @@ import {
 } from "../schemas/kitchen.schema";
 import { analyzeImage, checkImage, parseCheckoutCommand, type ImageAnalysis, type ImageMime } from "./gemini-kitchen";
 import { adjustProfileCounters, kitchenContext, seoulToday } from "./kitchen-context";
+import { EST_WASTE_WON, logKitchenActivity } from "./kitchen-activity";
 
 // Zero-typing pipelines: (1) photo -> items -> one-shot intake, (2) a spoken/typed sentence -> actions -> one-shot apply.
 // Every query runs under the caller's JWT (RLS = household boundary). The AI never writes anything: it only PROPOSES
@@ -189,6 +190,11 @@ export async function executeSmartCheckoutBatch(input: unknown): Promise<Kitchen
   if (removeIds.length) {
     const { data, error } = await supabase.from("kitchen_items").delete().in("id", removeIds).select("id");
     if (error) { sum.failed += removeIds.length; results.push({ ok: false, text: "재료를 삭제하지 못했어요" }); } else for (const d of data ?? []) removed.add(d.id);
+    // month-end settlement log (best effort, never blocks the checkout)
+    await logKitchenActivity(supabase, householdId, c.ctx.userId, [
+      ...consumeIds.filter((id) => removed.has(id)).map((id) => ({ kind: "CONSUMED" as const, name: state.get(id)?.name ?? "" })),
+      ...discardIds.filter((id) => removed.has(id)).map((id) => ({ kind: "DISCARDED" as const, name: state.get(id)?.name ?? "", estAmount: EST_WASTE_WON })),
+    ]);
   }
   for (const u of amountUpdates) {
     const { data, error } = await supabase.from("kitchen_items").update({ amount: u.amount }).eq("id", u.id).select("id");

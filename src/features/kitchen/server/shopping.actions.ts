@@ -12,6 +12,7 @@ import {
   type ShoppingResult,
 } from "../schemas/shopping.schema";
 import { kitchenIdSchema } from "../schemas/kitchen.schema";
+import { logKitchenActivity } from "./kitchen-activity";
 
 // The couple's shared shopping list (shopping_items, migration 18). Every query runs under the caller's JWT, so RLS
 // (current_household_id()) is the household boundary. Before the migration is applied the table does not exist: reads and writes
@@ -91,8 +92,9 @@ export async function deleteShoppingItem(input: unknown): Promise<ShoppingResult
 export async function clearCheckedShopping(): Promise<ShoppingResult<{ removed: number }>> {
   const c = await context();
   if (!c.ok) return c;
-  const { data, error } = await c.ctx.supabase.from("shopping_items").delete().eq("is_checked", true).select("id");
+  const { data, error } = await c.ctx.supabase.from("shopping_items").delete().eq("is_checked", true).select("id, name");
   if (error) return { ok: false, error: "비우지 못했어요." };
+  await logKitchenActivity(c.ctx.supabase, c.ctx.householdId, c.ctx.userId, ((data ?? []) as { name: string }[]).map((r) => ({ kind: "SHOPPED" as const, name: r.name })));
   revalidate();
   return { ok: true, removed: data?.length ?? 0 };
 }
@@ -121,6 +123,7 @@ export async function stockCheckedShopping(): Promise<ShoppingResult<{ stocked: 
   const ins = await supabase.from("kitchen_items").insert(inserts).select("id");
   if (ins.error) return { ok: false, error: "보관함에 입고하지 못했어요." };
   const del = await supabase.from("shopping_items").delete().in("id", rows.map((r) => r.id));
+  await logKitchenActivity(supabase, householdId, c.ctx.userId, rows.map((r) => ({ kind: "SHOPPED" as const, name: r.name })));
   revalidate();
   if (del.error) return { ok: true, stocked: rows.length, summary }; // stocked; the checked rows can be cleared by hand
   return { ok: true, stocked: rows.length, summary };
